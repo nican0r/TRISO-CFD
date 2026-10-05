@@ -1,0 +1,18 @@
+# Numerics / CFD-mesh sanity-check inputs.
+# Used by src/cfl_check.py to sanity-check MFiX time-step choices before runs.
+# All values SI.
+#
+# source: implementation-steps/day-3.md
+#   ("inlet jet of ~20 m/s and cells of 1 mm, what dt does CFL < 0.5 require?")
+
+spout_cfl_example:
+  u_max_m_per_s: 20.0    # expected peak velocity in the spout (inlet jet) [m/s]
+                         # source: day-3.md; representative of Case V/D inlet jet
+                         #         through the 9.5 mm orifice.  assumed order of
+                         #         magnitude, refined once a case is run.
+  dx_m: 1.0e-3           # characteristic cell edge length [m]  (1 mm)
+                         # source: day-3.md; a reasonable target for the
+                         #         spout / near-inlet region of the 0.076 m bed.
+  cfl_target: 0.5        # CFL upper bound for the sanity check [-]
+                         # source: day-3.md ("CFL < 0.5"); standard explicit-
+                         #         solver stability margin.
