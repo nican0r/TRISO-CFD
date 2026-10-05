@@ -1,0 +1,10 @@
+{
+  "tag": "u0p90_base",
+  "ratio": 0.9,
+  "U": 0.3655627804446834,
+  "mesh": "base",
+  "imax": 38,
+  "jmax": 150,
+  "tstop_s": 8.0,
+  "mfx": "u0p90_base.mfx"
+}

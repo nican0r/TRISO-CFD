@@ -1,0 +1,10 @@
+{
+  "tag": "u1p30_base",
+  "ratio": 1.3,
+  "U": 0.528035127308987,
+  "mesh": "base",
+  "imax": 38,
+  "jmax": 150,
+  "tstop_s": 8.0,
+  "mfx": "u1p30_base.mfx"
+}

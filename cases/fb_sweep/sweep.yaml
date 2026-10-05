@@ -1,0 +1,16 @@
+# Day 6-7 flat-bottom bubbling bed sweep (Case D particles in air at 20 C).
+# This file is read by src/run_fb_sweep.py to generate per-run .mfx cases.
+# source: implementation-steps/day-6-7.md
+
+description: "fb_sweep flat-bottom 2D bubbling bed, Case D in air 20 C"
+
+# Pulls these from params/*.yaml (do not duplicate values here):
+#   particles.yaml  : case_D (d_p, rho_p)
+#   particles.yaml  : fb_sweep (H_static_m, eps_s_bed, u_over_umf,
+#                               t_startup_s, t_avg_s, dt_init_s, gas_case)
+#   gases.yaml      : air_20C composition and T
+#   geometry.yaml   : fb_sweep_2d (width_m, height_m, imax_base, jmax_base)
+
+vtk_dt_s: 0.05        # VTK frame interval [s]
+                      # source: assumed; dense enough to catch bubble passage,
+                      # sparse enough to keep .vtu count tractable.

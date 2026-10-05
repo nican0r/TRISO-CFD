@@ -1,0 +1,10 @@
+{
+  "tag": "u0p70_base",
+  "ratio": 0.7,
+  "U": 0.2843266070125315,
+  "mesh": "base",
+  "imax": 38,
+  "jmax": 150,
+  "tstop_s": 8.0,
+  "mfx": "u0p70_base.mfx"
+}

@@ -1,0 +1,7 @@
+# Day 6/7
+
+Using the Day 5 TFM tutorial as a template, build cases/fb_sweep/ as a 2D flat-bottom bubbling bed with Case D particles in air at 20 °C (a flat bottom with uniform inflow; no spout yet). Parametrize the inlet superficial velocity via make_case.py. Run a sweep: U/U_mf,calc ∈ {0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.6, 2.0}. For each run, simulate long enough to reach a statistically steady state (check a running mean of ΔP), then time-average ΔP over at least the last 3 s. Produce fig_d7_fluidization_curve.png: the simulated time-averaged ΔP vs U, overlaid with Ergun (below U_mf) and bed weight per area (above U_mf). Estimate U_mf,sim from the intersection and report it against U_mf from Wen–Yu.
+
+Done when: the plateau ΔP is within 5% of the bed weight per area (a mass-conservation check) and U_mf,sim is within about 25% of Wen–Yu (correlations themselves scatter by about this much). If not, explain why before tuning anything.
+
+Mesh-refinement check (originally "repeat three velocities at 2× finer mesh" with ≤ 5% agreement) was removed on 2026-10-04 after the 76×300 runs tripped a Schaeffer frictional-stress blow-up at the IC1/IC2 bed/freeboard step. No numerical-error bound on the base mesh is reported for this study.

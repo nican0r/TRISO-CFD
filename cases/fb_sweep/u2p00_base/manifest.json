@@ -1,0 +1,10 @@
+{
+  "tag": "u2p00_base",
+  "ratio": 2.0,
+  "U": 0.8123617343215186,
+  "mesh": "base",
+  "imax": 38,
+  "jmax": 150,
+  "tstop_s": 8.0,
+  "mfx": "u2p00_base.mfx"
+}
