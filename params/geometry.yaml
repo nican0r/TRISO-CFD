@@ -1,0 +1,131 @@
+# Missouri S&T 0.076 m (3-inch) cold-flow spouted bed geometry.
+# All values SI (metres, degrees). Used by the Day 2 U_ms hand-calculations
+# and (from Day 3 onward) by the MFiX case builders.
+#
+# source: implementation-steps/day-2.md and PLAN.md 1.3 / Resources R13-R15
+#         (OSTI 1533774, 1538701, 1054926).
+
+bed_0p076m:
+  D_c_m: 0.076         # column (cylindrical section) inside diameter [m]
+                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+  D_i_m: 0.0095        # inlet-orifice diameter [m]  (9.5 mm)
+                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+  cone_angle_deg: 60   # included cone angle at base [deg]
+                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+  H_column_m: 1.14     # total column (cylindrical section) height [m]
+                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+
+# Day 6-7: flat-bottom 2D bubbling-bed test rig for the U_mf sweep.
+# No spout: uniform MI across the entire bottom edge. See
+# implementation-steps/day-6-7.md.
+fb_sweep_2d:
+  width_m: 0.076       # domain width [m]  (match bed_0p076m D_c)
+                       # source: params/geometry.yaml bed_0p076m D_c_m
+  height_m: 0.30       # domain height [m] (3x H_static, room for bed expansion)
+                       # source: assumed; freeboard ~2x bed height
+  imax_base: 38        # base-mesh cells across width [-]  -> dx = 2 mm (~ 4 d_p)
+                       # source: assumed; see notes/day6-7_summary.md
+  jmax_base: 150       # base-mesh cells up height [-]     -> dy = 2 mm
+                       # source: assumed; isotropic cells on base mesh
+
+# Day 8: Case V spouted-bed templates.
+# Same column geometry as bed_0p076m but with the cone and inlet orifice
+# explicitly resolved. The axial domain is truncated to 3 x H_static plus
+# fountain headroom (not the full 1.14 m column), per implementation-steps/day-8.md.
+#
+# Static bed height is set to 0.10 m to match the Day 4 count estimate and
+# the Day 6-7 fb_sweep bed, so bed inventory and ΔP targets stay consistent
+# across the project.
+#
+# source: implementation-steps/day-8.md ("domain height ~ 3 x H_static plus
+# fountain headroom rather than the full 1.14 m column"); R14 (OSTI 1538701)
+# for the 0.076 m / 0.0095 m / 60 deg column geometry.
+
+spouted_bed_V_2d:
+  # 2D Cartesian cut-cell template using MFiX's NATIVE quadric geometry
+  # (coordinates='CARTESIAN', cartesian_grid=.True., use_stl=.False.,
+  # n_quadric=1 with a single Y_CONE primitive for the cone wall, no_k=.True.).
+  # No STL file dependency - the vessel geometry comes entirely from the
+  # Y_CONE quadric plus the natural domain walls at x = +/- R_c above the
+  # cone section.
+  H_static_m: 0.10          # initial packed-bed height [m]
+                             # source: params/particles.yaml fb_sweep H_static_m
+  H_dom_m: 0.40              # axial domain extent [m] = 3 x H_static + 0.10 m
+                             # source: implementation-steps/day-8.md
+                             #         (0.10 m fountain headroom = assumed)
+  cone_apex_y_m: -0.008227   # y-position of the (virtual) Y_CONE apex [m]
+                             # = -R_i / tan(30 deg); places r = R_i at y = 0.
+                             # Fed to t_y(1) of the Y_CONE quadric.
+                             # source: derived from D_i and 60 deg cone
+  cone_top_y_m: 0.057632     # axial position where the cone meets the
+                             # cylindrical column [m] = (R_c-R_i)/tan(30 deg).
+                             # Fed to clip_ymax(1) of the Y_CONE quadric,
+                             # and used for the V_2d schematic overlay.
+                             # source: derived from D_c, D_i, and 60 deg cone
+  cone_half_angle_deg: 30.0  # Y_CONE half_angle(1) [deg]; 60 deg included cone.
+                             # source: PLAN.md 1.3 / R14 (OSTI 1538701)
+  imax: 64                   # x cell count across full width [-]
+                             # -> dx = 2*R_c/imax = 0.076/64 = 1.1875 mm
+                             # -> orifice |x|<=R_i spans 2*R_i/dx = 8.0 cells
+                             # source: implementation-steps/day-8.md ("2D inlet
+                             # orifice spans >= 4 cells")
+  jmax: 336                  # axial cell count [-]
+                             # -> dy = H_dom/jmax = 0.40/336 = 1.1905 mm
+                             # chosen so dy ~ dx (near-isotropic cells)
+                             # source: assumed; isotropic-cell convention
+  kmax: 1                    # z cell count [-]  (true 2D with no_k=.True.)
+                             # Unlike STL (which MFiX forbids with no_k),
+                             # quadrics work in no_k mode, so V_2d is a
+                             # true 2D run - half the cells of the earlier
+                             # kmax=2 STL slab.
+                             # source: MFiX quadric + no_k support
+  z_thickness_m: 0.0011875   # single-cell slab thickness [m] = dx so dz = dx.
+                             # -> z_min = -z_thickness_m/2,
+                             #    z_max = +z_thickness_m/2,
+                             #    zlength = z_thickness_m
+                             # source: assumed; cosmetic (no_k collapses z)
+
+spouted_bed_V_3d:
+  # 3D cut-cell template (cartesian_grid=.True., use_stl=.True.).
+  # STL built by src/make_stl.py as a surface of revolution of the cone+column.
+  H_static_m: 0.10           # initial packed-bed height [m]
+                              # source: params/particles.yaml fb_sweep H_static_m
+  H_dom_m: 0.40               # axial domain extent [m] (same as V_2d)
+                              # source: implementation-steps/day-8.md
+  cell_size_m: 0.0025         # target isotropic cell size [m] (~ 2.5 mm)
+                              # source: implementation-steps/day-8.md
+                              #         ("cell size of ~2-3 mm to start")
+  imax: 31                    # x cells -> dx = 0.076/31 = 2.452 mm
+                              # source: derived from D_c and cell_size_m
+  jmax: 160                   # y (axial) cells -> dy = 0.40/160 = 2.500 mm
+                              # source: derived from H_dom and cell_size_m
+  kmax: 31                    # z cells -> dz = 0.076/31 = 2.452 mm
+                              # source: derived from D_c and cell_size_m
+  theta_segments: 60          # angular segments used by src/make_stl.py when
+                              # tessellating the surface of revolution [-]
+                              # source: assumed; 6 deg per facet is finer than
+                              # 2 cells per facet at r = R_c (dz ~ 2.5 mm,
+                              # chord = R_c * 2 * sin(pi/60) ~ 4.0 mm)
+
+spouted_bed_V_initial:
+  # Initial-condition block shared by V_2d and V_3d templates.
+  # NOTE: ep_star (TFM packing limit) lives in params/particles.yaml as
+  # case_D.ep_star -- it is a particle-geometry property (RCP of monodisperse
+  # 500 um smooth spheres), not vessel geometry. The V_2d / V_3d builders in
+  # src/make_case.py read it from there, so Case V and the fb_sweep now share
+  # a single physically-grounded packing limit (ep_star = 0.37,
+  # eps_s,max = 0.63).
+  eps_s_bed: 0.60             # bed solids volume fraction at t=0 [-]
+                              # Physical reading: random loose packing (RLP)
+                              # for freshly poured monodisperse smooth spheres
+                              # is eps_s ~ 0.58-0.60 (Scott & Kilgour 1969),
+                              # so 0.60 is a slightly tight RLP IC -- what you
+                              # would get from pouring + a mild tap on a
+                              # packed-bed column. Sits ~3% below the physical
+                              # packing limit eps_s,max = 0.63
+                              # (= 1 - case_D.ep_star), so Schaeffer
+                              # frictional stress is inactive at t = 0 by
+                              # physics, not numerical tuning.
+                              # source: implementation-steps/day-8.md
+                              #         ("packed bed at eps_s ~ 0.6 up to H");
+                              #         Scott & Kilgour 1969 for the RLP band.
