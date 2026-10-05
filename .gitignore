@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# MFiX / raw simulation output (CLAUDE.md rule 7 — keep raw output out of git)
+cases/**/*.RES
+cases/**/*.SP*
+cases/**/*.LOG
+cases/**/*.OUT
+cases/**/*.pvd
+cases/**/*.vtu
+cases/**/*.vtp
+cases/**/*.vtk
+cases/**/BACKUP*
+cases/**/POST_*.dat
+cases/**/run.log
+cases/**/mfix.dat
+cases/**/*.pid
+cases/**/*.msh
+cases/**/MESH_STATS.LOG
+cases/**/VTU_FRAME_INDEX.TXT
+cases/**/*_FACETS_READ.stl
+cases/**/*_FACETS_IGNORED.stl
+cases/**/*_boundary.vtk
+cases/**/*_MESH.vtu
+cases/**/*.TXT
+cases/**/EPgErr.log
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/

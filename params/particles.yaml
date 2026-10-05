@@ -1,0 +1,110 @@
+# Particle properties used in Day 1 terminal-velocity sweep.
+# Diameters swept 200-1200 um at three characteristic densities.
+# source: PLAN.md sections 1.3 and implementation-steps/day-1.md
+
+d_p_sweep_um:
+  # source: implementation-steps/day-1.md (200-1200 um sweep)
+  start: 200
+  stop: 1200
+  step: 50
+
+densities_kg_per_m3:
+  # source: implementation-steps/day-1.md {2500, 6000, 10800}
+  # 2500  : light surrogate ballast (glass-like), see PLAN 1.3
+  # 6000  : ZrO2/YSZ TRISO surrogate kernel, PLAN 1.3
+  # 10800 : UO2 real kernel, PLAN 1.3
+  - 2500
+  - 6000
+  - 10800
+
+# Case D (design case) particles: ZrO2/YSZ TRISO surrogate.
+# source: PLAN.md 1.3 ("ZrO2/YSZ spheres of ~500 um diameter and ~6000 kg/m^3")
+case_D:
+  d_p_m: 500.0e-6           # 500 um, source: PLAN.md 1.3
+  rho_p_kg_per_m3: 6000     # source: PLAN.md 1.3
+  ep_star: 0.37             # TFM min-gas-fraction (max solids packing) [-]
+                             # => Schaeffer frictional-stress threshold
+                             #    eps_s,max = 1 - ep_star = 0.63
+                             # Physical basis: random close packing (RCP) of
+                             # monodisperse smooth spheres is eps_s,RCP ~ 0.636
+                             # (Scott & Kilgour 1969; Berryman 1983; Song,
+                             # Wang & Makse 2008, Nature 453). Case D particles
+                             # are CVD-grown ZrO2/YSZ (and UO2 variant) ~500 um
+                             # smooth monodisperse spheres, so RCP applies.
+                             # Gidaspow 1994 (Multiphase Flow and Fluidization,
+                             # Ch. 2) uses 0.63 as the TFM standard, and
+                             # spouted-bed TFM studies on Geldart-D systems
+                             # (Du et al. 2006 Chem. Eng. Sci.; San Jose et al.
+                             # 2005) span 0.60-0.64. Sitting a hair below
+                             # measured RCP keeps the Carnahan-Starling rdf
+                             # finite as eps_s -> ep_star.
+                             # source: Gidaspow 1994; Scott & Kilgour 1969
+  # NOTE: ep_star is a particle-geometry property (shape/size/polydispersity)
+  # and does NOT depend on vessel geometry, gas, or density. The same value is
+  # reused for the UO2 variant below and for every V_* / fb_sweep case.
+
+# UO2 real-kernel sensitivity variant, same diameter, higher density.
+# source: PLAN.md 1.3 ("Real UO2 kernels are ~10 800 kg/m^3")
+case_D_uo2:
+  d_p_m: 500.0e-6           # source: assumed (matches surrogate d_p for Geldart comparison)
+  rho_p_kg_per_m3: 10800    # source: PLAN.md 1.3
+  ep_star: 0.37             # same packing limit as case_D (same particle
+                             # geometry; higher density only changes bed weight,
+                             # not RCP). source: see case_D.ep_star
+
+# Static bed-height sweep for Day 2 U_mf / U_ms figure.
+# source: implementation-steps/day-2.md (0.05-0.20 m)
+H_sweep_m:
+  start: 0.05
+  stop:  0.20
+  step:  0.01
+
+# Day 4 model-choice particle-count estimate inputs.
+# source: implementation-steps/day-4.md ("estimate the particle count from the
+# bed volume and eps_s ~ 0.6 for H = 0.10 m" and "pseudo-2D slab thickness ~ 5 d_p").
+day4_count_estimate:
+  H_static_m: 0.10              # static bed height for the count estimate [m]
+                                 # source: implementation-steps/day-4.md
+  eps_s: 0.6                     # bed solids volume fraction [-]
+                                 # source: implementation-steps/day-4.md (loose random packing;
+                                 # typical for Geldart-D spherical particles, ~1 - eps_mf)
+  slab_thickness_particles: 5    # pseudo-2D slab thickness in particle diameters [-]
+                                 # source: implementation-steps/day-4.md
+
+# Day 6-7: flat-bottom 2D bubbling-bed sweep with Case D particles in air at 20 C.
+# See implementation-steps/day-6-7.md.
+fb_sweep:
+  H_static_m: 0.10        # static (packed) bed height in the 2D rig [m]
+                          # source: implementation-steps/day-4.md convention; reused here
+  eps_s_bed: 0.55         # solids fraction in the packed region at t=0 [-]
+                          # source: assumed; sits slightly below random loose
+                          # packing (RLP ~ 0.58-0.60 for monodisperse spheres)
+                          # so the gas can carry the bed smoothly into
+                          # fluidization from a lightly settled IC. Well below
+                          # the physical packing limit eps_s,max = 1 - ep_star
+                          # = 0.63 (see case_D.ep_star), so Schaeffer frictional
+                          # stress is inactive at t = 0 by physics, not by
+                          # tuning. Bed weight per area used as plateau target
+                          # scales linearly with this:
+                          # W/A = (rho_p - rho_g) * eps_s_bed * g * H_static.
+                          # Day 6-7 fb_sweep .mfx cases were generated with
+                          # this value; do not change it without re-running
+                          # the sweep (ΔP targets depend on it).
+  gas_case: air_20C       # key in params/gases.yaml for the fluidizing gas
+                          # source: implementation-steps/day-6-7.md ("air at 20 C")
+  u_over_umf:             # sweep ratios U / U_mf,calc [-]
+                          # source: implementation-steps/day-6-7.md
+    - 0.3
+    - 0.5
+    - 0.7
+    - 0.9
+    - 1.1
+    - 1.3
+    - 1.6
+    - 2.0
+  t_startup_s: 5.0        # discard this initial window before averaging [s]
+                          # source: assumed; typical TFM startup transient
+  t_avg_s: 3.0            # minimum time-averaging window after startup [s]
+                          # source: implementation-steps/day-6-7.md ("at least the last 3 s")
+  dt_init_s: 1.0e-3       # initial MFiX time step [s]
+                          # source: Day-5 tutorial precedent (dt=1e-3 for 2D TFM, 200 um bed)

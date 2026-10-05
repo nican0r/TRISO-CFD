@@ -1,0 +1,31 @@
+# Gas conditions for Day 1 terminal-velocity sweep.
+# rho and mu are NOT stored here — they are computed by src/gasprops.py at run time
+# from Cantera (gri30.yaml).
+# source: implementation-steps/day-1.md ("air at 20 C", "Ar at 20 C",
+#         "Ar at 1400 C", "Ar/H2 50/50 mol at 1400 C") and PLAN.md section 1.3.
+
+pressure_Pa: 101325  # 1 atm, source: assumed (lab conditions)
+
+cases:
+  air_20C:
+    label: "Air, 20 C"
+    T_K: 293.15
+    composition:  # dry air, simplified N2/O2 (Ar<1% neglected here)
+      N2: 0.79
+      O2: 0.21
+  ar_20C:
+    label: "Ar, 20 C"
+    T_K: 293.15
+    composition:
+      AR: 1.0
+  ar_1400C:
+    label: "Ar, 1400 C"
+    T_K: 1673.15
+    composition:
+      AR: 1.0
+  ar_h2_1400C:
+    label: "Ar/H2 50/50 mol, 1400 C"
+    T_K: 1673.15
+    composition:
+      AR: 0.5
+      H2: 0.5
