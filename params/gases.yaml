@@ -13,6 +13,16 @@ cases:
     composition:  # dry air, simplified N2/O2 (Ar<1% neglected here)
       N2: 0.79
       O2: 0.21
+  air_25C:
+    label: "Air, 25 C"
+    T_K: 298.15
+    # Case V_rpt experimental gas: dry compressed air at 298 K, 101 kPa.
+    # Paper-reported properties (R13/R14): rho_f = 1.21 kg/m3, mu = 1.81e-5 Pa.s.
+    # Cantera via src.gasprops.gas_props returns the same at 298.15 K.
+    # source: R13 / R14 experimental conditions
+    composition:
+      N2: 0.79
+      O2: 0.21
   ar_20C:
     label: "Ar, 20 C"
     T_K: 293.15

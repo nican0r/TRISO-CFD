@@ -10,6 +10,7 @@ import pytest
 from src.make_case import (
     REPO_ROOT,
     build_fb_sweep_params,
+    build_V_2d_day9_params,
     build_V_2d_params,
     build_V_3d_params,
     render_case,
@@ -156,11 +157,12 @@ def test_V_2d_monitors_present(tmp_path):
 
 def test_V_2d_bed_ic(tmp_path):
     text, params = _render_V(tmp_path, V2D_TEMPLATE, build_V_2d_params, name="V_2d")
-    # Packed-bed IC fills x in [-R_c, +R_c] and y in [0, H_static] at eps_s = 0.60.
+    # Packed-bed IC fills x in [-R_c, +R_c] and y in [0, H_static] at
+    # eps_s = 0.59 (= 1 - eps_mf, Missouri S&T RPT minimum fluidization).
     m = re.search(r"ic_y_n\(2\)\s*=\s*([-+eE.0-9]+)", text)
     assert float(m.group(1)) == pytest.approx(params["H_static_m"])
     m = re.search(r"ic_ep_s\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m.group(1)) == pytest.approx(0.60)
+    assert float(m.group(1)) == pytest.approx(0.59)
     m_xw = re.search(r"ic_x_w\(2\)\s*=\s*([-+eE.0-9]+)", text)
     m_xe = re.search(r"ic_x_e\(2\)\s*=\s*([-+eE.0-9]+)", text)
     assert float(m_xw.group(1)) == pytest.approx(-params["R_c_m"])
@@ -192,24 +194,33 @@ def test_V_3d_monitors_present(tmp_path):
     assert re.search(r"monitor_v_s\(3,1\)\s*=\s*\.True\.", text)
 
 
-def test_V_params_use_case_D_particle(tmp_path):
+def test_V_params_use_case_V_rpt_particle(tmp_path):
+    """V_2d / V_3d must carry the Missouri S&T RPT validation inventory:
+    2.18 mm soda-lime glass beads, rho_p = 2400 kg/m3, in dry air at 298 K.
+    Source: R13 (OSTI 1533774) / R14 (OSTI 1538701) experimental conditions.
+    """
     _, p2 = _render_V(tmp_path, V2D_TEMPLATE, build_V_2d_params, name="V_2d")
     _, p3 = _render_V(tmp_path, V3D_TEMPLATE, build_V_3d_params, name="V_3d")
     for p in (p2, p3):
-        assert p["d_p_m"] == pytest.approx(5.0e-4)
-        assert p["rho_p_kg_m3"] == pytest.approx(6000.0)
-        # air @ 20 C from Cantera (same window as fb_sweep).
+        assert p["d_p_m"] == pytest.approx(2.18e-3)
+        assert p["rho_p_kg_m3"] == pytest.approx(2400.0)
+        # air @ 25 C / 101 kPa from Cantera: paper reports rho_f = 1.21 kg/m3,
+        # mu = 1.81e-5 Pa.s.
         assert 1.15 < p["rho_g_kg_m3"] < 1.25
         assert 1.7e-5 < p["mu_g_pa_s"] < 1.9e-5
+        # Internal friction angle 26 deg piped through to MFiX `phi`.
+        assert p["phi_deg"] == pytest.approx(26.0)
 
 
 def test_V_ep_star_above_eps_s_bed(tmp_path):
     """Schaeffer activation threshold 1-ep_star must sit above the IC bed value.
 
-    ep_star is now a physical constant (RCP of monodisperse 500 um spheres,
-    eps_s,RCP ~ 0.636 => ep_star = 0.37) shared with the fb_sweep.
-    If the inequality flips, the frictional-stress term fires at t=0 and the
-    solver collapses dt immediately (Day 6-7 blow-up pattern).
+    ep_star is a physical constant (RCP of monodisperse smooth spheres,
+    eps_s,RCP ~ 0.636 => ep_star = 0.37). eps_s_bed = 0.59 = 1 - eps_mf
+    where eps_mf = 0.41 is the Missouri S&T RPT measured minimum-fluidization
+    voidage for the 2.18 mm glass beads. If the inequality flips, the
+    frictional-stress term fires at t=0 and the solver collapses dt immediately
+    (Day 6-7 blow-up pattern).
     """
     for template, builder in (
         (V2D_TEMPLATE, build_V_2d_params),
@@ -217,9 +228,62 @@ def test_V_ep_star_above_eps_s_bed(tmp_path):
     ):
         text, params = _render_V(tmp_path, template, builder, name="t")
         assert params["ep_star"] == pytest.approx(0.37)
-        assert params["eps_s_bed"] == pytest.approx(0.60)
+        assert params["eps_s_bed"] == pytest.approx(0.59)
         assert (1.0 - params["ep_star"]) > params["eps_s_bed"]
         assert re.search(r"\bep_star\s*=\s*0\.37\b", text)
+        # phi = 26 deg (Case V_rpt inertial friction angle).
+        assert re.search(r"\bphi\s*=\s*26(\.0)?\b", text)
+
+
+# ---------- Day 9 : V_2d spouting run (1.2 x U_ms, SYAM_OBRIEN, e = 0.9) ----------
+
+def test_V_2d_day9_U_in_matches_mathur_gishler(tmp_path):
+    """U_in at the orifice = 1.2 x U_ms,MG x (D_c/D_i)  [2D slab area ratio].
+
+    Hand calc with Case V_rpt (d_p = 2.18 mm, rho_p = 2400 kg/m^3), air @
+    25 C (rho_g ~ 1.18 kg/m^3), 0.076 m / 0.0095 m / 0.10 m bed:
+        U_ms,col = (2.18e-3/0.076) * (0.0095/0.076)^(1/3) * sqrt(2*9.80665*0.10
+                                                            *(2400-1.18)/1.18)
+                 ~ 0.906 m/s
+        U_in     = 1.2 * 0.906 * (0.076/0.0095) = 1.2 * 0.906 * 8 ~ 8.70 m/s
+    V_2d is a planar slab, so the orifice/column area ratio is D_c/D_i
+    (strip widths), not (D_c/D_i)^2 (which is the 3D disc ratio).  See
+    notes/day09_debug.md for the switch rationale.
+    """
+    params = build_V_2d_day9_params(run_name="V_2d_day9_test")
+    # Column-superficial U_ms,MG hand value ~ 0.906 m/s (loose tol allows for
+    # Cantera gri30 vs. ideal-gas rho_g differences at 298.15 K).
+    assert params["U_ms_column_m_s"] == pytest.approx(0.906, rel=1e-2)
+    # Orifice-face U_in ~ 8.70 m/s (1.2 x U_ms x D_c/D_i = x8).
+    assert params["U_in_m_s"] == pytest.approx(8.70, rel=1e-2)
+    assert params["u_over_ums"] == pytest.approx(1.2)
+
+
+def test_V_2d_day9_renders_drag_and_restitution(tmp_path):
+    params = build_V_2d_day9_params(run_name="V_2d_day9_test")
+    out = tmp_path / "V_2d_day9_test.mfx"
+    render_case(V2D_TEMPLATE, params, out)
+    text = out.read_text()
+    # drag_type keyword (Day-9 records GIDASPOW after Run 4 SYAM_OBRIEN crash;
+    # see notes/day09_debug.md).
+    assert re.search(r"drag_type\s*=\s*'GIDASPOW'", text)
+    # Restitution coefficient dropped from 0.95 (Day 8) to 0.9 (Day 9).
+    assert re.search(r"^\s*c_e\s*=\s*0\.9\b", text, re.MULTILINE)
+    # Inlet velocity in the rendered .mfx matches the computed U_in.
+    m = re.search(r"bc_v_g\(1\)\s*=\s*([-+eE.0-9]+)", text)
+    assert m is not None
+    assert float(m.group(1)) == pytest.approx(params["U_in_m_s"], rel=1e-6)
+    # Tstop is the day-9 value from params/particles.yaml V_2d_day9.tstop_s
+    # (dropped from the step-text 5 s to 2.5 s on the coarsened Day-9 mesh;
+    # notes/day09_debug.md Run 2).
+    m2 = re.search(r"tstop\s*=\s*([-+eE.0-9]+)", text)
+    assert m2 is not None and float(m2.group(1)) == pytest.approx(2.5)
+    # Day-9 mesh override: 32 x 168 (orifice spans exactly 4 cells, Day-8 floor).
+    assert re.search(r"imax\s*=\s*32\b", text)
+    assert re.search(r"jmax\s*=\s*168\b", text)
+    dx = (params["x_max_m"] - params["x_min_m"]) / params["imax"]
+    orifice_cells = (2.0 * params["R_i_m"]) / dx
+    assert orifice_cells == pytest.approx(4.0, abs=1e-9)
 
 
 def test_fb_sweep_ep_star_matches_case_V(tmp_path):

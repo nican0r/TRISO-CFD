@@ -17,28 +17,50 @@ import pandas as pd
 _HEADER_PREFIXES = ("#", "!")
 
 
-def _read_header(path: Path) -> tuple[int, list[str]]:
-    """Return (n_skip, column_names).
+def _scan_monitor_layout(path: Path) -> tuple[int, list[str]]:
+    """Return (n_skip, column_names) for an MFiX monitor CSV/DAT file.
 
-    The last ``#`` line before the first data row is treated as the column
-    header. If no ``#`` line looks like a header, columns are left to pandas
-    (numeric 0, 1, ...).
+    MFiX 26.1.2 writes monitor files in one of two layouts:
+
+    (A) A short block of ``#``-prefixed metadata lines, then a *quoted*,
+        comma-separated header line (e.g. ``"Time","p_g"``), then data rows.
+
+    (B) A short block of ``#``/``!`` metadata lines where the last metadata
+        line itself holds the column names (whitespace-separated), followed
+        directly by data rows.
+
+    When MFiX is launched multiple times with the same ``run_name``, each
+    launch APPENDS a fresh header block to the existing monitor file. This
+    function skips to the row immediately after the *last* header line, so
+    only the most recent run's rows are returned.
     """
-    names: list[str] = []
-    n_skip = 0
     with path.open("r") as fh:
-        for line in fh:
-            stripped = line.strip()
-            if not stripped:
-                n_skip += 1
-                continue
-            if stripped.startswith(_HEADER_PREFIXES):
-                tokens = stripped.lstrip("#! ").split()
-                if tokens and not tokens[0].replace(".", "", 1).replace("-", "", 1).replace("e", "", 1).replace("E", "", 1).isdigit():
-                    names = tokens
-                n_skip += 1
-                continue
-            break
+        lines = fh.readlines()
+
+    # Find the index of the last header row (either '"Time"'-style quoted
+    # header or last '#'-prefixed metadata line that looks like column names).
+    last_header_idx = -1
+    names: list[str] = []
+    for i, raw in enumerate(lines):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(_HEADER_PREFIXES):
+            tokens = stripped.lstrip("#! ").split()
+            if tokens and not tokens[0].replace(".", "", 1).replace(
+                "-", "", 1
+            ).replace("e", "", 1).replace("E", "", 1).isdigit():
+                last_header_idx = i
+                names = tokens
+            else:
+                last_header_idx = i
+                names = []
+            continue
+        if '"' in stripped:
+            last_header_idx = i
+            names = [tok.strip().strip('"') for tok in stripped.split(",") if tok.strip()]
+            continue
+    n_skip = last_header_idx + 1
     return n_skip, names
 
 
@@ -56,7 +78,7 @@ def read_monitor(path: str | Path) -> pd.DataFrame:
         Index ``time`` [s]; one column per monitored field.
     """
     p = Path(path)
-    n_skip, names = _read_header(p)
+    n_skip, names = _scan_monitor_layout(p)
     kwargs: dict = {"skiprows": n_skip, "sep": r"[,\s]+", "engine": "python"}
     if names:
         kwargs["header"] = None

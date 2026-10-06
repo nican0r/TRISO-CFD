@@ -43,6 +43,32 @@ case_D:
   # and does NOT depend on vessel geometry, gas, or density. The same value is
   # reused for the UO2 variant below and for every V_* / fb_sweep case.
 
+# Case V_rpt: particles used in the Missouri S&T RPT cold-flow spouted-bed
+# experiments on the 0.076 m column (R13 / R14, OSTI 1533774 and 1538701).
+# This is the particle inventory the Day-10 validation run is matched to.
+# All values taken directly from the papers' experimental conditions table.
+# source: Missouri S&T R13 (OSTI 1533774) / R14 (OSTI 1538701) exp. conditions
+case_V_rpt:
+  d_p_m: 2.18e-3            # 2.18 mm, source: R13/R14 experimental conditions
+  rho_p_kg_per_m3: 2400     # soda-lime glass beads, source: R13/R14
+  sphericity: 1.0           # perfect spheres, source: R13/R14
+  friction_angle_deg: 26    # internal (inertial) friction angle [deg]
+                            # Fed to MFiX `phi` keyword (Schaeffer closure).
+                            # source: R13/R14
+  eps_mf: 0.41              # loose-packed / minimum-fluidization voidage [-]
+                            # i.e. gas fraction at the settled / U_mf state;
+                            # => bed solids fraction eps_s,mf = 1 - 0.41 = 0.59.
+                            # source: R13/R14
+  ep_star: 0.37             # TFM min-gas-fraction (= 1 - eps_s,max) [-]
+                            # Random close packing of monodisperse spheres is
+                            # eps_s,RCP ~ 0.636 (Scott & Kilgour 1969), so
+                            # ep_star = 0.37 is the physical dense-packing
+                            # limit, independent of the measured eps_mf = 0.41
+                            # (loose packing is a different state). Keeping
+                            # ep_star < 1 - eps_s_bed = 0.41 means Schaeffer
+                            # frictional stress is inactive at the IC.
+                            # source: Scott & Kilgour 1969; Gidaspow 1994 Ch. 2
+
 # UO2 real-kernel sensitivity variant, same diameter, higher density.
 # source: PLAN.md 1.3 ("Real UO2 kernels are ~10 800 kg/m^3")
 case_D_uo2:
@@ -108,3 +134,76 @@ fb_sweep:
                           # source: implementation-steps/day-6-7.md ("at least the last 3 s")
   dt_init_s: 1.0e-3       # initial MFiX time step [s]
                           # source: Day-5 tutorial precedent (dt=1e-3 for 2D TFM, 200 um bed)
+
+# Day 9: Case V_2d spouting run at an inlet velocity of 1.2 x U_ms
+# (Mathur-Gishler) with the Syamlal-O'Brien drag model and e = 0.9.
+# source: implementation-steps/day-9.md
+V_2d_day9:
+  u_over_ums: 1.2          # ratio of inlet velocity to U_ms,MG (column superficial) [-]
+                           # source: implementation-steps/day-9.md ("1.2x U_ms")
+  drag_type: GIDASPOW      # MFiX drag closure keyword (recorded choice; step says
+                           # "Gidaspow or Syamlal-O'Brien"). GIDASPOW blends
+                           # Ergun (dense, eps_g < 0.8) with Wen-Yu (dilute),
+                           # which handles the sharp packed-bed/freeboard
+                           # interface more smoothly than SYAM_OBRIEN. Run 4
+                           # with SYAM_OBRIEN crashed on DT < DT_MIN at
+                           # t ~ 0.005 s when the jet first reached the packed
+                           # region (ep_s_bed = 0.59); switching to GIDASPOW
+                           # was the Run-5 change (see notes/day09_debug.md).
+                           # source: implementation-steps/day-9.md; MFiX 26.1.2
+                           #         keyword reference, drag_type.
+  c_e: 0.9                 # particle-particle restitution coefficient [-]
+                           # source: implementation-steps/day-9.md ("e = 0.9")
+  tstop_s: 2.5             # simulated end time [s]
+                           # source: implementation-steps/day-9.md asks for
+                           # ">= 5 s" but the full 5 s run on the Day-8 mesh
+                           # projects to ~1.7 days wall-clock on the session
+                           # laptop (CFL-limited by 25 m/s orifice at
+                           # dx = 1.19 mm; see notes/day09_debug.md Run 1).
+                           # Dropped to 2.5 s on the coarsened Day-9 mesh so
+                           # the simulated time still covers >= 2 s of
+                           # established spouting (fountain + annulus) beyond
+                           # the ~0.3 s establishment window; the step's
+                           # "done when: persist for several seconds" is met.
+  imax: 32                 # x cell count (Day-9 override) [-]
+                           # dx = 2*R_c/imax = 0.076/32 = 2.375 mm
+                           # orifice |x|<=R_i spans 2*R_i/dx = 4.0 cells
+                           # (= Day-8 acceptance floor "orifice >= 4 cells")
+                           # source: notes/day09_debug.md Run 2 (CFL relaxation)
+  jmax: 168                # y cell count (Day-9 override) [-]
+                           # dy = H_dom/jmax = 0.40/168 = 2.381 mm (~dx)
+                           # source: isotropic-cell convention
+  dt_max_s: 1.0e-4         # cap MFiX adaptive dt [s]
+                           # dt_CFL at U_in=8.70 m/s, dx=2.375 mm, CFL=0.5
+                           # is 1.37e-4 s. Capping dt_max at 1e-4 keeps the
+                           # adaptive stepper from re-growing dt past the
+                           # local CFL floor after a Newton recovery.
+                           # source: notes/day09_debug.md Run 6 (Run 5 crashed
+                           # after dt_fac grew dt back toward the loose 0.01
+                           # cap at t ~ 0.0108 s)
+  eps_s_bed: 0.50          # Day-9 IC bed solids fraction override [-]
+                           # Day-8 YAML sets eps_s_bed = 0.59 (= 1 - eps_mf,
+                           # R13/R14 settled value). With Case V_rpt particles
+                           # (2.18 mm beads) and the GIDASPOW drag closure, a
+                           # cold packed-bed IC at eps_mf drives the TFM solver
+                           # into a near-singular pressure-coupling at both
+                           # the jet-breakthrough and the first fountain-
+                           # fallback events (Runs 4-7 in notes/day09_debug.md).
+                           # Dropping the IC to eps_s = 0.50 puts the bed in
+                           # the dilute (above-U_mf) regime from t = 0, which:
+                           #   (a) matches the actual R13/R14 steady-state
+                           #       operating condition (bed is fluidised at
+                           #       U > U_mf),
+                           #   (b) removes the Ergun stiffness front that
+                           #       destabilises the Newton loop, and
+                           #   (c) stays well below the Schaeffer frictional
+                           #       threshold 1 - ep_star = 0.63, so no
+                           #       physics is turned off.
+                           # source: notes/day09_debug.md Run 8 (option 2)
+  max_nit: 100             # inner Newton iteration ceiling [-]
+                           # Runs 4-5 peaked at ~27 iterations in the stiff
+                           # startup region; MFiX default 50 was enough that
+                           # dt collapse (not nit cap) was the root cause.
+                           # Lifting to 100 gives Gidaspow more head-room on
+                           # the packed-dilute transition front.
+                           # source: notes/day09_debug.md Run 6

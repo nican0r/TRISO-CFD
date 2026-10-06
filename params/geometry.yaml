@@ -110,22 +110,19 @@ spouted_bed_V_3d:
 spouted_bed_V_initial:
   # Initial-condition block shared by V_2d and V_3d templates.
   # NOTE: ep_star (TFM packing limit) lives in params/particles.yaml as
-  # case_D.ep_star -- it is a particle-geometry property (RCP of monodisperse
-  # 500 um smooth spheres), not vessel geometry. The V_2d / V_3d builders in
-  # src/make_case.py read it from there, so Case V and the fb_sweep now share
-  # a single physically-grounded packing limit (ep_star = 0.37,
+  # case_V_rpt.ep_star (and case_D.ep_star) -- it is a particle-geometry
+  # property (RCP of monodisperse smooth spheres), not vessel geometry. The
+  # V_2d / V_3d builders in src/make_case.py read it from there, so Case V
+  # carries a single physically-grounded packing limit (ep_star = 0.37,
   # eps_s,max = 0.63).
-  eps_s_bed: 0.60             # bed solids volume fraction at t=0 [-]
-                              # Physical reading: random loose packing (RLP)
-                              # for freshly poured monodisperse smooth spheres
-                              # is eps_s ~ 0.58-0.60 (Scott & Kilgour 1969),
-                              # so 0.60 is a slightly tight RLP IC -- what you
-                              # would get from pouring + a mild tap on a
-                              # packed-bed column. Sits ~3% below the physical
-                              # packing limit eps_s,max = 0.63
-                              # (= 1 - case_D.ep_star), so Schaeffer
-                              # frictional stress is inactive at t = 0 by
-                              # physics, not numerical tuning.
-                              # source: implementation-steps/day-8.md
-                              #         ("packed bed at eps_s ~ 0.6 up to H");
-                              #         Scott & Kilgour 1969 for the RLP band.
+  eps_s_bed: 0.59             # bed solids volume fraction at t=0 [-]
+                              # Set to the Missouri S&T RPT minimum-fluidization
+                              # value: eps_s,bed = 1 - eps_mf = 1 - 0.41 = 0.59
+                              # (case_V_rpt.eps_mf). This is the natural
+                              # settled-bed voidage reported in R13/R14, and
+                              # sits below the physical packing limit
+                              # eps_s,max = 0.63 (= 1 - case_V_rpt.ep_star), so
+                              # Schaeffer frictional stress is inactive at t=0
+                              # by physics, not numerical tuning.
+                              # source: R13/R14 experimental conditions
+                              #         (eps_mf = 0.41 for 2.18 mm glass beads)

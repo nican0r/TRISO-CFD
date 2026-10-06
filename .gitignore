@@ -30,6 +30,7 @@ cases/**/*_boundary.vtk
 cases/**/*_MESH.vtu
 cases/**/*.TXT
 cases/**/EPgErr.log
+cases/**/*.csv
 
 # Editors / OS
 .DS_Store

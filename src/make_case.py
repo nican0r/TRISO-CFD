@@ -111,22 +111,26 @@ def build_fb_sweep_params(
     }
 
 
-def _common_fluid_solid_params(gas_case: str = "air_20C") -> dict:
-    """Shared Case D particle + air-at-20C gas properties for Day-8 templates.
+def _common_fluid_solid_params(
+    gas_case: str = "air_25C", particle_case: str = "case_V_rpt"
+) -> dict:
+    """Shared particle + gas properties for the Case V (V_2d/V_3d) templates.
 
-    Returns a dict with d_p_m, rho_p_kg_m3, rho_g_kg_m3, mu_g_pa_s suitable
-    for direct substitution into the V_2d/V_3d templates.
+    Defaults to the Missouri S&T RPT validation inventory: 2.18 mm glass beads
+    (case_V_rpt) in dry air at 298 K / 101 kPa (air_25C). Returns a dict with
+    d_p_m, rho_p_kg_m3, rho_g_kg_m3, mu_g_pa_s suitable for direct substitution
+    into the V_2d/V_3d templates.
     """
     from src.gasprops import gas_props
 
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
     gases = _load_yaml(PARAMS_DIR / "gases.yaml")
-    case_D = particles["case_D"]
+    part = particles[particle_case]
     gas = gases["cases"][gas_case]
     rho_g, mu_g = gas_props(gas["T_K"], gases["pressure_Pa"], gas["composition"])
     return {
-        "d_p_m": float(case_D["d_p_m"]),
-        "rho_p_kg_m3": float(case_D["rho_p_kg_per_m3"]),
+        "d_p_m": float(part["d_p_m"]),
+        "rho_p_kg_m3": float(part["rho_p_kg_per_m3"]),
         "rho_g_kg_m3": float(rho_g),
         "mu_g_pa_s": float(mu_g),
     }
@@ -137,6 +141,8 @@ def build_V_2d_params(
     tstop_s: float,
     run_name: str,
     description: str = "",
+    drag_type: str = "SYAM_OBRIEN",
+    c_e: float = 0.95,
 ) -> dict:
     """Assemble a template parameter dict for the Case V 2D quadric spouted bed.
 
@@ -153,6 +159,8 @@ def build_V_2d_params(
     tstop_s    : run end time [s]
     run_name   : MFiX run_name (also used for VTK/monitor file base names)
     description: free-form description string for the .mfx header
+    drag_type  : MFiX drag_type keyword (default SYAM_OBRIEN as per Day-8)
+    c_e        : particle-particle restitution coefficient [-] (default 0.95)
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
@@ -160,7 +168,7 @@ def build_V_2d_params(
     bed = geometry["bed_0p076m"]
     v2d = geometry["spouted_bed_V_2d"]
     init = geometry["spouted_bed_V_initial"]
-    case_D = particles["case_D"]
+    case_V = particles["case_V_rpt"]
     fb = particles["fb_sweep"]  # reuse dt_init_s convention
 
     R_c_m = 0.5 * float(bed["D_c_m"])
@@ -168,9 +176,10 @@ def build_V_2d_params(
     H_static_m = float(v2d["H_static_m"])
     H_dom_m = float(v2d["H_dom_m"])
     eps_s_bed = float(init["eps_s_bed"])
-    # ep_star is a particle property (RCP of monodisperse 500 um spheres); it
-    # lives on case_D and is shared across V_2d, V_3d, and the fb_sweep.
-    ep_star = float(case_D["ep_star"])
+    # ep_star is a particle property (RCP of monodisperse smooth spheres); for
+    # Case V it lives on case_V_rpt and is identical to case_D's value.
+    ep_star = float(case_V["ep_star"])
+    phi_deg = float(case_V["friction_angle_deg"])
 
     # Full-width Cartesian domain (same convention as V_3d), kmax=1 slab.
     x_min_m = -R_c_m
@@ -207,10 +216,122 @@ def build_V_2d_params(
         "ep_g_bed": 1.0 - eps_s_bed,
         "eps_s_bed": eps_s_bed,
         "ep_star": ep_star,
+        "phi_deg": phi_deg,
         "U_in_m_s": float(U_in_m_s),
         "vtk_dt_s": 0.05,
+        "drag_type": str(drag_type),
+        "c_e": float(c_e),
+        # Numerical knobs with safe Day-8 defaults; overridable per case.
+        "dt_max_s": 0.01,
+        "max_nit": 50,
     }
-    params.update(_common_fluid_solid_params("air_20C"))
+    params.update(_common_fluid_solid_params("air_25C"))
+    return params
+
+
+def build_V_2d_day9_params(
+    run_name: str = "V_2d_day9",
+    description: str = "",
+) -> dict:
+    """Day-9 Case V_2d spouting run parameters.
+
+    Reads every input from params/*.yaml:
+
+      - params/geometry.yaml bed_0p076m: D_c, D_i, (cone geometry)
+      - params/particles.yaml case_D: d_p, rho_p
+      - params/particles.yaml spouted_bed_V_initial / fb_sweep: H_static, ep_s_bed
+      - params/particles.yaml V_2d_day9: u_over_ums, drag_type, c_e, tstop_s
+      - params/gases.yaml air_20C via Cantera: rho_g, mu_g
+
+    The orifice velocity imposed in MFiX is the local orifice-face velocity
+    that gives the SAME column-superficial velocity in the 2D slab as a 3D
+    column operating at 1.2 * U_ms,MG:
+
+        U_ms,col = (d_p/D_c) * (D_i/D_c)^(1/3) * sqrt(2 g H (rho_p - rho)/rho)
+        U_in     = u_over_ums * U_ms,col * (D_c / D_i)       [2D slab scaling]
+
+    V_2d is a planar slab, so the orifice is a strip of width 2*R_i and the
+    column is a strip of width 2*R_c -- the slab area ratio is D_c/D_i, not
+    (D_c/D_i)^2 (that would be the 3D disc ratio).  Using the 3D ratio drives
+    bc_v_g up by an extra factor of D_c/D_i = 8, which with Case V_rpt (2.18 mm
+    beads, 2400 kg/m^3) gives bc_v_g ~ 70 m/s and causes an immediate solver
+    blow-up at the orifice shoulder (|Ug| ~ 7000 m/s, DT < DT_MIN) because the
+    gas-particle slip exceeds what Syamlal-O'Brien drag can resolve on a mm-
+    scale mesh.  The slab scaling matches the column superficial per unit
+    depth, which is the physically meaningful quantity to carry between 2D
+    and 3D vessels.  See notes/day09_debug.md Runs 3-4 for the collapsed
+    attempt and the switch rationale.
+    """
+    from src.correlations import ums_mathur_gishler
+    from src.gasprops import gas_props
+
+    geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
+    particles = _load_yaml(PARAMS_DIR / "particles.yaml")
+    gases = _load_yaml(PARAMS_DIR / "gases.yaml")
+
+    bed = geometry["bed_0p076m"]
+    case_V = particles["case_V_rpt"]
+    v2d_init = geometry["spouted_bed_V_initial"]
+    day9 = particles["V_2d_day9"]
+    gas_case = gases["cases"]["air_25C"]
+    rho_g, _mu_g = gas_props(
+        gas_case["T_K"], gases["pressure_Pa"], gas_case["composition"]
+    )
+
+    v2d_geom = geometry["spouted_bed_V_2d"]
+    H_static_m = float(v2d_geom["H_static_m"])  # Mathur-Gishler H = static bed
+
+    D_c_m = float(bed["D_c_m"])
+    D_i_m = float(bed["D_i_m"])
+    U_ms_col_m_s = ums_mathur_gishler(
+        d_p=float(case_V["d_p_m"]),
+        rho_p=float(case_V["rho_p_kg_per_m3"]),
+        rho=float(rho_g),
+        D_c=D_c_m,
+        D_i=D_i_m,
+        H=H_static_m,
+    )
+    # 2D-slab area ratio (strip widths), not the 3D disc ratio (areas).
+    area_ratio = D_c_m / D_i_m
+    U_in_m_s = float(day9["u_over_ums"]) * U_ms_col_m_s * area_ratio
+
+    params = build_V_2d_params(
+        U_in_m_s=U_in_m_s,
+        tstop_s=float(day9["tstop_s"]),
+        run_name=run_name,
+        description=description
+        or (
+            f"Day-9 V_2d spouting: U_in={U_in_m_s:.3f} m/s "
+            f"({day9['u_over_ums']:.2f}x U_ms,MG={U_ms_col_m_s:.4f} m/s via (Dc/Di)^2)"
+        ),
+        drag_type=str(day9["drag_type"]),
+        c_e=float(day9["c_e"]),
+    )
+    # Day-9 mesh overrides (notes/day09_debug.md Run 2): coarsen imax/jmax so
+    # the orifice stays at the Day-8 >= 4-cell floor while dt_CFL doubles.
+    if "imax" in day9:
+        params["imax"] = int(day9["imax"])
+    if "jmax" in day9:
+        params["jmax"] = int(day9["jmax"])
+    # Day-9 solver stabilisation (notes/day09_debug.md Run 6):
+    #  dt_max_s cap stops MFiX from re-growing dt past the local CFL floor
+    #  after Newton recovery; max_nit lifts the inner-iteration ceiling so
+    #  stiff startup steps have more head-room before dt_fac shrinks dt.
+    if "dt_max_s" in day9:
+        params["dt_max_s"] = float(day9["dt_max_s"])
+    if "max_nit" in day9:
+        params["max_nit"] = int(day9["max_nit"])
+    # Day-9 IC override: drop ep_s_bed from the Day-8 settled value to a
+    # pre-fluidised value so the TFM solver can start from a dilute state
+    # (see notes/day09_debug.md Run 8).  Day-8 ep_s_bed stays untouched.
+    if "eps_s_bed" in day9:
+        new_eps_s = float(day9["eps_s_bed"])
+        params["eps_s_bed"] = new_eps_s
+        params["ep_g_bed"] = 1.0 - new_eps_s
+    # Record the derived scalars so downstream tooling / tests can introspect
+    # them without re-running Cantera.
+    params["U_ms_column_m_s"] = float(U_ms_col_m_s)
+    params["u_over_ums"] = float(day9["u_over_ums"])
     return params
 
 
@@ -237,7 +358,7 @@ def build_V_3d_params(
     bed = geometry["bed_0p076m"]
     v3d = geometry["spouted_bed_V_3d"]
     init = geometry["spouted_bed_V_initial"]
-    case_D = particles["case_D"]
+    case_V = particles["case_V_rpt"]
     fb = particles["fb_sweep"]
 
     R_c_m = 0.5 * float(bed["D_c_m"])
@@ -245,8 +366,9 @@ def build_V_3d_params(
     H_static_m = float(v3d["H_static_m"])
     H_dom_m = float(v3d["H_dom_m"])
     eps_s_bed = float(init["eps_s_bed"])
-    # ep_star is a particle property shared with V_2d / fb_sweep -- see case_D.
-    ep_star = float(case_D["ep_star"])
+    # ep_star / phi come from the Case V_rpt particle inventory (R13/R14).
+    ep_star = float(case_V["ep_star"])
+    phi_deg = float(case_V["friction_angle_deg"])
 
     # Domain is a cube of side 2*R_c in x and z; the STL carves the vessel.
     x_min_m = -R_c_m
@@ -277,10 +399,11 @@ def build_V_3d_params(
         "ep_g_bed": 1.0 - eps_s_bed,
         "eps_s_bed": eps_s_bed,
         "ep_star": ep_star,
+        "phi_deg": phi_deg,
         "U_in_m_s": float(U_in_m_s),
         "vtk_dt_s": 0.05,
     }
-    params.update(_common_fluid_solid_params("air_20C"))
+    params.update(_common_fluid_solid_params("air_25C"))
     return params
 
 
