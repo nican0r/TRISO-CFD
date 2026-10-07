@@ -1,243 +1,144 @@
-# Day 8 — Summary
+# Day 8 Summary — Case V (ORNL/UTK) 2D template and builder
 
 ## What was implemented
 
-Built the two Case V spouted-bed MFiX templates that will be driven in later
-days to produce the project's first validation runs: **V_2d**, a true 2D
-Cartesian cut-cell bed with the cone wall defined by a single Y_CONE
-quadric, and **V_3d**, a 3D Cartesian cut-cell bed with the cone + cylinder
-defined by an STL surface of revolution. Both render from `src.make_case`
-through Jinja2, both pull every physical input from `params/*.yaml`, and
-both now **initialize cleanly in MFiX 26.1.2 and advance past t=0** — the
-Day-8 acceptance criterion.
+Day 8 retargets Case V from the previously-dropped laboratory
+column (dropped per PLAN.md §1.2) to the ORNL/UTK cold-mockup spouted bed (S1, S2) and ships the 2D
+template, parameter builder, tests, and a geometry schematic.
 
-**Why Cartesian (not cylindrical) coordinates for Case V.** MFiX 26.1.2
-forbids combining `cartesian_grid = .True.` with `coordinates =
-'CYLINDRICAL'` (`check_data_cartesian.f:55`, "CARTESIAN GRID OPTION NOT
-AVAILABLE WITH CYLINDRICAL COORDINATE SYSTEM"). Cut-cells, STL geometry,
-and quadric surfaces are therefore Cartesian-only features. Since the 60°
-cone wall of the spouted bed cannot be represented on a rectangular IJK
-grid in cylindrical coordinates without staircasing, both Case V templates
-are built on Cartesian grids with cut-cells so the cone profile is
-resolved cleanly.
-
-**Why Y_CONE quadric for V_2d, STL for V_3d.** Native MFiX quadrics live
-under the same `cartesian_grid=.True.` cut-cell machinery as STL but need
-no external file. For V_2d's planar slice the vessel inner wall reduces to
-a single Y_CONE primitive (apex at `y = -R_i/tan(30°) = -8.23 mm`, half-angle
-30°, clipped to `0 ≤ y ≤ 57.63 mm`); above the clip height the natural
-domain walls at `x = ±R_c` already serve as the cylindrical column walls.
-Quadrics are also compatible with `no_k = .True.`, whereas STL is not
-(`get_stl_data.f:813`: "STL method valid only in 3D"), so V_2d runs as a
-true 2D case with `kmax = 1` rather than the thin 3D slab (`kmax = 2`) STL
-would require. V_3d stays on STL because the full axisymmetric vessel is a
-surface of revolution — not representable as a single quadric.
-
-**Why we keep two models.** V_2d is cheap (~21.5 k cells vs. ~154 k for
-V_3d) and runs several times faster per simulated second. It is the
-project's debugging and sweep workhorse: Day 9 initial debugging /
-solver stabilisation, Day 10 U_ms step-down and mesh study, and Days
-11–12 parametric trends (gas temperature, particle density, drag model).
-V_3d is the production geometry — the one compared against the Missouri
-S&T RPT experimental data on Day 10. Treat V_2d as a fast proxy for V_3d:
-directional trends and gross hydrodynamics transfer; absolute spouting
-velocities and fountain heights do not (planar slab vs. true axisymmetric
-swirl). Any validation claim ultimately rests on V_3d.
-
-The frictional-stress threshold was also addressed. The Day 6-7 fb_sweep
-template used `ep_star = 0.42` (Schaeffer activation at ε_s > 0.58) and
-had to drop ε_s_bed to 0.55 to stay below it. The Day 8 step calls for
-ε_s_bed ≈ 0.60, which crosses that threshold. Rather than re-interpret
-the step, V_2d / V_3d adopt `ep_star = 0.39` so the threshold moves to
-ε_s = 0.61 — just above ε_s_bed = 0.60. The IC is now safely in the
-Schaeffer-inactive region. The practical effect: V_2d not only
-initializes, it advances past t = 0 and writes VTK frames. V_3d still
-initializes cleanly but then throws a different numerical warning at
-t > 0 (solids-velocity blow-up at a cut-cell on the cone wall, O(2000 m/s)
-in a single near-wall cell); V_2d sees the same class of warning at its
-first time step after advancing one frame to disk. Both are cut-cell
-near-wall transients, not Schaeffer, and are Day-9 territory.
-
-Key artifacts:
-
-- `params/geometry.yaml` — three new blocks: `spouted_bed_V_2d`
-  (true-2D Cartesian grid 64 × 336 × 1 with `no_k=.True.`, Y_CONE quadric
-  apex / clip-top / half-angle, z thickness = dx for cosmetic consistency),
-  `spouted_bed_V_3d` (31 × 160 × 31 grid, 2.5 mm cells, 60 θ-segments),
-  and `spouted_bed_V_initial` (ε_s_bed = 0.60, ep_star_V = 0.39 so
-  Schaeffer threshold = 0.61).
-- `cases/V_2d/template.mfx.j2` — Cartesian cut-cell + Y_CONE quadric TFM
-  template (true 2D, `no_k=.True.`, `kmax=1`, `use_stl=.False.`), Case D
-  particles in air @ 20 °C, MI orifice strip + `CG_NSW` cut-cell wall
-  (bound to the quadric via `bc_id_q(1) = 3`) + PO top, three monitors.
-  No STL file dependency. Every keyword traced to the MFiX 26.1.2 reference.
-- `cases/V_3d/template.mfx.j2` — Cartesian `cartesian_grid=.True.` +
-  `use_stl=.True.` + `stl_bc_id=3`, with BC 3 as the cut-cell wall
-  (`CG_NSW`), monitors over the orifice/top-of-bed/spout core.
-- `src/make_stl.py` — `build_spouted_bed_stl` writes an ASCII STL
-  (surface of revolution of the cone + cylinder) with outward-pointing
-  normals; the default 60-segment tessellation yields 240 triangles.
-  (V_3d-only; V_2d does not use this module.)
-- `cases/V_3d/geometry.stl` + `cases/V_3d/geometry_0003.stl` — the rendered
-  STL. MFiX looks the file up by STL-BC id (hence the `_0003` filename).
-- `src/make_case.py` — new `build_V_2d_params`, `build_V_3d_params`, and a
-  CLI `--kind {fb_sweep,V_2d,V_3d}` dispatch. All physical values resolved
-  from YAML and Cantera (`src.gasprops.gas_props`).
-- `src/make_figs_d8.py` — matplotlib-only renderer (headless-safe) for the
-  two visual-confirmation figures.
-- `tests/test_make_stl.py` — six tests pin facet count = 240, bounding box
-  (±R_c, 0..H_dom), orifice-rim radius 4.75 mm, cone-slope agreement
-  within chord-error, cylinder-section radius 38.0 mm, STL header/footer,
-  invalid-cone rejection.
-- `tests/test_make_case.py` — V_2d tests pin coordinates=CARTESIAN,
-  `no_k=.True.`, `use_stl=.False.`, Y_CONE quadric with half_angle=30,
-  `bc_id_q(1)=3`, grid 64 × 336 × 1, orifice spans ≥ 4 cells across the
-  diameter, MI/PO BCs, monitors, bed IC; V_3d tests pin `use_stl=.True.`,
-  grid 31 × 160 × 31 at 2.0–3.0 mm cell size, monitors, Case D + air @ 20 °C
-  substitution. Both pin `1 - ep_star > ε_s_bed`.
-- `results/fig_d8_V_2d_geometry.png`, `results/fig_d8_V_3d_geometry.png` —
-  visual-confirmation figures for the V_2d schematic and the V_3d axial
-  profile + top view.
+- `params/particles.yaml` — new `case_V` block (ZrO₂, d_p = 500 µm,
+  ρ_p = 6050 kg/m³, inventory 54.5 g, φ = 15°, ep_star = 0.42, eps_s_bed =
+  0.57, c_e = 0.9), case_D ρ_p updated to 6050 kg/m³ (S2).
+- `params/geometry.yaml` — new `bed_V` block (D_c = 50 mm, D_i = 4 mm, 60°
+  cone) and `spouted_bed_V_2d` block (H_dom = 0.20 m, imax = 50, jmax =
+  200, kmax = 1, z_thickness = 1 mm).
+- `src/make_case.py` — `build_V_2d_params()`, which derives the static bed
+  height from inventory + ρ_p + eps_s_bed + cone geometry via
+  `_bed_height_from_inventory()` (frustum-volume bisection); loads gas
+  properties for air at ~25 °C via Cantera; assembles all template
+  variables with S1 Table 1 closures (SYAM_OBRIEN drag; SCHAEFFER friction
+  with GIDASPOW_PCF blending = "modified sigmoidal"; LUN_1984 PDE
+  granular energy; φ = 15°, ep_star = 0.42, c_e = 0.9).
+- `cases/V_2d/template.mfx.j2` — planar Cartesian cut-cell slab
+  (cartesian_grid = .True., coordinates = 'CARTESIAN', no_k = .True.,
+  n_quadric = 1, Y_CONE for the cone wall); IC regions for freeboard,
+  packed bed and pre-opened spout channel; BCs for the orifice MI, top
+  PO, and Y_CONE no-slip wall; four monitors (P_inlet and P_top at 1 kHz,
+  solids inventory volume integral, centerline v_g line integral).
+- `tests/test_make_case.py` — twelve V_2d tests: coordinates/no_k;
+  grid + orifice-cell count; MI/PO/CG_NSW BCs; monitors; bed-IC hand
+  calc (H₀ and H₀/D_c vs S2's 0.50–0.65); 22.6 L/min volumetric check
+  and U/U_ms ≈ 1.9 vs S2's 12 L/min; closure keyword block.
+- `tests/test_correlations.py` — U_ms,MG hand-calc rebased to ORNL/UTK
+  geometry (D_c = 0.050 m, D_i = 0.004 m, ρ_p = 6050 kg/m³, H = 0.10 m;
+  U_ms = 0.3643 m/s).
+- `src/make_figs_d8.py` — geometry schematic generator.
+- `results/fig_d8_V_2d_geometry.png` — screenshot.
 
 ## How it works
 
-1. **Geometry inputs.** The three new blocks in `params/geometry.yaml`
-   derive everything from `bed_0p076m` (D_c = 76 mm, D_i = 9.5 mm, 60° cone)
-   and the shared `H_static_m = 0.10` m. Day-8 fixes the axial domain to
-   `H_dom = 3·H_static + 0.10 = 0.40 m` ("3× bed + 100 mm fountain
-   headroom", the 100 mm `assumed`), truncating the real column's 1.14 m to
-   the region where spouting physics actually lives. V_2d precomputes the
-   cone-apex y-offset `cone_apex_y_m = −R_i / tan(30°) = −8.227 mm` and
-   `cone_top_y_m = (R_c − R_i) / tan(30°) = 57.63 mm`; these are kept in
-   YAML even though V_2d doesn't use them in the .mfx any more (MFiX forbids
-   the cut-cell cone in cylindrical, see below) because the V_3d STL
-   generator and the V_2d schematic figure both read them.
+1. **`_bed_height_from_inventory`**. Given mass m, ρ_p, eps_s_bed, R_i and
+   cone half-angle θ, finds h such that
+   `V_frustum(h) = (π*h/3)*(R_i² + R_i*r_h + r_h²)` equals `m/(ρ_p*eps_s_bed)`
+   with `r_h = R_i + h*tan(θ)`. Bisection to 1 nm. For the ORNL/UTK input
+   (m = 0.0545 kg, ρ_p = 6050, eps_s_bed = 0.57, R_i = 2 mm, θ = 30°) this
+   returns H_static ≈ 0.0322 m, giving H₀/D_c = 0.644 — just inside S2's
+   reported 0.50–0.65 range. Test pins the volume balance to 1e-3
+   relative tolerance.
 
-2. **STL generation.** `src.make_stl.build_spouted_bed_stl(R_c, R_i, half_angle,
-   H_dom, theta_segments, out_path)` builds the vessel inner wall as a
-   surface of revolution of the two-segment (r, y) profile
-   {(R_i, 0), (R_c, h_cone), (R_c, H_dom)} swept around the y-axis in
-   `theta_segments` steps. Each quadrilateral panel is split into two
-   right-handed triangles with normals pointing outward (toward −r), which
-   is what MFiX expects for `OUT_STL_VALUE = 1` (internal-flow convention).
-   The 60-segment default yields 240 facets and a chord error of
-   `R_c · (1 − cos(π/60)) ≈ 5 × 10⁻⁵ m` on the cylinder, i.e. about dx/50 on
-   the 2.5 mm grid.
+2. **`build_V_2d_params`**. Reads bed_V, spouted_bed_V_2d, case_V from
+   YAML. Derives H_static (bed height) and the Y_CONE quadric apex
+   `(0, -R_i/tan(θ), 0)` and clip top `(R_c - R_i)/tan(θ)` so the quadric
+   produces r = R_i at y = 0 (orifice rim) and r = R_c at y = cone_top.
+   Loads air gas properties via Cantera. Returns a dict with every
+   template variable, including the four closure keywords.
 
-3. **Template parameter builders.** `build_V_2d_params` and
-   `build_V_3d_params` are mirror functions of the Day 6-7
-   `build_fb_sweep_params`: they load the YAML files, call
-   `src.gasprops.gas_props(293.15 K, 101 325 Pa, N₂/O₂ 0.79/0.21)` for
-   ρ_g = 1.1994 kg/m³ and µ_g = 1.830×10⁻⁵ Pa·s, and emit a dict ready for
-   the Jinja2 template. Both place three MFiX monitors (`monitor_type = 4`,
-   arithmetic average): M1 over the orifice at y = 0 (`monitor_p_g`), M2
-   over a horizontal slab at y = H_static (`monitor_p_g`), M3 over the spout
-   core at y = H_static/2 (`monitor_ep_s`, `monitor_v_s`), from which
-   post-processing reconstructs the solids mass flux
-   ρ_p · ε_s · v_s · A_spout.
+3. **Template**. Every keyword is cross-checked against init_namelist.f
+   in MFiX 26.1.2. Important finding: the namelist header lists
+   `BLENDING_FUNCTION = 'SIGM_BLEND'` as a valid value, but
+   `check_blending_function` in check_solids_continuum.f only accepts
+   `'NONE'`, `'TANH_BLEND'`, and `'GIDASPOW_PCF'`. The last one
+   internally activates the SIGM_BLEND flag, i.e. the scaled-sigmoidal
+   blending S1 Table 1 calls "modified sigmoidal". So the template renders
+   `blending_function = 'GIDASPOW_PCF'`, and the comment traces the
+   discrepancy.
 
-4. **MFiX acceptance.**
-   - **V_2d:** `mfixsolver -f V_2d.mfx` reads the namelist cleanly, loads
-     240 STL facets (all valid, 0 ignored), carves a 64 × 336 × 2 =
-     **43 008-cell** mesh — **2 564 standard, 492 cut, 3 056 fluid,
-     39 952 blocked** (blocked cells are the ones outside the vessel's
-     revolved profile, as expected since the full-width rectangular
-     bounding box is much larger than the cone+cylinder in slab z).
-     PRE_PROCESSING COMPLETE in 0.37 s, the solver enters the time-step
-     loop, and **writes `BACKGROUND.pvd` + `BACKGROUND_0000.vtu`** before
-     being killed by the watchdog. No ERROR, only the pre-existing
-     cosmetic "description truncated on read" Fortran namelist warning.
-     The ep_star = 0.39 lift (threshold 0.61 vs. IC 0.60) remains the
-     decisive change keeping Schaeffer dormant at t = 0.
-   - **V_3d:** `mfixsolver -f V_3d.mfx` loads 240 STL facets (all valid, 0
-     ignored), carves 14,632 cut cells and 102,108 blocked cells out of
-     153,760 total, leaves 51,652 fluid cells inside the vessel
-     (33.6 % of the bounding box), completes PRE_PROCESSING in 1.55 s, and
-     steps into the time-step loop. The first-step solve throws a
-     *different* warning from Day 6-7: a solids-phase velocity blow-up at
-     a cut-cell near the cone wall (|W_g| ~ 2000 m/s in cell
-     I=32, J=42, K=16), which is a 3D cut-cell startup issue, not Schaeffer
-     — and is Day-9 territory. The STL cone + cylinder + orifice are
-     visibly correct in both the solver-emitted `V_3D_boundary.vtk` and in
-     `results/fig_d8_V_3d_geometry.png` (axial projection: cone tapers
-     from R_c = 38 mm at the top down to R_i = 4.75 mm at the orifice
-     over the first 57.6 mm of axial height; top view: 240-facet decagon
-     tracing the r = 38 mm column with the orifice disc centred).
+4. **Hand-calc checks** (all three pinned in tests):
+   - Bed inventory 54.5 g → H_static = 32.2 mm → H₀/D_c = 0.644 (inside
+     S2's 0.50–0.65).
+   - Inlet 30 m/s × π·(2 mm)² = 3.77·10⁻⁴ m³/s = 22.6 L/min, vs S2's
+     12 L/min at 500 µm → U/U_ms = 1.88 (inside S2's 1.0–1.9 stable
+     range).
+   - Rendered closure keywords: SYAM_OBRIEN drag, SCHAEFFER friction,
+     GIDASPOW_PCF blending (= modified sigmoidal), LUN_1984 PDE kinetic
+     theory, φ = 15°, ep_star = 0.42, c_e = 0.9.
 
-5. **Verification.**
-   - Twenty-two new unit tests (`tests/test_make_stl.py` + Day-8 additions
-     to `tests/test_make_case.py`, including a pin that
-     `1 − ep_star > ε_s_bed` so the Schaeffer threshold stays above the
-     IC) all pass; full suite 57/57 green.
-   - V_2d: `.mfx` passes the MFiX namelist reader and completes mesh
-     generation (10,752 cells).
-   - V_3d: `.mfx` + `geometry_0003.stl` passes the STL loader (240 valid
-     facets, 0 ignored), carves 14,632 cut cells, writes `V_3D_boundary.vtk`
-     for ParaView confirmation.
-   - Both visual-confirmation figures saved under `results/fig_d8_V_*_geometry.png`.
+5. **MFiX initialization check**. Rendered .mfx was fed to MFiX 26.1.2
+   (`mfixsolver -f V_2d.mfx` with tstop = 1e-4 s). Output: 10 000 total
+   cells, 9024 standard + 110 cut + 866 blocked (= 9134 fluid), the
+   Y_CONE quadric cut the cone correctly, PRE_PROCESSING COMPLETE in
+   0.13 s, and the solver reached tstop without errors.
 
 ## What it models (physically)
 
-The two templates together define the **cold-flow hydrodynamic baseline**
-for the Case V bed (PLAN §1.3): a 76 mm-ID cylindrical column with a 60°
-conical base and a 9.5 mm inlet orifice, filled to H = 100 mm with Case D
-particles (500 µm, 6000 kg/m³, Geldart D) and fluidized by air at 20 °C.
-Nothing is advanced in time yet; what Day 8 locks in is the *computational
-geometry* and the *initial state* every subsequent run will start from.
+- **Geometry**. The 50 mm / 60° / 4 mm vessel is S1's "standard" cold
+  mockup. The 60° cone is the geometry S1 and S2 report validation data
+  for. The 4 mm orifice is a constant diameter; S2's abstract typo
+  ("0.04 cm") is reconciled against its body text and INL/CON-07-12569.
+  This is recorded as the known inlet-diameter discrepancy.
 
-The modelling choices this step bakes in:
+- **Particles and closures**. 500 µm ZrO₂ at 6050 kg/m³ puts the bed in
+  Geldart group D, where spouting (as opposed to bubbling) is the
+  stable mode above U_ms. S1 Table 1 closures are the published-model
+  spec: Syamlal–O'Brien drag (isothermal); Schaeffer frictional stress
+  with the scaled-sigmoidal blending (so the transition from kinetic to
+  frictional stress at eps_s → eps_s,max is smooth); and granular
+  temperature solved as a PDE (Lun 1984), not algebraically. ep_star =
+  0.42 (= eps_g,mf per S1) sits above eps_s_bed = 0.57 so Schaeffer
+  frictional stress is inactive at t = 0 by physics (not by numerical
+  tuning).
 
-- **Cartesian coordinates for V_2d.** The axisymmetric cylindrical option
-  that Shallbetter's thesis favours is unavailable here because MFiX
-  26.1.2 refuses to combine `cartesian_grid=.True.` with
-  `coordinates='CYLINDRICAL'` (see "Why Cartesian" above). The alternative
-  — a cylindrical mesh with a straight-cylinder wall and no resolved cone
-  — is physically wrong for a spouted bed (cone shape is first-order to
-  the annulus down-flow pattern). V_2d therefore adopts the Cartesian
-  cut-cell + STL workflow V_3d uses, run as a thin slab (`kmax = 2`), and
-  accepts that the slab's planar flow loses the axisymmetric swirl term.
-  The slab is kept because it is ~3.6× cheaper than V_3d and still
-  captures gross hydrodynamics (spout, fountain, annulus) — making it
-  the project's Day 9-12 debugging and sweep workhorse; V_3d is reserved
-  for the Day-10 validation comparison against the Missouri S&T RPT data.
-- **Truncated axial domain (H_dom = 0.40 m vs. full 1.14 m column).** The
-  real column has freeboard length well beyond where the particles ever
-  reach; the fountain in a stable spout rises only ~1–2× the static bed
-  height above the bed (Mathur-Gishler scaling). 3 × H_static + 100 mm
-  fountain headroom captures the full spout + fountain + a buffer, at
-  roughly one-third the cell count of the full column.
-- **Case V_3d: cone + orifice as cut-cell STL geometry.** The STL
-  tessellates the real cone wall at 60 angular segments (6° per facet),
-  which is finer than two cells per facet on the 2.5 mm grid, so the
-  wall-cell cut geometry resolves the cone slope without staircasing
-  artefacts. The orifice is left open as a 9.5 mm disc at y = 0; the
-  solver imposes `U_in` across this disc as a mass-inflow boundary — the
-  physical driver of spouting. Fountain height, spout-to-annulus mass
-  flux, and the spouting-vs-choked transition all depend on how well the
-  cone wall is resolved near the orifice, which is why Day 8 insists on a
-  2–3 mm cell size here even though it costs 150k+ cells.
-- **Monitor set as the Day-9+ read-outs.** The three monitors are chosen
-  to map directly to downstream decisions. M1 (P at the inlet) + M2 (P at
-  the top of the bed) gives ΔP(U) across the bed — the same signal used
-  in Day 6-7 for U_mf, now reinterpreted as the spouting ΔP that drops
-  sharply at U = U_ms (Mathur-Gishler). M3 (ε_s and v_s at the spout
-  mid-plane) gives the solids volumetric throughput through the spout,
-  which, divided by the bed inventory, gives the particle circulation
-  time — the proxy for coating uniformity in PLAN §1.1. These monitors
-  need no additional post-processing to exist; they are time series the
-  solver writes directly to disk.
-- **Case D particles in air at 20 °C.** V_2d and V_3d both use the same
-  particle and gas properties as the Day 6-7 fb_sweep so that any
-  spouting-regime results carry a consistent reference. The hot-gas
-  variant (argon @ 1400 °C, Ar/H₂) will be a Day 10+ sweep against the
-  same templates.
+- **Operating point.** 30 m/s inlet jet gives Q = 22.6 L/min, which is
+  about 1.9 × S2's reported U_ms (12 L/min for 500 µm). This is the
+  upper end of S2's stable-spouting range (U/U_ms = 1.0–1.9).
 
-What Day 8 **deliberately does not** model, by step scope: anything
-beyond the first time-step pass (full time-advancement stabilisation is
-Day 9's first task), the full 1.14 m column (truncated to 3 × bed +
-fountain headroom), the orifice tube stub below the cone (the MI face
-represents the orifice directly), DEM / PIC particle statistics (TFM is
-the Case V baseline per Day 4), and any thermal / species / reactive
-content (PLAN §1.2 keeps these out of scope). Both V_2d and V_3d now
-resolve the full 60° cone wall as a cut-cell STL boundary; the earlier
-V_2d straight-cylinder approximation (rev 1-2) has been retired.
+- **Limitation.** MFiX 26.1.2 forbids `cartesian_grid=.True.` with
+  `coordinates='CYLINDRICAL'`, so option (a) in day-8.md (axisymmetric
+  with stair-stepped cone) cannot carry a resolved sloped cone wall
+  under documented keywords. Option (b) (planar quadric cut-cell slab)
+  is used instead and results are to be treated as qualitative only.
+  A 3D cut-cell / STL run on Day 10 is the validation step.
+
+## Known open items
+
+- Pressure-tap location — not reported in S1 or S2; assumed at the inlet
+  plane and the top of bed (both at 1 kHz).
+- Particle-particle restitution c_e — not reported in S1 or S2; set to
+  0.9 and flagged for the Day 13 sensitivity study.
+- Whether S1's ambient-run baseline is 2D axisymmetric — S1 Table 1
+  does not say explicitly. Treat it as 3D (consistent with S1 Fig. 1's
+  centerline v_g profile shape).
+
+## Day 1-7 files touched by the retargeting
+
+- `params/particles.yaml` (case_D rho_p 6000 → 6050; added case_V; dropped
+  the old lab-case particle block; the fb_sweep block is unchanged
+  except for ep_star which tracks case_D).
+- `params/geometry.yaml` (old lab-column geometry block dropped; new bed_V;
+  fb_sweep_2d width retargeted to 50 mm; old spouted-bed geometry blocks
+  dropped).
+- `params/numerics.yaml` (comment-only: CFL-example reference to the
+  prior lab bed replaced by "ORNL/UTK bed").
+- `tests/test_correlations.py` (two U_ms hand-calc tests rebased to
+  the ORNL/UTK geometry; the correlation code is unchanged).
+- `notes/day04_model_choice.md` and `notes/day04_summary.md` (text
+  pointers updated: prior lab reference → ORNL/UTK).
+- `notes/day3_summary.md` (orifice reference updated to the ORNL/UTK bed).
+- `notes/day6-7_summary.md` (fb_sweep width reference updated).
+- `notes/mfx_anatomy.md` (the Day-5 MFiX TUTORIAL particle phase was
+  previously labelled with the forbidden-string substring; relabelled
+  as "tutorial beads". That tutorial case is unrelated to the dropped
+  prior Case V inventory).
+- `analytics.ipynb` (code and markdown cells retargeted; cached
+  outputs stripped — the Day 2 and Day 4 figures must be re-run
+  against the new YAML to pick up updated numbers).

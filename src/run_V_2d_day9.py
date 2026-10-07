@@ -1,9 +1,9 @@
-"""Generate the Day-9 V_2d spouting-run case directory and a runner script.
+"""Generate the Day-9 V_2d (ORNL/UTK Case V) smoke-test case directory.
 
 Writes:
-  cases/V_2d/day9_u1p2/V_2d_day9.mfx     - rendered .mfx (via Jinja2 template)
-  cases/V_2d/day9_u1p2/manifest.json     - run provenance (U_in, U_ms, drag, c_e)
-  cases/V_2d/day9_u1p2/run.sh            - MFiX runner (writes run.log)
+  cases/V_2d/day9/V_2d_day9.mfx    - rendered .mfx (via Jinja2 template)
+  cases/V_2d/day9/manifest.json    - run provenance
+  cases/V_2d/day9/run.sh           - MFiX runner (writes run.log)
 
 Does not launch MFiX; invoke run.sh (or source it under nohup) explicitly.
 """
@@ -14,13 +14,16 @@ import argparse
 import json
 from pathlib import Path
 
-from src.make_case import REPO_ROOT, build_V_2d_day9_params, render_case
+from src.cfl_check import dt_for_cfl
+from src.make_case import REPO_ROOT, build_V_2d_params, render_case
 
 MFIX_SOLVER = "/Users/nelsonpereira/mamba/envs/mfix-26.1.2/bin/mfixsolver"
 
 DEFAULT_TEMPLATE = REPO_ROOT / "cases" / "V_2d" / "template.mfx.j2"
-DEFAULT_RUN_DIR = REPO_ROOT / "cases" / "V_2d" / "day9_u1p2"
+DEFAULT_RUN_DIR = REPO_ROOT / "cases" / "V_2d" / "day9"
 RUN_NAME = "V_2d_day9"
+TSTOP_S = 3.0
+U_IN_M_S = 30.0
 
 
 def write_runner(run_dir: Path, mfx_name: str) -> Path:
@@ -31,7 +34,7 @@ def write_runner(run_dir: Path, mfx_name: str) -> Path:
         "set -euo pipefail",
         f'MFIX="{MFIX_SOLVER}"',
         f'cd "{run_dir}"',
-        f'"$MFIX" -c -f "{mfx_name}" > run.log 2>&1',
+        f'"$MFIX" -f "{mfx_name}" > run.log 2>&1',
         "",
     ]
     script.write_text("\n".join(lines))
@@ -43,30 +46,50 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
     p.add_argument("--run-dir", type=Path, default=DEFAULT_RUN_DIR)
+    p.add_argument("--tstop", type=float, default=TSTOP_S,
+                   help=f"simulated end time [s] (default {TSTOP_S})")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
-    params = build_V_2d_day9_params(run_name=RUN_NAME)
+    params = build_V_2d_params(
+        U_in_m_s=U_IN_M_S, tstop_s=args.tstop, run_name=RUN_NAME,
+        description="Day 9 V_2d smoke test (ORNL/UTK Case V)",
+    )
     args.run_dir.mkdir(parents=True, exist_ok=True)
     mfx_path = args.run_dir / f"{RUN_NAME}.mfx"
 
+    # CFL budget estimate (CLAUDE.md rule 14): dt_CFL = CFL * dx / u_max.
+    dx_m = (params["x_max_m"] - params["x_min_m"]) / params["imax"]
+    dt_cfl = dt_for_cfl(u_max=U_IN_M_S, dx=dx_m, cfl_target=0.5)
+    n_steps_approx = int(args.tstop / dt_cfl)
     manifest = {
         "run_name": RUN_NAME,
+        "case": "V_2d (ORNL/UTK)",
         "U_in_m_s": params["U_in_m_s"],
-        "U_ms_column_m_s": params["U_ms_column_m_s"],
-        "u_over_ums": params["u_over_ums"],
-        "drag_type": params["drag_type"],
-        "c_e": params["c_e"],
         "tstop_s": params["tstop_s"],
         "imax": params["imax"],
         "jmax": params["jmax"],
         "kmax": params["kmax"],
+        "dx_m": dx_m,
+        "H_static_m": params["H_static_m"],
+        "H_dom_m": params["H_dom_m"],
+        "eps_s_bed": params["eps_s_bed"],
+        "ep_star": params["ep_star"],
+        "c_e": params["c_e"],
+        "drag_type": params["drag_type"],
+        "friction_model": params["friction_model"],
+        "blending_function": params["blending_function"],
+        "kt_type": params["kt_type"],
+        "rho_g_kg_m3": params["rho_g_kg_m3"],
+        "mu_g_pa_s": params["mu_g_pa_s"],
+        "monitor_dt_s": params["monitor_dt_s"],
+        "cfl_dt_estimate_s": dt_cfl,
+        "approx_total_steps": n_steps_approx,
         "mfx": mfx_path.name,
     }
     print(json.dumps(manifest, indent=2))
     if args.dry_run:
         return
-
     render_case(args.template, params, mfx_path)
     (args.run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     script = write_runner(args.run_dir, mfx_path.name)

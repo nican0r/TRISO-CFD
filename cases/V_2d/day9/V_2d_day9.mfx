@@ -16,18 +16,18 @@
 #! installed MFiX 26.1.2 reference (CLAUDE.md rule 1).
 
 ### Run controls
-  description = '{{ description }}'
-  run_name    = '{{ run_name }}'
+  description = 'Day 9 V_2d smoke test (ORNL/UTK Case V)'
+  run_name    = 'V_2d_day9'
   units       = 'SI'
   run_type    = 'new'
-  tstop       = {{ tstop_s }}
-  dt          = {{ dt_s }}
+  tstop       = 3.0
+  dt          = 0.0001
   dt_min      = 1.000000e-07
-  dt_max      = {{ dt_max_s }}
+  dt_max      = 0.001
   dt_fac      = 0.9
   res_dt      = 0.01
   chk_batchq_end = .True.
-  drag_type   = '{{ drag_type }}'
+  drag_type   = 'SYAM_OBRIEN'
   drag_c1     = 0.8
   drag_d1     = 2.65
   energy_eq   = .False.
@@ -46,16 +46,16 @@
   # Clipped to 0 <= y <= cone_top_y_m; above the clip region the quadric is
   # inactive and the fluid fills the full column (fluid_in_clipped_region=T).
     quadric_form(1)             = 'Y_CONE'
-    half_angle(1)               = {{ cone_half_angle_deg }}
+    half_angle(1)               = 30.0
     t_x(1)                      = 0.0
-    t_y(1)                      = {{ cone_apex_y_m }}
+    t_y(1)                      = -0.0034641016151377556
     t_z(1)                      = 0.0
-    clip_xmin(1)                = {{ x_min_m }}
-    clip_xmax(1)                = {{ x_max_m }}
+    clip_xmin(1)                = -0.025
+    clip_xmax(1)                = 0.025
     clip_ymin(1)                = 0.0
-    clip_ymax(1)                = {{ cone_top_y_m }}
-    clip_zmin(1)                = {{ z_min_m }}
-    clip_zmax(1)                = {{ z_max_m }}
+    clip_ymax(1)                = 0.03983716857408419
+    clip_zmin(1)                = -0.0005
+    clip_zmax(1)                = 0.0005
     fluid_in_clipped_region(1)  = .True.
     bc_id_q(1)                  = 3
 
@@ -66,46 +66,46 @@
 
 ### Numeric
   detect_stall = .True.
-  max_nit      = {{ max_nit }}
+  max_nit      = 50
   norm_g       = 0.0
 
 ### Geometry (cartesian 2D with no_k=.True.)
   coordinates = 'CARTESIAN'
-  imax        = {{ imax }}
-  jmax        = {{ jmax }}
-  kmax        = {{ kmax }}
-  x_min       = {{ x_min_m }}
-  x_max       = {{ x_max_m }}
+  imax        = 50
+  jmax        = 200
+  kmax        = 1
+  x_min       = -0.025
+  x_max       = 0.025
   y_min       = 0.0
-  y_max       = {{ H_dom_m }}
-  z_min       = {{ z_min_m }}
-  z_max       = {{ z_max_m }}
-  zlength     = {{ zlength_m }}
+  y_max       = 0.2
+  z_min       = -0.0005
+  z_max       = 0.0005
+  zlength     = 0.001
   no_k        = .True.
 
 #### Fluid
-  mu_g0      = {{ mu_g_pa_s }}
+  mu_g0      = 1.8542542630739353e-05
   mu_g_model = 'CONSTANT'
-  ro_g0      = {{ rho_g_kg_m3 }}
+  ro_g0      = 1.1792423438936657
 
 #### Solids
   mmax = 1
   # Solid 1: ORNL/UTK Case V ZrO2 (500 um, 6050 kg/m^3)
     solids_model(1) = 'TFM'
-    d_p0(1)         = {{ d_p_m }}
-    ro_s0(1)        = {{ rho_p_kg_m3 }}
+    d_p0(1)         = 0.0005
+    ro_s0(1)        = 6050.0
     nmax_s(1)       = 0
     k_s0(1)         = 1.0
     ks_model(1)     = 'BAUER'
 
 ### Initial conditions
   # IC 1: Freeboard (gas only, above the packed bed)
-    ic_x_w(1)    = {{ x_min_m }}
-    ic_x_e(1)    = {{ x_max_m }}
-    ic_y_s(1)    = {{ H_static_m }}
-    ic_y_n(1)    = {{ H_dom_m }}
-    ic_z_b(1)    = {{ z_min_m }}
-    ic_z_t(1)    = {{ z_max_m }}
+    ic_x_w(1)    = -0.025
+    ic_x_e(1)    = 0.025
+    ic_y_s(1)    = 0.032188056502491236
+    ic_y_n(1)    = 0.2
+    ic_z_b(1)    = -0.0005
+    ic_z_t(1)    = 0.0005
     ic_ep_g(1)   = 1.0
     ic_t_g(1)    = 293.15
     ic_u_g(1)    = 0.0
@@ -120,21 +120,21 @@
     ic_w_s(1,1)  = 0.0
 
   # IC 2: Packed bed, 0 <= y <= H_static (fills the vessel; cut-cells trim).
-  # eps_s_bed = {{ eps_s_bed }} sits below 1 - ep_star = {{ "%.2f"|format(1.0 - ep_star) }} so
+  # eps_s_bed = 0.57 sits below 1 - ep_star = 0.58 so
   # the Schaeffer frictional-stress term is inactive at t = 0.
-    ic_x_w(2)    = {{ x_min_m }}
-    ic_x_e(2)    = {{ x_max_m }}
+    ic_x_w(2)    = -0.025
+    ic_x_e(2)    = 0.025
     ic_y_s(2)    = 0.0
-    ic_y_n(2)    = {{ H_static_m }}
-    ic_z_b(2)    = {{ z_min_m }}
-    ic_z_t(2)    = {{ z_max_m }}
-    ic_ep_g(2)   = {{ ep_g_bed }}
+    ic_y_n(2)    = 0.032188056502491236
+    ic_z_b(2)    = -0.0005
+    ic_z_t(2)    = 0.0005
+    ic_ep_g(2)   = 0.43000000000000005
     ic_t_g(2)    = 293.15
     ic_u_g(2)    = 0.0
     ic_v_g(2)    = 0.0
     ic_w_g(2)    = 0.0
     ic_p_star(2) = 0.0
-    ic_ep_s(2,1) = {{ eps_s_bed }}
+    ic_ep_s(2,1) = 0.57
     ic_t_s(2,1)  = 293.15
     ic_u_s(2,1)  = 0.0
     ic_v_s(2,1)  = 0.0
@@ -147,16 +147,16 @@
   # of having to open the channel from a cold packed bed on the first time
   # step (standard startup IC for TFM spouted-bed studies; San Jose et al.
   # 2005, Du et al. 2006).
-    ic_x_w(3)    = {{ bc_mi_x_w_m }}
-    ic_x_e(3)    = {{ bc_mi_x_e_m }}
+    ic_x_w(3)    = -0.002
+    ic_x_e(3)    = 0.002
     ic_y_s(3)    = 0.0
-    ic_y_n(3)    = {{ H_static_m }}
-    ic_z_b(3)    = {{ z_min_m }}
-    ic_z_t(3)    = {{ z_max_m }}
+    ic_y_n(3)    = 0.032188056502491236
+    ic_z_b(3)    = -0.0005
+    ic_z_t(3)    = 0.0005
     ic_ep_g(3)   = 1.0
     ic_t_g(3)    = 293.15
     ic_u_g(3)    = 0.0
-    ic_v_g(3)    = {{ U_in_m_s }}
+    ic_v_g(3)    = 30.0
     ic_w_g(3)    = 0.0
     ic_p_g(3)    = 101325.0
     ic_p_star(3) = 0.0
@@ -169,17 +169,17 @@
 # Boundary conditions
   # BC 1: Mass-inflow through the orifice strip (y = 0, |x| <= R_i)
     bc_type(1) = 'MI'
-    bc_x_w(1)  = {{ bc_mi_x_w_m }}
-    bc_x_e(1)  = {{ bc_mi_x_e_m }}
+    bc_x_w(1)  = -0.002
+    bc_x_e(1)  = 0.002
     bc_y_s(1)  = 0.0
     bc_y_n(1)  = 0.0
-    bc_z_b(1)  = {{ z_min_m }}
-    bc_z_t(1)  = {{ z_max_m }}
+    bc_z_b(1)  = -0.0005
+    bc_z_t(1)  = 0.0005
     bc_ep_g(1) = 1.0
     bc_p_g(1)  = 101325
     bc_t_g(1)  = 293.15
     bc_u_g(1)  = 0.0
-    bc_v_g(1)  = {{ U_in_m_s }}
+    bc_v_g(1)  = 30.0
     bc_w_g(1)  = 0.0
     bc_ep_s(1,1) = 0.0
     bc_t_s(1,1)  = 293.15
@@ -189,12 +189,12 @@
 
   # BC 2: Pressure-outflow at the top
     bc_type(2) = 'PO'
-    bc_x_w(2)  = {{ x_min_m }}
-    bc_x_e(2)  = {{ x_max_m }}
-    bc_y_s(2)  = {{ H_dom_m }}
-    bc_y_n(2)  = {{ H_dom_m }}
-    bc_z_b(2)  = {{ z_min_m }}
-    bc_z_t(2)  = {{ z_max_m }}
+    bc_x_w(2)  = -0.025
+    bc_x_e(2)  = 0.025
+    bc_y_s(2)  = 0.2
+    bc_y_n(2)  = 0.2
+    bc_z_b(2)  = -0.0005
+    bc_z_t(2)  = 0.0005
     bc_p_g(2)  = 101325
 
   # BC 3: Cut-cell (Y_CONE) no-slip wall. Bound to quadric 1 via bc_id_q.
@@ -211,38 +211,38 @@
   # Tap location is not reported in S1 or S2; assumed at the inlet plane.
     monitor_type(1) = 4
     monitor_name(1) = 'V_2d_P_inlet'
-    monitor_x_w(1)  = {{ bc_mi_x_w_m }}
-    monitor_x_e(1)  = {{ bc_mi_x_e_m }}
+    monitor_x_w(1)  = -0.002
+    monitor_x_e(1)  = 0.002
     monitor_y_s(1)  = 0.0
     monitor_y_n(1)  = 0.0
-    monitor_z_b(1)  = {{ z_min_m }}
-    monitor_z_t(1)  = {{ z_max_m }}
-    monitor_dt(1)   = {{ monitor_dt_s }}
+    monitor_z_b(1)  = -0.0005
+    monitor_z_t(1)  = 0.0005
+    monitor_dt(1)   = 0.001
     monitor_p_g(1)  = .True.
 
   # Monitor 2: top-of-bed gas pressure (across the full width at y = H_static)
     monitor_type(2) = 4
     monitor_name(2) = 'V_2d_P_top_bed'
-    monitor_x_w(2)  = {{ x_min_m }}
-    monitor_x_e(2)  = {{ x_max_m }}
-    monitor_y_s(2)  = {{ H_static_m }}
-    monitor_y_n(2)  = {{ H_static_m }}
-    monitor_z_b(2)  = {{ z_min_m }}
-    monitor_z_t(2)  = {{ z_max_m }}
-    monitor_dt(2)   = {{ monitor_dt_s }}
+    monitor_x_w(2)  = -0.025
+    monitor_x_e(2)  = 0.025
+    monitor_y_s(2)  = 0.032188056502491236
+    monitor_y_n(2)  = 0.032188056502491236
+    monitor_z_b(2)  = -0.0005
+    monitor_z_t(2)  = 0.0005
+    monitor_dt(2)   = 0.001
     monitor_p_g(2)  = .True.
 
   # Monitor 3: domain-integrated solids inventory (volume integral of ep_s).
   # monitor_type = 11 is "Volume integral (cell)" per init_namelist.f.
     monitor_type(3) = 11
     monitor_name(3) = 'V_2d_solids_inventory'
-    monitor_x_w(3)  = {{ x_min_m }}
-    monitor_x_e(3)  = {{ x_max_m }}
+    monitor_x_w(3)  = -0.025
+    monitor_x_e(3)  = 0.025
     monitor_y_s(3)  = 0.0
-    monitor_y_n(3)  = {{ H_dom_m }}
-    monitor_z_b(3)  = {{ z_min_m }}
-    monitor_z_t(3)  = {{ z_max_m }}
-    monitor_dt(3)   = {{ monitor_dt_s }}
+    monitor_y_n(3)  = 0.2
+    monitor_z_b(3)  = -0.0005
+    monitor_z_t(3)  = 0.0005
+    monitor_dt(3)   = 0.001
     monitor_ep_s(3,1) = .True.
 
   # Monitor 4: centerline gas velocity probe at mid-bed height (y = H_mid).
@@ -252,13 +252,13 @@
   # single-point time trace is a Day-9 smoke-test probe.
     monitor_type(4) = 4
     monitor_name(4) = 'V_2d_centerline_vg'
-    monitor_x_w(4)  = {{ bc_mi_x_w_m }}
-    monitor_x_e(4)  = {{ bc_mi_x_e_m }}
-    monitor_y_s(4)  = {{ H_mid_m }}
-    monitor_y_n(4)  = {{ H_mid_m }}
-    monitor_z_b(4)  = {{ z_min_m }}
-    monitor_z_t(4)  = {{ z_max_m }}
-    monitor_dt(4)   = {{ monitor_dt_s }}
+    monitor_x_w(4)  = -0.002
+    monitor_x_e(4)  = 0.002
+    monitor_y_s(4)  = 0.016094028251245618
+    monitor_y_n(4)  = 0.016094028251245618
+    monitor_z_b(4)  = -0.0005
+    monitor_z_t(4)  = 0.0005
+    monitor_dt(4)   = 0.001
     monitor_v_g(4)  = .True.
 
 # VTK outputs
@@ -266,14 +266,14 @@
   time_dependent_filename = .True.
   # VTK 1: whole domain (cell-centred, ep_g / P_g / vel_g / vel_s)
     vtk_filebase(1) = 'Background'
-    vtk_x_w(1)      = {{ x_min_m }}
-    vtk_x_e(1)      = {{ x_max_m }}
+    vtk_x_w(1)      = -0.025
+    vtk_x_e(1)      = 0.025
     vtk_y_s(1)      = 0.0
-    vtk_y_n(1)      = {{ H_dom_m }}
-    vtk_z_b(1)      = {{ z_min_m }}
-    vtk_z_t(1)      = {{ z_max_m }}
+    vtk_y_n(1)      = 0.2
+    vtk_z_b(1)      = -0.0005
+    vtk_z_t(1)      = 0.0005
     vtk_data(1)     = 'C'
-    vtk_dt(1)       = {{ vtk_dt_s }}
+    vtk_dt(1)       = 0.05
     vtk_nxs(1)      = 0
     vtk_nys(1)      = 0
     vtk_nzs(1)      = 0
@@ -302,18 +302,18 @@
   resid_string(6) = 'V1'
 
 ### Two-fluid-model closures (S1 Table 1)
-### ep_star = {{ ep_star }} is the TFM min-gas-fraction (= void fraction at
+### ep_star = 0.42 is the TFM min-gas-fraction (= void fraction at
 ### minimum fluidization per S1 Table 1). Threshold 1 - ep_star =
-### {{ "%.2f"|format(1.0 - ep_star) }} sits above the IC bed value eps_s_bed =
-### {{ eps_s_bed }} so Schaeffer frictional stress is inactive at t = 0 by
-### physics (not numerical tuning). c_e = {{ c_e }} is assumed (not reported
+### 0.58 sits above the IC bed value eps_s_bed =
+### 0.57 so Schaeffer frictional stress is inactive at t = 0 by
+### physics (not numerical tuning). c_e = 0.9 is assumed (not reported
 ### in S1 or S2); listed as an open item for the Day 13 sensitivity study.
-  c_e               = {{ c_e }}
+  c_e               = 0.9
   c_f               = 0.1
-  ep_star           = {{ ep_star }}
-  friction_model    = '{{ friction_model }}'
-  blending_function = '{{ blending_function }}'
-  kt_type           = '{{ kt_type }}'
-  phi               = {{ phi_deg }}
+  ep_star           = 0.42
+  friction_model    = 'SCHAEFFER'
+  blending_function = 'GIDASPOW_PCF'
+  kt_type           = 'LUN_1984'
+  phi               = 15.0
   phi_w             = 11.3
   rdf_type          = 'CARNAHAN_STARLING'

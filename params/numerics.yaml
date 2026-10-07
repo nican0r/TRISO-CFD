@@ -12,7 +12,7 @@ spout_cfl_example:
                          #         magnitude, refined once a case is run.
   dx_m: 1.0e-3           # characteristic cell edge length [m]  (1 mm)
                          # source: day-3.md; a reasonable target for the
-                         #         spout / near-inlet region of the 0.076 m bed.
+                         #         spout / near-inlet region of the 0.050 m ORNL/UTK bed.
   cfl_target: 0.5        # CFL upper bound for the sanity check [-]
                          # source: day-3.md ("CFL < 0.5"); standard explicit-
                          #         solver stability margin.

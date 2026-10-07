@@ -1,6 +1,6 @@
 # Day 4 — Which gas–solid model, and when
 
-Decision table for picking a modelling approach for the 0.076 m Missouri S&T
+Decision table for picking a modelling approach for the 0.050 m ORNL/UTK
 cold-flow spouted bed loaded with Case D (500 µm, 6000 kg/m³, Geldart D) at a
 static bed height H = 0.10 m.
 

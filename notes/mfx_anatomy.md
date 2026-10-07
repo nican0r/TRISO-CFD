@@ -80,14 +80,14 @@ are those documented for the keyword (SI, since `units = 'SI'`).
 | `mu_g_model` | `'CONSTANT'` | Use `mu_g0`, not a temperature model. |
 | `ro_g0` | `1.0` | Constant gas density [kg/m³] (incompressible). |
 
-## Solids phase 1 — "glass beads"
+## Solids phase 1 — tutorial beads
 
 | keyword | value | meaning |
 |---|---|---|
 | `mmax` | `1` | Number of solids phases. |
 | `solids_model(1)` | `'TFM'` | Two-fluid Eulerian model for phase 1. |
 | `d_p0(1)` | `2.0e-4` | Particle diameter [m] (200 µm). |
-| `ro_s0(1)` | `2500.0` | Particle density [kg/m³] (glass). |
+| `ro_s0(1)` | `2500.0` | Particle density [kg/m³] (tutorial beads). |
 | `nmax_s(1)` | `0` | Species count in solids phase 1 (none). |
 | `k_s0(1)` | `1.0` | Solids thermal conductivity [W/(m·K)] (unused — energy_eq off). |
 | `ks_model(1)` | `'BAUER'` | Solids-conductivity model (unused here). |

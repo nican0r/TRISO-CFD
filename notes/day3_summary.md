@@ -30,7 +30,7 @@ Key artifacts:
 
 The CFL number is not a physical model — it is a numerical stability criterion that says a wave (here the fluid or jet velocity) must not cross more than one cell per time step. For the spouted-bed coater it matters because:
 
-- **The inlet jet sets the ceiling.** Anywhere in the domain, `u_max` is dominated by the spout jet — gas enters through the 9.5 mm orifice of the 0.076 m bed (PLAN §1.3) and accelerates well above the superficial column velocity. A jet of order 20 m/s is a defensible upper-bound estimate to pre-screen dt before any run; once a real case is run, `u_max` should be updated from the solver output.
+- **The inlet jet sets the ceiling.** Anywhere in the domain, `u_max` is dominated by the spout jet — gas enters through the 4 mm orifice of the 0.050 m bed (PLAN §1.3) and accelerates well above the superficial column velocity. A jet of order 20 m/s is a defensible upper-bound estimate to pre-screen dt before any run; once a real case is run, `u_max` should be updated from the solver output.
 - **The near-inlet mesh sets the floor.** The smallest cells will sit near the orifice/cone transition where gradients are steep. A 1 mm target there is coarse but representative; finer meshes will demand proportionally smaller dt (linear in `dx`).
 - **The 0.5 margin protects the coupled solve.** MFiX runs a coupled fluid + particle system; empirical practice is to sit at CFL ≤ 0.5 to keep the fluid advection stable and to leave headroom for the particle contact / drag sub-steps. With u_max = 20 m/s and dx = 1 mm, that pins dt ≤ 25 µs — an order-of-magnitude constraint the case-builder scripts (starting Day 5) can consult.
 

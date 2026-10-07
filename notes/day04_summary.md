@@ -4,7 +4,7 @@
 
 A **modelling-method decision** for the two-week plan: which gas–solid approach
 (TFM, DEM, CGP-DEM, PIC) is used where, pinned to a concrete particle-count
-estimate for the Missouri S&T 0.076 m bed loaded with Case D (500 µm, 6000
+estimate for the ORNL/UTK 0.050 m bed loaded with Case D (500 µm, 6050
 kg/m³) at a static bed height H = 0.10 m. The particle counts are computed in
 the notebook so they stay in sync with the geometry and particle YAMLs — and
 they are the numbers that make the TFM-vs-DEM cost argument quantitative rather

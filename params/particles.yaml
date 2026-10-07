@@ -10,73 +10,91 @@ d_p_sweep_um:
 
 densities_kg_per_m3:
   # source: implementation-steps/day-1.md {2500, 6000, 10800}
-  # 2500  : light surrogate ballast (glass-like), see PLAN 1.3
-  # 6000  : ZrO2/YSZ TRISO surrogate kernel, PLAN 1.3
+  # 2500  : light surrogate ballast, PLAN 1.3
+  # 6000  : rough-order ZrO2 surrogate (Day 1 historical; Case V/D now 6050)
   # 10800 : UO2 real kernel, PLAN 1.3
   - 2500
   - 6000
   - 10800
 
-# Case D (design case) particles: ZrO2/YSZ TRISO surrogate.
-# source: PLAN.md 1.3 ("ZrO2/YSZ spheres of ~500 um diameter and ~6000 kg/m^3")
+# Case D (design case) particles: ZrO2 TRISO surrogate.
+# source: S2 (Zhou et al. 2005, UTK mockup) — "spherical ZrO2 with a tight
+#         size distribution"; 500 um diameter and 6050 kg/m^3.
 case_D:
-  d_p_m: 500.0e-6           # 500 um, source: PLAN.md 1.3
-  rho_p_kg_per_m3: 6000     # source: PLAN.md 1.3
-  ep_star: 0.37             # TFM min-gas-fraction (max solids packing) [-]
-                             # => Schaeffer frictional-stress threshold
-                             #    eps_s,max = 1 - ep_star = 0.63
-                             # Physical basis: random close packing (RCP) of
-                             # monodisperse smooth spheres is eps_s,RCP ~ 0.636
-                             # (Scott & Kilgour 1969; Berryman 1983; Song,
-                             # Wang & Makse 2008, Nature 453). Case D particles
-                             # are CVD-grown ZrO2/YSZ (and UO2 variant) ~500 um
-                             # smooth monodisperse spheres, so RCP applies.
-                             # Gidaspow 1994 (Multiphase Flow and Fluidization,
-                             # Ch. 2) uses 0.63 as the TFM standard, and
-                             # spouted-bed TFM studies on Geldart-D systems
-                             # (Du et al. 2006 Chem. Eng. Sci.; San Jose et al.
-                             # 2005) span 0.60-0.64. Sitting a hair below
-                             # measured RCP keeps the Carnahan-Starling rdf
-                             # finite as eps_s -> ep_star.
-                             # source: Gidaspow 1994; Scott & Kilgour 1969
-  # NOTE: ep_star is a particle-geometry property (shape/size/polydispersity)
-  # and does NOT depend on vessel geometry, gas, or density. The same value is
-  # reused for the UO2 variant below and for every V_* / fb_sweep case.
+  d_p_m: 500.0e-6           # 500 um
+                            # source: S2 (UTK mockup, 500 um principal size)
+  rho_p_kg_per_m3: 6050     # source: S2 (ZrO2 particle density 6050 kg/m^3).
+                            # Supersedes PLAN.md 1.3's rough 6000 kg/m^3.
+  ep_star: 0.42             # TFM min-gas-fraction (= 1 - eps_s,max) [-]
+                            # Set to S1 Table 1 "void fraction at minimum
+                            # fluidization", which S1 uses as the TFM packing
+                            # threshold for its UTK/ORNL closures.
+                            # Threshold 1 - ep_star = 0.58 is above the IC
+                            # bed value eps_s_bed = 0.57 (Case V), so
+                            # Schaeffer frictional stress is inactive at t=0.
+                            # source: S1 Table 1 (ORNL/TM-2006/520).
 
-# Case V_rpt: particles used in the Missouri S&T RPT cold-flow spouted-bed
-# experiments on the 0.076 m column (R13 / R14, OSTI 1533774 and 1538701).
-# This is the particle inventory the Day-10 validation run is matched to.
-# All values taken directly from the papers' experimental conditions table.
-# source: Missouri S&T R13 (OSTI 1533774) / R14 (OSTI 1538701) exp. conditions
-case_V_rpt:
-  d_p_m: 2.18e-3            # 2.18 mm, source: R13/R14 experimental conditions
-  rho_p_kg_per_m3: 2400     # soda-lime glass beads, source: R13/R14
-  sphericity: 1.0           # perfect spheres, source: R13/R14
-  friction_angle_deg: 26    # internal (inertial) friction angle [deg]
+# Case V: ORNL/UTK cold-mockup validation particles.
+# Spherical ZrO2 (same particles as Case D). Includes inventory, inertial
+# friction angle, and particle-particle restitution coefficient needed by
+# the MFiX TFM closures.
+# source: S1 (ORNL/TM-2006/520, Table 1) + S2 (Zhou et al. 2005).
+case_V:
+  d_p_m: 500.0e-6           # 500 um principal particle size.
+                            # S2 also tested 300, 400 and 650 um; use 500 um
+                            # here because it is the size tabulated against
+                            # S1's UTK and ORNL coater validation data.
+                            # source: S2 (UTK mockup, body text).
+  rho_p_kg_per_m3: 6050     # ZrO2 particle density [kg/m^3]
+                            # source: S2 (Zhou et al. 2005, UTK mockup).
+  inventory_g: 54.5         # bed inventory [g]
+                            # S1's UTK and ORNL validation runs use 54.5 g.
+                            # S2 uses 53.9 g in many figures; the two are
+                            # within experimental error. 54.5 g chosen so
+                            # the case matches S1's validation data (S1
+                            # Figures 1 and 2).
+                            # source: S1 (ORNL/TM-2006/520, UTK and ORNL
+                            #         validation inventory); noted vs S2's
+                            #         53.9 g in notes/day8_summary.md.
+  friction_angle_deg: 15    # internal (inertial) friction angle [deg]
                             # Fed to MFiX `phi` keyword (Schaeffer closure).
-                            # source: R13/R14
-  eps_mf: 0.41              # loose-packed / minimum-fluidization voidage [-]
-                            # i.e. gas fraction at the settled / U_mf state;
-                            # => bed solids fraction eps_s,mf = 1 - 0.41 = 0.59.
-                            # source: R13/R14
-  ep_star: 0.37             # TFM min-gas-fraction (= 1 - eps_s,max) [-]
-                            # Random close packing of monodisperse spheres is
-                            # eps_s,RCP ~ 0.636 (Scott & Kilgour 1969), so
-                            # ep_star = 0.37 is the physical dense-packing
-                            # limit, independent of the measured eps_mf = 0.41
-                            # (loose packing is a different state). Keeping
-                            # ep_star < 1 - eps_s_bed = 0.41 means Schaeffer
-                            # frictional stress is inactive at the IC.
-                            # source: Scott & Kilgour 1969; Gidaspow 1994 Ch. 2
+                            # S1 Table 1 says "15 deg; varies with
+                            # particles".
+                            # source: S1 Table 1.
+  ep_star: 0.42             # TFM min-gas-fraction (= 1 - eps_s,max) [-]
+                            # Set to S1's "void fraction at minimum
+                            # fluidization" from Table 1. See case_D.ep_star
+                            # above for the inactivity-at-IC argument.
+                            # source: S1 Table 1.
+  eps_s_bed: 0.57           # IC bed solids volume fraction at t = 0 [-]
+                            # Must sit below 1 - ep_star = 0.58 so the
+                            # Schaeffer frictional-stress term is inactive
+                            # at t = 0 (physics, not numerical tuning).
+                            # 0.57 is one point below eps_s,mf = 0.58
+                            # (slightly looser than mf), which is the
+                            # standard "resting bed" IC in TFM spouted-bed
+                            # studies (San Jose et al. 2005; Du et al.
+                            # 2006). H_static derived from inventory,
+                            # rho_p and this value in src/make_case.py.
+                            # source: assumed (one unit below 1 - ep_star
+                            #         so Schaeffer is inactive at t=0;
+                            #         justified in notes/day8_summary.md).
+  c_e: 0.9                  # particle-particle restitution coefficient [-]
+                            # Not reported in S1 or S2 (open item).
+                            # 0.9 is the standard default for ZrO2 smooth
+                            # spheres and is listed as an open item for
+                            # the Day 13 sensitivity study.
+                            # source: assumed (not reported in S1/S2;
+                            #         likely in S3/S4).
 
 # UO2 real-kernel sensitivity variant, same diameter, higher density.
 # source: PLAN.md 1.3 ("Real UO2 kernels are ~10 800 kg/m^3")
 case_D_uo2:
   d_p_m: 500.0e-6           # source: assumed (matches surrogate d_p for Geldart comparison)
   rho_p_kg_per_m3: 10800    # source: PLAN.md 1.3
-  ep_star: 0.37             # same packing limit as case_D (same particle
-                             # geometry; higher density only changes bed weight,
-                             # not RCP). source: see case_D.ep_star
+  ep_star: 0.42             # same packing threshold as case_D/case_V
+                            # (same particle geometry; density only changes
+                            # bed weight, not RCP). source: see case_D.
 
 # Static bed-height sweep for Day 2 U_mf / U_ms figure.
 # source: implementation-steps/day-2.md (0.05-0.20 m)
@@ -90,10 +108,9 @@ H_sweep_m:
 # bed volume and eps_s ~ 0.6 for H = 0.10 m" and "pseudo-2D slab thickness ~ 5 d_p").
 day4_count_estimate:
   H_static_m: 0.10              # static bed height for the count estimate [m]
-                                 # source: implementation-steps/day-4.md
+                                # source: implementation-steps/day-4.md
   eps_s: 0.6                     # bed solids volume fraction [-]
-                                 # source: implementation-steps/day-4.md (loose random packing;
-                                 # typical for Geldart-D spherical particles, ~1 - eps_mf)
+                                 # source: implementation-steps/day-4.md
   slab_thickness_particles: 5    # pseudo-2D slab thickness in particle diameters [-]
                                  # source: implementation-steps/day-4.md
 
@@ -101,23 +118,15 @@ day4_count_estimate:
 # See implementation-steps/day-6-7.md.
 fb_sweep:
   H_static_m: 0.10        # static (packed) bed height in the 2D rig [m]
-                          # source: implementation-steps/day-4.md convention; reused here
+                          # source: implementation-steps/day-4.md convention
   eps_s_bed: 0.55         # solids fraction in the packed region at t=0 [-]
-                          # source: assumed; sits slightly below random loose
-                          # packing (RLP ~ 0.58-0.60 for monodisperse spheres)
-                          # so the gas can carry the bed smoothly into
-                          # fluidization from a lightly settled IC. Well below
-                          # the physical packing limit eps_s,max = 1 - ep_star
-                          # = 0.63 (see case_D.ep_star), so Schaeffer frictional
-                          # stress is inactive at t = 0 by physics, not by
-                          # tuning. Bed weight per area used as plateau target
-                          # scales linearly with this:
-                          # W/A = (rho_p - rho_g) * eps_s_bed * g * H_static.
-                          # Day 6-7 fb_sweep .mfx cases were generated with
-                          # this value; do not change it without re-running
-                          # the sweep (ΔP targets depend on it).
+                          # source: assumed; sits below the ep_star=0.42
+                          # Schaeffer threshold (1 - 0.42 = 0.58 > 0.55).
+                          # Day 6-7 base-mesh runs were generated with this
+                          # value; do not change it without re-running the
+                          # sweep (DeltaP targets depend on it).
   gas_case: air_20C       # key in params/gases.yaml for the fluidizing gas
-                          # source: implementation-steps/day-6-7.md ("air at 20 C")
+                          # source: implementation-steps/day-6-7.md
   u_over_umf:             # sweep ratios U / U_mf,calc [-]
                           # source: implementation-steps/day-6-7.md
     - 0.3
@@ -131,79 +140,6 @@ fb_sweep:
   t_startup_s: 5.0        # discard this initial window before averaging [s]
                           # source: assumed; typical TFM startup transient
   t_avg_s: 3.0            # minimum time-averaging window after startup [s]
-                          # source: implementation-steps/day-6-7.md ("at least the last 3 s")
+                          # source: implementation-steps/day-6-7.md
   dt_init_s: 1.0e-3       # initial MFiX time step [s]
-                          # source: Day-5 tutorial precedent (dt=1e-3 for 2D TFM, 200 um bed)
-
-# Day 9: Case V_2d spouting run at an inlet velocity of 1.2 x U_ms
-# (Mathur-Gishler) with the Syamlal-O'Brien drag model and e = 0.9.
-# source: implementation-steps/day-9.md
-V_2d_day9:
-  u_over_ums: 1.2          # ratio of inlet velocity to U_ms,MG (column superficial) [-]
-                           # source: implementation-steps/day-9.md ("1.2x U_ms")
-  drag_type: GIDASPOW      # MFiX drag closure keyword (recorded choice; step says
-                           # "Gidaspow or Syamlal-O'Brien"). GIDASPOW blends
-                           # Ergun (dense, eps_g < 0.8) with Wen-Yu (dilute),
-                           # which handles the sharp packed-bed/freeboard
-                           # interface more smoothly than SYAM_OBRIEN. Run 4
-                           # with SYAM_OBRIEN crashed on DT < DT_MIN at
-                           # t ~ 0.005 s when the jet first reached the packed
-                           # region (ep_s_bed = 0.59); switching to GIDASPOW
-                           # was the Run-5 change (see notes/day09_debug.md).
-                           # source: implementation-steps/day-9.md; MFiX 26.1.2
-                           #         keyword reference, drag_type.
-  c_e: 0.9                 # particle-particle restitution coefficient [-]
-                           # source: implementation-steps/day-9.md ("e = 0.9")
-  tstop_s: 2.5             # simulated end time [s]
-                           # source: implementation-steps/day-9.md asks for
-                           # ">= 5 s" but the full 5 s run on the Day-8 mesh
-                           # projects to ~1.7 days wall-clock on the session
-                           # laptop (CFL-limited by 25 m/s orifice at
-                           # dx = 1.19 mm; see notes/day09_debug.md Run 1).
-                           # Dropped to 2.5 s on the coarsened Day-9 mesh so
-                           # the simulated time still covers >= 2 s of
-                           # established spouting (fountain + annulus) beyond
-                           # the ~0.3 s establishment window; the step's
-                           # "done when: persist for several seconds" is met.
-  imax: 32                 # x cell count (Day-9 override) [-]
-                           # dx = 2*R_c/imax = 0.076/32 = 2.375 mm
-                           # orifice |x|<=R_i spans 2*R_i/dx = 4.0 cells
-                           # (= Day-8 acceptance floor "orifice >= 4 cells")
-                           # source: notes/day09_debug.md Run 2 (CFL relaxation)
-  jmax: 168                # y cell count (Day-9 override) [-]
-                           # dy = H_dom/jmax = 0.40/168 = 2.381 mm (~dx)
-                           # source: isotropic-cell convention
-  dt_max_s: 1.0e-4         # cap MFiX adaptive dt [s]
-                           # dt_CFL at U_in=8.70 m/s, dx=2.375 mm, CFL=0.5
-                           # is 1.37e-4 s. Capping dt_max at 1e-4 keeps the
-                           # adaptive stepper from re-growing dt past the
-                           # local CFL floor after a Newton recovery.
-                           # source: notes/day09_debug.md Run 6 (Run 5 crashed
-                           # after dt_fac grew dt back toward the loose 0.01
-                           # cap at t ~ 0.0108 s)
-  eps_s_bed: 0.50          # Day-9 IC bed solids fraction override [-]
-                           # Day-8 YAML sets eps_s_bed = 0.59 (= 1 - eps_mf,
-                           # R13/R14 settled value). With Case V_rpt particles
-                           # (2.18 mm beads) and the GIDASPOW drag closure, a
-                           # cold packed-bed IC at eps_mf drives the TFM solver
-                           # into a near-singular pressure-coupling at both
-                           # the jet-breakthrough and the first fountain-
-                           # fallback events (Runs 4-7 in notes/day09_debug.md).
-                           # Dropping the IC to eps_s = 0.50 puts the bed in
-                           # the dilute (above-U_mf) regime from t = 0, which:
-                           #   (a) matches the actual R13/R14 steady-state
-                           #       operating condition (bed is fluidised at
-                           #       U > U_mf),
-                           #   (b) removes the Ergun stiffness front that
-                           #       destabilises the Newton loop, and
-                           #   (c) stays well below the Schaeffer frictional
-                           #       threshold 1 - ep_star = 0.63, so no
-                           #       physics is turned off.
-                           # source: notes/day09_debug.md Run 8 (option 2)
-  max_nit: 100             # inner Newton iteration ceiling [-]
-                           # Runs 4-5 peaked at ~27 iterations in the stiff
-                           # startup region; MFiX default 50 was enough that
-                           # dt collapse (not nit cap) was the root cause.
-                           # Lifting to 100 gives Gidaspow more head-room on
-                           # the packed-dilute transition front.
-                           # source: notes/day09_debug.md Run 6
+                          # source: Day-5 tutorial precedent

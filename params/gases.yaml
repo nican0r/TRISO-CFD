@@ -16,10 +16,11 @@ cases:
   air_25C:
     label: "Air, 25 C"
     T_K: 298.15
-    # Case V_rpt experimental gas: dry compressed air at 298 K, 101 kPa.
-    # Paper-reported properties (R13/R14): rho_f = 1.21 kg/m3, mu = 1.81e-5 Pa.s.
-    # Cantera via src.gasprops.gas_props returns the same at 298.15 K.
-    # source: R13 / R14 experimental conditions
+    # Case V (ORNL/UTK) experimental gas: S2 reports humidified compressed
+    # air at 70-79 F (21-26 C) and ~740 mmHg. We model it as dry air at
+    # 298.15 K via Cantera; the humidity effect on gas properties is
+    # neglected and noted (S2 does not quantify it).
+    # source: S2 (Zhou et al. 2005, UTK mockup operating conditions).
     composition:
       N2: 0.79
       O2: 0.21

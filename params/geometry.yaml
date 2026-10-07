@@ -1,128 +1,80 @@
-# Missouri S&T 0.076 m (3-inch) cold-flow spouted bed geometry.
-# All values SI (metres, degrees). Used by the Day 2 U_ms hand-calculations
-# and (from Day 3 onward) by the MFiX case builders.
+# ORNL/UTK cold-mockup spouted-bed geometry.
+# All values SI (metres, degrees). Used by Day 2 U_ms hand-calculations and
+# (from Day 3 onward) by the MFiX case builders.
 #
-# source: implementation-steps/day-2.md and PLAN.md 1.3 / Resources R13-R15
-#         (OSTI 1533774, 1538701, 1054926).
+# source: S1 (ORNL/TM-2006/520, "standard 50-mm 60-degree cone") and S2
+#         (Zhou et al. 2005, UTK mockup). The ORNL coater's own inlet
+#         diameter is not confirmed to be 4 mm in S1, so the ORNL 2-inch
+#         coater case (if ever added) will need its own geometry block.
 
-bed_0p076m:
-  D_c_m: 0.076         # column (cylindrical section) inside diameter [m]
-                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
-  D_i_m: 0.0095        # inlet-orifice diameter [m]  (9.5 mm)
-                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+bed_V:
+  D_c_m: 0.050         # column (cylindrical section) inside diameter [m]
+                       # source: S1 ("standard 50-mm cone"); S2 (UTK mockup).
+  D_i_m: 0.004         # inlet-orifice diameter [m]  (4 mm, constant diameter)
+                       # S2 body text says 0.004 m. S2's abstract says
+                       # "0.04 cm" (= 0.4 mm) which is treated as a typo
+                       # (contradicts S2's own body text). INL/CON-07-12569
+                       # independently confirms a 4 mm constant-diameter
+                       # inlet on an INL coater.
+                       # source: S2 body text; INL/CON-07-12569 (supporting).
+                       # Discrepancy recorded in notes/day8_summary.md.
   cone_angle_deg: 60   # included cone angle at base [deg]
-                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
-  H_column_m: 1.14     # total column (cylindrical section) height [m]
-                       # source: PLAN.md 1.3; R14 (OSTI 1538701)
+                       # => half-angle 30 deg from the vertical axis.
+                       # source: S1 ("standard 50-mm 60-degree cone"); S2
+                       #         (UTK mockup tested 45, 60, and 75 deg;
+                       #         we use 60 deg to match S1).
 
 # Day 6-7: flat-bottom 2D bubbling-bed test rig for the U_mf sweep.
 # No spout: uniform MI across the entire bottom edge. See
-# implementation-steps/day-6-7.md.
+# implementation-steps/day-6-7.md. Width retargeted to match the ORNL/UTK
+# column (0.05 m) now that Case V has been retargeted. Day-6-7 historical
+# base-mesh runs were generated on the pre-retargeted column.
 fb_sweep_2d:
-  width_m: 0.076       # domain width [m]  (match bed_0p076m D_c)
-                       # source: params/geometry.yaml bed_0p076m D_c_m
+  width_m: 0.050       # domain width [m]  (match bed_V D_c)
+                       # source: params/geometry.yaml bed_V D_c_m
   height_m: 0.30       # domain height [m] (3x H_static, room for bed expansion)
                        # source: assumed; freeboard ~2x bed height
-  imax_base: 38        # base-mesh cells across width [-]  -> dx = 2 mm (~ 4 d_p)
+  imax_base: 38        # base-mesh cells across width [-]  -> dx = ~1.3 mm (~ 2.6 d_p)
                        # source: assumed; see notes/day6-7_summary.md
-  jmax_base: 150       # base-mesh cells up height [-]     -> dy = 2 mm
+  jmax_base: 150       # base-mesh cells up height [-]
                        # source: assumed; isotropic cells on base mesh
 
-# Day 8: Case V spouted-bed templates.
-# Same column geometry as bed_0p076m but with the cone and inlet orifice
-# explicitly resolved. The axial domain is truncated to 3 x H_static plus
-# fountain headroom (not the full 1.14 m column), per implementation-steps/day-8.md.
+# Day 8: Case V spouted-bed template (ORNL/UTK cold mockup).
+# Planar quadric cut-cell slab (option (b) in implementation-steps/day-8.md).
+# MFiX 26.1.2 forbids `cartesian_grid=.True.` with `coordinates='CYLINDRICAL'`,
+# so option (a) (axisymmetric with stair-stepped cone) cannot carry a
+# resolved sloped cone wall under documented keywords; option (b) is used
+# and results are to be treated as qualitative only (see day-8.md).
 #
-# Static bed height is set to 0.10 m to match the Day 4 count estimate and
-# the Day 6-7 fb_sweep bed, so bed inventory and ΔP targets stay consistent
-# across the project.
-#
-# source: implementation-steps/day-8.md ("domain height ~ 3 x H_static plus
-# fountain headroom rather than the full 1.14 m column"); R14 (OSTI 1538701)
-# for the 0.076 m / 0.0095 m / 60 deg column geometry.
-
+# The axial domain is truncated to ~3 x bed height plus fountain headroom,
+# not the full S1/S2 column. The ORNL/UTK column height is not needed for
+# the smoke test; a tall freeboard is budgeted but the full column is not.
 spouted_bed_V_2d:
-  # 2D Cartesian cut-cell template using MFiX's NATIVE quadric geometry
-  # (coordinates='CARTESIAN', cartesian_grid=.True., use_stl=.False.,
-  # n_quadric=1 with a single Y_CONE primitive for the cone wall, no_k=.True.).
-  # No STL file dependency - the vessel geometry comes entirely from the
-  # Y_CONE quadric plus the natural domain walls at x = +/- R_c above the
-  # cone section.
-  H_static_m: 0.10          # initial packed-bed height [m]
-                             # source: params/particles.yaml fb_sweep H_static_m
-  H_dom_m: 0.40              # axial domain extent [m] = 3 x H_static + 0.10 m
+  H_dom_m: 0.20              # axial domain extent [m]
+                             # ~3 x H_static (0.032 m) + ~0.10 m fountain
+                             # headroom. 500 um ZrO2 fountains in this
+                             # coater are typically ~2-3 x bed height, so
+                             # H_dom = 0.20 m covers the fountain.
                              # source: implementation-steps/day-8.md
-                             #         (0.10 m fountain headroom = assumed)
-  cone_apex_y_m: -0.008227   # y-position of the (virtual) Y_CONE apex [m]
-                             # = -R_i / tan(30 deg); places r = R_i at y = 0.
-                             # Fed to t_y(1) of the Y_CONE quadric.
-                             # source: derived from D_i and 60 deg cone
-  cone_top_y_m: 0.057632     # axial position where the cone meets the
-                             # cylindrical column [m] = (R_c-R_i)/tan(30 deg).
-                             # Fed to clip_ymax(1) of the Y_CONE quadric,
-                             # and used for the V_2d schematic overlay.
-                             # source: derived from D_c, D_i, and 60 deg cone
+                             # (3 x bed + fountain headroom)
   cone_half_angle_deg: 30.0  # Y_CONE half_angle(1) [deg]; 60 deg included cone.
-                             # source: PLAN.md 1.3 / R14 (OSTI 1538701)
-  imax: 64                   # x cell count across full width [-]
-                             # -> dx = 2*R_c/imax = 0.076/64 = 1.1875 mm
-                             # -> orifice |x|<=R_i spans 2*R_i/dx = 8.0 cells
-                             # source: implementation-steps/day-8.md ("2D inlet
-                             # orifice spans >= 4 cells")
-  jmax: 336                  # axial cell count [-]
-                             # -> dy = H_dom/jmax = 0.40/336 = 1.1905 mm
-                             # chosen so dy ~ dx (near-isotropic cells)
-                             # source: assumed; isotropic-cell convention
+                             # source: S1 ("60 deg cone"); S2 (UTK mockup).
+  imax: 50                   # x cell count across full width [-]
+                             # dx = 2*R_c/imax = 0.050/50 = 1.000 mm
+                             # orifice |x|<=R_i spans 2*R_i/dx = 4.0 cells
+                             # (= Day-8 acceptance floor "orifice >= 4 cells").
+                             # Cell size 1.0 mm = 2 d_p is well under the
+                             # 10 d_p = 5 mm max-cell rule from S1 Table 1.
+                             # source: implementation-steps/day-8.md
+                             # (planar: cell size <= 1 mm, orifice >= 4 cells).
+  jmax: 200                  # axial cell count [-]
+                             # dy = H_dom/jmax = 0.20/200 = 1.000 mm (= dx).
+                             # source: isotropic-cell convention.
   kmax: 1                    # z cell count [-]  (true 2D with no_k=.True.)
-                             # Unlike STL (which MFiX forbids with no_k),
-                             # quadrics work in no_k mode, so V_2d is a
-                             # true 2D run - half the cells of the earlier
-                             # kmax=2 STL slab.
-                             # source: MFiX quadric + no_k support
-  z_thickness_m: 0.0011875   # single-cell slab thickness [m] = dx so dz = dx.
-                             # -> z_min = -z_thickness_m/2,
-                             #    z_max = +z_thickness_m/2,
-                             #    zlength = z_thickness_m
-                             # source: assumed; cosmetic (no_k collapses z)
-
-spouted_bed_V_3d:
-  # 3D cut-cell template (cartesian_grid=.True., use_stl=.True.).
-  # STL built by src/make_stl.py as a surface of revolution of the cone+column.
-  H_static_m: 0.10           # initial packed-bed height [m]
-                              # source: params/particles.yaml fb_sweep H_static_m
-  H_dom_m: 0.40               # axial domain extent [m] (same as V_2d)
-                              # source: implementation-steps/day-8.md
-  cell_size_m: 0.0025         # target isotropic cell size [m] (~ 2.5 mm)
-                              # source: implementation-steps/day-8.md
-                              #         ("cell size of ~2-3 mm to start")
-  imax: 31                    # x cells -> dx = 0.076/31 = 2.452 mm
-                              # source: derived from D_c and cell_size_m
-  jmax: 160                   # y (axial) cells -> dy = 0.40/160 = 2.500 mm
-                              # source: derived from H_dom and cell_size_m
-  kmax: 31                    # z cells -> dz = 0.076/31 = 2.452 mm
-                              # source: derived from D_c and cell_size_m
-  theta_segments: 60          # angular segments used by src/make_stl.py when
-                              # tessellating the surface of revolution [-]
-                              # source: assumed; 6 deg per facet is finer than
-                              # 2 cells per facet at r = R_c (dz ~ 2.5 mm,
-                              # chord = R_c * 2 * sin(pi/60) ~ 4.0 mm)
-
-spouted_bed_V_initial:
-  # Initial-condition block shared by V_2d and V_3d templates.
-  # NOTE: ep_star (TFM packing limit) lives in params/particles.yaml as
-  # case_V_rpt.ep_star (and case_D.ep_star) -- it is a particle-geometry
-  # property (RCP of monodisperse smooth spheres), not vessel geometry. The
-  # V_2d / V_3d builders in src/make_case.py read it from there, so Case V
-  # carries a single physically-grounded packing limit (ep_star = 0.37,
-  # eps_s,max = 0.63).
-  eps_s_bed: 0.59             # bed solids volume fraction at t=0 [-]
-                              # Set to the Missouri S&T RPT minimum-fluidization
-                              # value: eps_s,bed = 1 - eps_mf = 1 - 0.41 = 0.59
-                              # (case_V_rpt.eps_mf). This is the natural
-                              # settled-bed voidage reported in R13/R14, and
-                              # sits below the physical packing limit
-                              # eps_s,max = 0.63 (= 1 - case_V_rpt.ep_star), so
-                              # Schaeffer frictional stress is inactive at t=0
-                              # by physics, not numerical tuning.
-                              # source: R13/R14 experimental conditions
-                              #         (eps_mf = 0.41 for 2.18 mm glass beads)
+                             # Quadrics work in no_k mode; STL does not
+                             # (get_stl_data.f:813). V_2d uses a native
+                             # Y_CONE quadric so kmax=1 is valid.
+                             # source: MFiX 26.1.2 (quadric + no_k support).
+  z_thickness_m: 0.001       # single-cell slab thickness [m] = dx so dz = dx.
+                             # z_min = -z_thickness/2, z_max = +z_thickness/2,
+                             # zlength = z_thickness. source: assumed (cosmetic).

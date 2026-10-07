@@ -22,7 +22,7 @@ Key artifacts:
 
 - `params/particles.yaml` — added the `fb_sweep` block (H_static_m, eps_s_bed,
   u_over_umf, t_startup_s, t_avg_s, dt_init_s, gas_case).
-- `params/geometry.yaml` — added the `fb_sweep_2d` block (width 0.076 m,
+- `params/geometry.yaml` — added the `fb_sweep_2d` block (width 0.050 m,
   height 0.30 m, base-mesh counts).
 - `cases/fb_sweep/template.mfx.j2` — Jinja2 template; every keyword resolves
   to the MFiX 26.1.2 reference entry audited in `notes/mfx_anatomy.md`.

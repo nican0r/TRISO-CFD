@@ -176,22 +176,22 @@ def test_geldart_class_rejects_neutral_buoyancy():
 
 
 def test_ums_mathur_gishler_hand_calc():
-    # Missouri S&T 0.076 m bed: D_c=0.076, D_i=0.0095.
-    # Case D particles: d_p=500e-6 m, rho_p=6000 kg/m^3.
+    # ORNL/UTK cold-mockup geometry: D_c=0.050, D_i=0.004.
+    # Case D particles: d_p=500e-6 m, rho_p=6050 kg/m^3.
     # Ar at 20 C: rho ~= 1.66 kg/m^3.  H = 0.10 m.
     #
-    #   d_p/D_c        = 500e-6 / 0.076    = 6.5789e-3
-    #   (D_i/D_c)^(1/3)= (0.0095/0.076)^(1/3) = (0.125)^(1/3) = 0.5
-    #   inside sqrt    = 2 * 9.80665 * 0.10 * (6000-1.66)/1.66
-    #                  = 1.96133 * 3613.457 = 7086.93
-    #   sqrt(...)      = 84.184
-    #   U_ms           = 6.5789e-3 * 0.5 * 84.184 = 0.2770 m/s
-    u_ms = ums_mathur_gishler(500e-6, 6000.0, 1.66, 0.076, 0.0095, 0.10)
-    assert u_ms == pytest.approx(0.2770, rel=5e-3)
+    #   d_p/D_c        = 500e-6 / 0.050     = 1.0000e-2
+    #   (D_i/D_c)^(1/3)= (0.004/0.050)^(1/3) = (0.08)^(1/3) = 0.43089
+    #   inside sqrt    = 2 * 9.80665 * 0.10 * (6050-1.66)/1.66
+    #                  = 1.96133 * 3643.579 = 7147.01
+    #   sqrt(...)      = 84.5401
+    #   U_ms           = 1.0000e-2 * 0.43089 * 84.5401 = 0.3643 m/s
+    u_ms = ums_mathur_gishler(500e-6, 6050.0, 1.66, 0.050, 0.004, 0.10)
+    assert u_ms == pytest.approx(0.3643, rel=5e-3)
 
 
 def test_ums_mathur_gishler_scales_as_sqrt_H():
     # Analytical scaling: U_ms proportional to sqrt(H).
-    u1 = ums_mathur_gishler(500e-6, 6000.0, 1.66, 0.076, 0.0095, 0.05)
-    u2 = ums_mathur_gishler(500e-6, 6000.0, 1.66, 0.076, 0.0095, 0.20)
+    u1 = ums_mathur_gishler(500e-6, 6050.0, 1.66, 0.050, 0.004, 0.05)
+    u2 = ums_mathur_gishler(500e-6, 6050.0, 1.66, 0.050, 0.004, 0.20)
     assert u2 / u1 == pytest.approx(2.0, rel=1e-9)
