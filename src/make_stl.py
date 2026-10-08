@@ -15,8 +15,13 @@ Public API:
     build_spouted_bed_stl(R_c_m, R_i_m, cone_half_angle_deg, H_dom_m,
                            theta_segments, out_path) -> Path
 
-All lengths SI (m).  Facet normals point outward (away from the fluid), which
-matches MFiX's default STL convention for internal flow.
+All lengths SI (m).  Facet normals point INWARD (toward the fluid region),
+per MFiX's OUT_STL_VALUE = 1.0 internal-flow convention: the F_AT classifier
+in cartesian_grid/intersect.f assigns F_AT < 0 (fluid) to nodes where
+dot(vec_to_node, NORM_FACE) > 0, which requires NORM_FACE to point into the
+fluid interior.  NETL's shipped tutorials/pic/spouted_bed_3d/geometry_0001.stl
+has all sidewall normals with nr < 0 (inward toward the axis), confirming
+this convention.
 """
 
 from __future__ import annotations
@@ -76,9 +81,11 @@ def build_spouted_bed_stl(
     out_path            : destination .stl file (ASCII format)
     close_bottom        : if True, emit an annular floor at y=0 from
                           r=R_i to r=R_c (keeps the orifice open at r<R_i).
-                          Normals point in -y (outward from the fluid region).
+                          Normals point in +y (inward, toward the fluid above
+                          the floor), per MFiX OUT_STL_VALUE=1.0 convention.
     close_top           : if True, emit a disk cap at y=H_dom from r=0
-                          to r=R_c. Normals point in +y (outward).
+                          to r=R_c. Normals point in -y (inward, toward the
+                          fluid below the cap).
     L_stub_m            : if > 0, prepend an inlet stub tube of radius R_i
                           from y = -L_stub to y = 0 to the profile.  Used
                           by the Day-10 fix to replicate NETL's PIC
@@ -96,8 +103,10 @@ def build_spouted_bed_stl(
         y > h_cone      : cylindrical wall at r = R_c
         y = H_dom       : top
 
-    Normals point outward (toward -r on the walls, toward -y on the floor
-    annulus, toward +y on the top cap), i.e. away from the fluid region.
+    Normals point INWARD (toward +r on the walls -- toward the axis; toward
+    +y on the floor annulus -- into the vessel; toward -y on the top cap --
+    into the vessel), i.e. toward the fluid region, per MFiX OUT_STL_VALUE=1.0
+    convention.
 
     Day-10 note.  The Day-8 run on the planar quadric slab used an open
     (side-walls-only) STL and only tested STL writing; MFiX never consumed
@@ -161,16 +170,18 @@ def build_spouted_bed_stl(
             v01 = vertex(r_lo, y_lo, k2)
             v10 = vertex(r_hi, y_hi, k)
             v11 = vertex(r_hi, y_hi, k2)
-            # Outward-pointing right-hand ordering: (lo_k, hi_k, hi_k2),
-            # (lo_k, hi_k2, lo_k2).  Check: at k=0 this gives a normal with
-            # positive radial component for r_hi >= r_lo.
-            triangles.append((v00, v10, v11))
-            triangles.append((v00, v11, v01))
+            # Inward-pointing right-hand ordering: (lo_k, hi_k2, hi_k),
+            # (lo_k, lo_k2, hi_k2).  Reversing the second and third vertices
+            # flips the cross-product, giving nr < 0 (toward the axis) on the
+            # cylinder and nr < 0 (toward the interior) on the cone.
+            triangles.append((v00, v11, v10))   # inward normal
+            triangles.append((v00, v01, v11))   # inward normal
 
     # Bottom annular floor at y = 0: a ring from r = R_i (orifice rim) to
     # r = R_c (vessel wall).  The wall at y = 0 has r = R_i (cone bottom
-    # edge) so the floor annulus degenerates to r in [R_i, R_c].  Facet
-    # normals point in -y (outward, since the fluid is above the floor).
+    # edge) so the floor annulus spans r in [R_i, R_c].  Facet normals
+    # point in +y (inward, toward the fluid above the floor), per MFiX
+    # OUT_STL_VALUE=1.0 convention.
     # Only emitted when close_bottom=True (Day 10 run with closed STL).
     if close_bottom:
         for k in range(theta_segments):
@@ -180,12 +191,12 @@ def build_spouted_bed_stl(
             vi1 = vertex(R_i_m, 0.0, k2)
             vo0 = vertex(R_c_m, 0.0, k)
             vo1 = vertex(R_c_m, 0.0, k2)
-            # Right-handed ordering for -y normal (clockwise when viewed
-            # from above): (inner_k2, inner_k, outer_k), (inner_k2,
-            # outer_k, outer_k2).  Verified by taking cross product and
-            # confirming n_y < 0.
-            triangles.append((vi1, vi0, vo0))
-            triangles.append((vi1, vo0, vo1))
+            # Right-handed ordering for +y normal (counter-clockwise when
+            # viewed from above, i.e. inward toward the fluid above the
+            # floor): (inner_k2, outer_k, inner_k), (inner_k2, outer_k2,
+            # outer_k).  Verified by cross product: n_y > 0.
+            triangles.append((vi1, vo0, vi0))   # inward (+y) normal
+            triangles.append((vi1, vo1, vo0))   # inward (+y) normal
 
     # Top is left open (PO face at y = H_dom covers the full cross-section;
     # a disk cap would collide with the PO BC region).  close_top is
@@ -196,7 +207,10 @@ def build_spouted_bed_stl(
             k2 = k + 1
             vo0 = vertex(R_c_m, H_dom_m, k)
             vo1 = vertex(R_c_m, H_dom_m, k2)
-            triangles.append((v_axis, vo0, vo1))
+            # Right-handed ordering for -y normal (inward, toward the fluid
+            # below the cap): (axis, outer_k, outer_k2).  Cross product
+            # gives n_y = -(R_c^2 * sin(dtheta)) < 0 (inward).
+            triangles.append((v_axis, vo0, vo1))   # inward (-y) normal
 
     _write_ascii_stl(triangles, "spouted_bed_V_3d", out_path)
     return out_path
@@ -210,6 +224,7 @@ def build_spouted_bed_stl_implicit(
     L_stub_m: float,
     dx_sample_m: float,
     out_path: Path,
+    top_extend_m: float = 0.0,
 ) -> Path:
     """Build the Case V spouted-bed STL via implicit-boolean sampling.
 
@@ -235,6 +250,13 @@ def build_spouted_bed_stl_implicit(
                           cell edge intersects at least one STL facet
                           (notes/day10_summary.md fix 3).
     out_path            : destination .stl file (ASCII format)
+    top_extend_m        : if > 0, extends the freeboard cylinder's upper
+                          cap above y = H_dom by this amount so the PO
+                          plane at y = H_dom cuts through STL side walls
+                          (not through the top cap facets, which MFiX
+                          discards as "flush with box face").  5 mm is
+                          sufficient at typical mesh resolutions.
+                          Default 0.0 keeps backward compatibility.
 
     Returns the written path.
 
@@ -273,12 +295,16 @@ def build_spouted_bed_stl_implicit(
 
     # Sampling grid.  Margin of 2 * dx on all sides so the surface closes
     # on the box faces instead of leaving dangling edges where the solid
-    # meets the sampling-grid boundary.
+    # meets the sampling-grid boundary.  Day-10 R1: optionally extend the
+    # freeboard upper bound by top_extend_m so the top cap sits above the
+    # Cartesian box face (y_max_m = H_dom_m) and the PO plane cuts through
+    # side-wall facets.
     margin = 2.0 * dx_sample_m
+    y_top_m = H_dom_m + top_extend_m
     x0 = -R_c_m - margin
     x1 = R_c_m + margin
     y0 = -L_stub_m - margin
-    y1 = H_dom_m + margin
+    y1 = y_top_m + margin
     z0 = -R_c_m - margin
     z1 = R_c_m + margin
 
@@ -309,9 +335,9 @@ def build_spouted_bed_stl_implicit(
         [R - r_cone_bound, 0.0 - Y, Y - h_cone_m]
     )
 
-    # Freeboard cylinder: radius R_c, y in [h_cone, H_dom].
+    # Freeboard cylinder: radius R_c, y in [h_cone, H_dom + top_extend].
     sdf_free = np.maximum.reduce(
-        [R - R_c_m, h_cone_m - Y, Y - H_dom_m]
+        [R - R_c_m, h_cone_m - Y, Y - y_top_m]
     )
 
     # Union: min of all primitive SDFs.
@@ -361,13 +387,18 @@ def build_spouted_bed_stl_implicit(
         s_stub = np.maximum.reduce([rp - R_i_m, -L_stub_m - yp, yp - 0.0])
         rc = R_i_m + yp * tan_h
         s_cone = np.maximum.reduce([rp - rc, 0.0 - yp, yp - h_cone_m])
-        s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - H_dom_m])
+        s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - y_top_m])
         return np.minimum.reduce([s_stub, s_cone, s_free])
     sdf_at_probe = _sdf_point(r_probe, yp)
-    # Majority vote on outward: if more probe samples are negative (inside)
-    # than positive, the current winding points inward -> flip.
+    # Majority vote for INWARD normals per MFiX OUT_STL_VALUE=1.0 convention.
+    # A probe at (centroid + eps*normal) landing in sdf < 0 (inside the fluid
+    # cavity) means the current normal points INTO the fluid -- which is what
+    # MFiX requires (verified in cartesian_grid/intersect.f F_AT sign test,
+    # and against NETL tutorials/pic/spouted_bed_3d/geometry_0001.stl which
+    # has all sidewall nr < 0).  Flip only when the majority points OUTWARD
+    # (probes land in sdf > 0, inside_frac < 0.5).
     inside_frac = float(np.mean(sdf_at_probe < 0.0))
-    flip = inside_frac > 0.5
+    flip = inside_frac < 0.5
 
     triangles: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for f in faces:

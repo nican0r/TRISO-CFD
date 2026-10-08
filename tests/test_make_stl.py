@@ -7,8 +7,28 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from src.make_stl import build_spouted_bed_stl, build_spouted_bed_stl_implicit
+
+# ---------------------------------------------------------------------------
+# Production geometry values loaded once from params/geometry.yaml.
+# All downstream fixtures and tests that touch the implicit-SDF path must use
+# these so a change to the YAML immediately propagates to the test suite.
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_GEO = yaml.safe_load((_REPO_ROOT / "params" / "geometry.yaml").read_text())
+_V3D = _GEO["spouted_bed_V_3d"]
+
+# Production L_stub_m (R1 value: 0.020 m).  Used by the implicit-STL fixture
+# and by test_production_L_stub_minimum to catch regression to the old 0.010 m
+# value that crashed the first PIC attempt.
+_PROD_L_STUB_M: float = float(_V3D["L_stub_m"])
+
+# Minimum acceptable stub length [m].  Chosen midway between the broken
+# pre-R1 value (0.010 m) and the current working value (0.020 m) so that
+# drift in either dangerous direction triggers a test failure.
+_L_STUB_MIN_M: float = 0.015
 
 
 @pytest.fixture()
@@ -116,15 +136,23 @@ def test_invalid_cone_rejected(tmp_path):
 
 @pytest.fixture(scope="module")
 def implicit_stl_path(tmp_path_factory) -> Path:
-    """Build a coarse implicit-SDF STL once per test session (slow)."""
+    """Build a coarse implicit-SDF STL once per test session (slow).
+
+    L_stub_m is taken from the production params/geometry.yaml
+    (spouted_bed_V_3d.L_stub_m) so this fixture automatically tracks any
+    future YAML change.  The test-only dx_sample_m is kept at 1 mm (coarser
+    than the production 0.5 mm) to keep the test fast; it is not taken from
+    the YAML because it only controls STL resolution and does not affect the
+    physics that the tests below verify.
+    """
     out = tmp_path_factory.mktemp("implicit") / "spouted_implicit.stl"
     build_spouted_bed_stl_implicit(
         R_c_m=0.025,
         R_i_m=0.002,
         cone_half_angle_deg=30.0,
         H_dom_m=0.20,
-        L_stub_m=0.010,
-        dx_sample_m=0.001,   # 1 mm sampling (coarse to keep the test fast)
+        L_stub_m=_PROD_L_STUB_M,       # production value from geometry.yaml
+        dx_sample_m=0.001,              # 1 mm sampling (coarse to keep the test fast)
         out_path=out,
     )
     return out
@@ -147,9 +175,12 @@ def test_implicit_bounding_box(implicit_stl_path):
     verts = _parse_vertices(implicit_stl_path.read_text())
     # y-span should cover [-L_stub, H_dom] with small overrun due to the
     # 2*dx margin and marching-cubes grid alignment.
+    # L_stub is the production value loaded from params/geometry.yaml so this
+    # assertion automatically tightens or widens with any future YAML change.
     y = verts[:, 1]
-    assert y.min() <= -0.010 + 0.002   # within 2 mm of -L_stub
-    assert y.max() >= 0.20 - 0.002     # within 2 mm of H_dom
+    dx_test = 0.001   # test-fixture dx_sample_m (1 mm)
+    assert y.min() <= -_PROD_L_STUB_M + 2 * dx_test   # within 2 mm of -L_stub
+    assert y.max() >= 0.20 - 2 * dx_test               # within 2 mm of H_dom
 
 
 def test_implicit_no_nan_inf(implicit_stl_path):
@@ -167,3 +198,33 @@ def test_implicit_orifice_rim_radius(implicit_stl_path):
     assert r_near.size > 0
     # Within 2 * dx_sample = 2 mm of R_i = 2 mm.
     assert np.min(r_near) == pytest.approx(0.002, abs=2e-3)
+
+
+# ---------------------------------------------------------------------------
+# Regression guard: production L_stub_m must stay at or above the minimum
+# that allows stable PIC spouting.  The pre-R1 value of 0.010 m crashed the
+# first PIC launch (inlet jet too short to develop before hitting the cone).
+# This test is completely independent of the implicit-STL fixture so it runs
+# even when the slow marching-cubes tests are skipped.
+# ---------------------------------------------------------------------------
+
+
+def test_production_L_stub_minimum():
+    """params/geometry.yaml spouted_bed_V_3d.L_stub_m must be >= 0.015 m.
+
+    0.015 m is the midpoint between:
+      - 0.010 m: the pre-R1 (broken) value that caused the first PIC run to
+        crash (inlet jet collapsed before reaching the cone orifice plane).
+      - 0.020 m: the current R1 production value.
+
+    A change to any value below 0.015 m in geometry.yaml now fails this test,
+    making the regression immediately visible instead of silently passing the
+    suite while the simulation crashes at runtime.
+    """
+    assert _PROD_L_STUB_M >= _L_STUB_MIN_M, (
+        f"params/geometry.yaml spouted_bed_V_3d.L_stub_m = {_PROD_L_STUB_M!r} m "
+        f"is below the minimum safe value of {_L_STUB_MIN_M!r} m.  "
+        f"The pre-R1 value of 0.010 m caused the first PIC launch to crash; "
+        f"restoring a short stub will break the simulation.  "
+        f"Update spouted_bed_V_3d.L_stub_m to >= {_L_STUB_MIN_M!r} m."
+    )
