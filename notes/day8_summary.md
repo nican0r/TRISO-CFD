@@ -12,27 +12,40 @@ template, parameter builder, tests, and a geometry schematic.
 - `params/geometry.yaml` — new `bed_V` block (D_c = 50 mm, D_i = 4 mm, 60°
   cone) and `spouted_bed_V_2d` block (H_dom = 0.20 m, imax = 50, jmax =
   200, kmax = 1, z_thickness = 1 mm).
-- `src/make_case.py` — `build_V_2d_params()`, which derives the static bed
-  height from inventory + ρ_p + eps_s_bed + cone geometry via
-  `_bed_height_from_inventory()` (frustum-volume bisection); loads gas
-  properties for air at ~25 °C via Cantera; assembles all template
-  variables with S1 Table 1 closures (SYAM_OBRIEN drag; SCHAEFFER friction
-  with GIDASPOW_PCF blending = "modified sigmoidal"; LUN_1984 PDE
-  granular energy; φ = 15°, ep_star = 0.42, c_e = 0.9).
+- `src/make_case.py` — `build_V_2d_params()` (src/make_case.py:169), which
+  derives the static bed height from inventory + ρ_p + eps_s_bed + cone
+  geometry via `_bed_height_from_inventory()` (src/make_case.py:104,
+  frustum-volume bisection); loads gas properties for air at ~25 °C via
+  Cantera (via helper `_common_fluid_solid_params`, src/make_case.py:147);
+  assembles all template variables with S1 Table 1 closures (SYAM_OBRIEN
+  drag; SCHAEFFER friction with GIDASPOW_PCF blending = "modified
+  sigmoidal"; LUN_1984 PDE granular energy; φ = 15°, ep_star = 0.42,
+  c_e = 0.9). Note: the function's docstring (src/make_case.py:185)
+  still lists `'SIGM_BLEND'` as the blending token for clarity against
+  S1 Table 1, but the rendered template receives
+  `blending_function = 'GIDASPOW_PCF'` (src/make_case.py:284) — see
+  item 3 below for the MFiX-26.1.2 namelist discrepancy.
 - `cases/V_2d/template.mfx.j2` — planar Cartesian cut-cell slab
   (cartesian_grid = .True., coordinates = 'CARTESIAN', no_k = .True.,
   n_quadric = 1, Y_CONE for the cone wall); IC regions for freeboard,
   packed bed and pre-opened spout channel; BCs for the orifice MI, top
   PO, and Y_CONE no-slip wall; four monitors (P_inlet and P_top at 1 kHz,
   solids inventory volume integral, centerline v_g line integral).
-- `tests/test_make_case.py` — twelve V_2d tests: coordinates/no_k;
-  grid + orifice-cell count; MI/PO/CG_NSW BCs; monitors; bed-IC hand
-  calc (H₀ and H₀/D_c vs S2's 0.50–0.65); 22.6 L/min volumetric check
-  and U/U_ms ≈ 1.9 vs S2's 12 L/min; closure keyword block.
+- `tests/test_make_case.py` — V_2d test block (currently nine tests, see
+  `tests/test_make_case.py:93-237`): coordinates/no_k; grid + orifice-cell
+  count; MI/PO/CG_NSW BCs; monitors (incl. monitor_type(3)=11 and
+  monitor_type(4)=4, pinned by Day 9); bed-IC hand calc (H₀ and H₀/D_c vs
+  S2's 0.50–0.65); 22.6 L/min volumetric check and U/U_ms ≈ 1.9 vs S2's
+  12 L/min; closure keyword block (asserts GIDASPOW_PCF as the rendered
+  token); particles match Case V; and ep_star > eps_s_bed (Schaeffer
+  inactive at t=0).
 - `tests/test_correlations.py` — U_ms,MG hand-calc rebased to ORNL/UTK
   geometry (D_c = 0.050 m, D_i = 0.004 m, ρ_p = 6050 kg/m³, H = 0.10 m;
   U_ms = 0.3643 m/s).
-- `src/make_figs_d8.py` — geometry schematic generator.
+- `src/make_figs_d8.py` — geometry schematic generator
+  (`render_V_2d_schematic`, src/make_figs_d8.py:34); re-uses
+  `src.make_case._bed_height_from_inventory` so the figure's H_static
+  tracks the YAML-derived value.
 - `results/fig_d8_V_2d_geometry.png` — screenshot.
 
 ## How it works

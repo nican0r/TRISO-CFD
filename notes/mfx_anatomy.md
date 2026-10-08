@@ -5,6 +5,12 @@ Line-by-line annotation of `cases/tut_tfm2d/example_2d_fluidized_bed.mfx` (MFiX
 reference (NETL "MFiX User Manual / Keyword Reference", release notes for
 26.1.2); no undocumented keywords are present.
 
+Scope: §1-14 below describe the hand-written tutorial deck as a reference
+cheat-sheet. §15 "Project-generated .mfx files" lists the four Jinja2
+templates that `src/make_case.py` renders for every project run (fb_sweep,
+V_2d, V_3d PIC, V_3d DEM/CGP) and where their keyword choices diverge from
+the tutorial.
+
 Grouping follows the sections in the file. Values are quoted verbatim; units
 are those documented for the keyword (SI, since `units = 'SI'`).
 
@@ -234,3 +240,32 @@ part of the keyword reference, and not required for the solver to run.
 
 Every solver keyword above resolves to one entry in the MFiX 26.1.2 keyword
 reference. No undocumented keywords are present in the file.
+
+## Project-generated .mfx files
+
+The tutorial above is a hand-written reference. All project `.mfx` decks are
+rendered from Jinja2 templates by `src/make_case.py:render_case` (uses
+`StrictUndefined` so a missing template variable is a hard error, not a
+silent empty slot in the deck — see `src/make_case.py:36`). Each kind has
+its own builder and template:
+
+| Kind | Template | Builder (`src/make_case.py`) | Solids model | Notes |
+|---|---|---|---|---|
+| `fb_sweep` | `cases/fb_sweep/template.mfx.j2` | `build_fb_sweep_params` (L57) | TFM | Day 6-7 flat-bottom bubbling bed. Case D particles (500 µm, 6050 kg/m³) in air @ 20 °C. `c_e=0.95`, `phi=30`, `kt_type='ALGEBRAIC'`, `friction_model='SCHAEFFER'`. |
+| `V_2d` | `cases/V_2d/template.mfx.j2` | `build_V_2d_params` (L169) | TFM | Day 8-9. Planar quadric cut-cell slab (`cartesian_grid=.True.`, `use_stl=.False.`, `n_quadric=1`, `quadric_form(1)='Y_CONE'`, `no_k=.True.`). S1 Table 1 closures: `kt_type='LUN_1984'`, `blending_function='GIDASPOW_PCF'` (= S1's "modified sigmoidal" — MFiX 26.1.2's `check_blending_function` rejects the `SIGM_BLEND` namelist token and only accepts `GIDASPOW_PCF` to activate that flag; see `build_V_2d_params` docstring L279-284), `phi=15`, `ep_star=0.42`, `c_e=0.9` (assumed). |
+| `V_3d` | `cases/V_3d/template.mfx.j2` | `build_V_3d_params` (L316) | PIC | Day 10 R1 NETL-clone (uniform 2 mm Cartesian mesh, `use_stl=.True.`, full-face MI at box bottom carved by stub-cylinder STL, no `cad_propagate_order` / `set_corner_cells`). Harris-Crighton PIC: `fric_exp_pic=3.0`, `fric_non_sing_fac=1e-7`, `psfac_fric_pic=100`, `mppic_coeff_en1=0.85`, `mppic_coeff_en_wall=0.85`, `mppic_coeff_et_wall=1.0`, `mppic_velfac_coeff=1.0`, `des_interp_scheme='LINEAR_HAT'`, `des_epg_clip=0.42`, `ic_pic_const_statwt=4.2`, `bc_pic_mi_const_statwt=5.0`. Dual VTK output: `vtk_data(1)='C'` (Eulerian fields) + `vtk_data(2)='P'` (parcel point-cloud VTP). |
+| `V_3d_dem` | `cases/V_3d/template_dem.mfx.j2` | `build_V_3d_dem_params` (L547) | DEM / CGP | Day 11-12. Reuses `V_3d` geometry/mesh/BC verbatim; swaps PIC Harris-Crighton for soft-sphere spring-dashpot. `kn=kn_w=1000 N/m`, `kt_fac=kt_w_fac=2/7`, `mew=mew_w=0.3`, `des_en_input=des_en_wall_input=0.9`, `des_etat_fac=des_etat_w_fac=0.5`. `cgp_factor>1` sets `solids_model='CGP'` and emits `cgp_stat_wt(1)` (template conditional, L97-99); `cgp_factor=1` gives pure DEM. Particle seeding uses `ic_des_lattice='HEXA'` + `ic_des_abort_on_failed_seeding=.False.` to tolerate ~2% shortfall at cone-box cut-cell corners. |
+
+Rule 1 compliance: each template's leading `#!` block records which MFiX
+source file (`init_namelist.f`, `cartesian_grid_init_namelist.f`,
+`check_solids_continuum.f`, `get_stl_data.f`, …) each nonstandard keyword
+was verified against. The STL file-name convention `geometry_0001.stl` (= one
+STL per CG_ boundary, zero-padded to the 4-digit BC index) is enforced by
+`get_stl_data.f:678-701` (noted in `cases/V_3d/template.mfx.j2:19-22`).
+
+Builder docstrings carry the S1-Table-1 → PIC closure substitution rationale
+(e.g. PIC consumes `ep_star` only via `des_epg_clip`, not via `phi` or `c_e`
+— see `build_V_3d_params` L428-432). Unit tests in
+`tests/test_make_case.py` pin a handful of representative renderings (e.g.
+`bc_v_g`, `imax`, `d_p0`, `ro_s0`, `H_static` consistency with the IC bed
+region) and verify `StrictUndefined` catches typos.

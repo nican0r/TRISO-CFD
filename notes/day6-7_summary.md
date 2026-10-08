@@ -3,14 +3,20 @@
 ## What was implemented
 
 Built the project's first **parametric MFiX sweep**: a 2D flat-bottom bubbling
-bed of Case D particles (500 µm, 6 000 kg/m³) in air at 20 °C, driven at
-eight inlet superficial velocities spanning U/U_mf = {0.3, 0.5, 0.7, 0.9, 1.1,
-1.3, 1.6, 2.0} on a single base mesh (38×150 cells). The sweep is the first
-head-to-head between a correlation prediction (Wen-Yu U_mf for Case D in air
-@ 20 °C = **0.4062 m/s**) and the TFM solver's own answer. Deliverable is the
-fluidization curve `fig_d7_fluidization_curve.png` — simulated time-averaged
-ΔP(U) overlaid with the Ergun packed-bed branch and the bed-weight-per-area
-plateau, with U_mf,sim read from the crossover.
+bed of Case D particles (500 µm, 6 000 kg/m³ at the time of the sweep;
+`params/particles.yaml:case_D` was later bumped to 6050 kg/m³ as part of the
+Day-8 ORNL/UTK retarget — see notes/day8_summary.md "Day 1-7 files touched")
+in air at 20 °C, driven at eight inlet superficial velocities spanning
+U/U_mf = {0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.6, 2.0} on a single base mesh
+(38×150 cells). The sweep is the first head-to-head between a correlation
+prediction (Wen-Yu U_mf for Case D in air @ 20 °C = **0.4062 m/s** at the
+sweep ρ_p = 6000; recomputing with the current ρ_p = 6050 gives
+~0.409 m/s, i.e. a <1 % shift — within the Wen-Yu scatter and well
+inside the Day-7 acceptance band) and the TFM solver's own answer.
+Deliverable is the fluidization curve `fig_d7_fluidization_curve.png` —
+simulated time-averaged ΔP(U) overlaid with the Ergun packed-bed branch
+and the bed-weight-per-area plateau, with U_mf,sim read from the
+crossover.
 
 The 2× fine-mesh refinement check originally planned at U/U_mf = {0.7, 1.1,
 1.6} was dropped on 2026-10-04: on the 76×300 grid the Schaeffer frictional
@@ -26,11 +32,12 @@ Key artifacts:
   height 0.30 m, base-mesh counts).
 - `cases/fb_sweep/template.mfx.j2` — Jinja2 template; every keyword resolves
   to the MFiX 26.1.2 reference entry audited in `notes/mfx_anatomy.md`.
-- `src/make_case.py` — `render_case()` + `build_fb_sweep_params()`: reads the
-  three YAML parameter files, calls `gasprops.gas_props` for ρ_g [kg/m³] and
-  µ_g [Pa·s] of air at the gas case, substitutes into the template. Uses
-  `StrictUndefined` so a missing variable fails loudly rather than writing a
-  silently-broken `.mfx`.
+- `src/make_case.py` — `render_case()` (src/make_case.py:36) +
+  `build_fb_sweep_params(U_in_m_s, imax, jmax, tstop_s, run_name, description="")`
+  (src/make_case.py:57): reads the three YAML parameter files, calls
+  `gasprops.gas_props` for ρ_g [kg/m³] and µ_g [Pa·s] of air at the gas
+  case, substitutes into the template. Uses `StrictUndefined` so a missing
+  variable fails loudly rather than writing a silently-broken `.mfx`.
 - `src/run_fb_sweep.py` — enumerates the full plan (8 base runs) from the
   YAML, renders one `.mfx` + `manifest.json` per run under
   `cases/fb_sweep/u<ratio>_base/`, and emits `run_all.sh`. The runner can
@@ -42,18 +49,23 @@ Key artifacts:
   `results/fb_sweep_dp.csv` and `results/fig_d7_fluidization_curve.png`.
 - `tests/test_make_case.py` — six tests pin the template rendering (bc_v_g,
   imax/jmax, Case D particle, air gas properties, bed IC bounds,
-  StrictUndefined behaviour). All six pass.
+  StrictUndefined behaviour). All six pass. (Day-8 retargeting added a
+  seventh fb_sweep test, `test_fb_sweep_ep_star_matches_case_V`, which
+  ties fb_sweep's ep_star to the Case V particle so the two cases cannot
+  silently drift apart.)
 
 ## How it works
 
-1. **Parameter wiring.** `build_fb_sweep_params(U_in, imax, jmax, tstop, run_name)`
-   loads `params/particles.yaml`, `params/geometry.yaml`, `params/gases.yaml`
+1. **Parameter wiring.** `build_fb_sweep_params(U_in_m_s, imax, jmax, tstop_s,
+   run_name, description="")` (src/make_case.py:57) loads
+   `params/particles.yaml`, `params/geometry.yaml`, `params/gases.yaml`
    and asks Cantera (`src.gasprops.gas_props`) for ρ_g [kg/m³], µ_g [Pa·s] at
    the fb_sweep gas case (`air_20C`: 293.15 K, 101325 Pa, N₂/O₂ = 0.79/0.21).
    Result: ρ_g = 1.1994 kg/m³, µ_g = 1.830×10⁻⁵ Pa·s. These, together with
-   d_p = 500 µm and ρ_p = 6000 kg/m³ from `case_D`, are substituted into the
-   template directly as `ro_g0`, `mu_g0`, `d_p0(1)`, `ro_s0(1)` (CLAUDE.md
-   rules 2 and 3).
+   d_p = 500 µm and ρ_p = 6000 kg/m³ from `case_D` at the time of the sweep
+   (`case_D.rho_p_kg_per_m3` now reads 6050 — post Day-8 retarget), are
+   substituted into the template directly as `ro_g0`, `mu_g0`, `d_p0(1)`,
+   `ro_s0(1)` (CLAUDE.md rules 2 and 3).
 
 2. **Sweep sizing.** The ratios `u_over_umf = {0.3, …, 2.0}` are multiplied
    by U_mf,Wen-Yu = 0.4062 m/s (recomputed via

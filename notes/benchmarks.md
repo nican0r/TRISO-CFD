@@ -162,12 +162,17 @@ near-axis mis-classification (see `notes/day10_summary.md`).
 **Planned run:** 3D STL cut-cell with the implicit-SDF STL
 (`src/make_stl.build_spouted_bed_stl_implicit`, dense facet set via
 marching cubes), `solids_model='PIC'`, Harris-Crighton stress closure,
-NETL `spouted_bed_pic_3d` tutorial coefficients
-(`fric_exp_pic=3.0`, `psfac_fric_pic=100`, `mppic_coeff_en1=0.85`,
-`mppic_coeff_en_wall=0.85`, `mppic_coeff_et_wall=1.0`,
-`mppic_velfac_coeff=1.0`, `des_interp_scheme='LINEAR_HAT'`,
-`des_epg_clip=0.42`), full-height stub tube (needs verification —
-current `L_stub_m=0.010` is a short stub, see day10 summary).
+NETL `spouted_bed_pic_3d` tutorial coefficients (pinned in
+`params/geometry.yaml:spouted_bed_V_3d_pic`: `fric_exp_pic=3.0`,
+`fric_non_sing_fac=1.0e-7`, `psfac_fric_pic=100.0`,
+`mppic_coeff_en1=0.85`, `mppic_coeff_en_wall=0.85`,
+`mppic_coeff_et_wall=1.0`, `mppic_velfac_coeff=1.0`,
+`des_interp_scheme='LINEAR_HAT'`, `des_epg_clip=0.42`,
+`ic_pic_const_statwt=4.2`, `bc_pic_mi_const_statwt=5.0`). Stub tube
+is now `L_stub_m = 2.0e-2` (20 mm = 10 × R_i), per Day-10 R1 NETL-clone
+redesign in `params/geometry.yaml:spouted_bed_V_3d` (uniform 2 mm
+Cartesian mesh, full-face MI at box bottom carved by the stub-cylinder
+STL — not the earlier 10 mm short stub).
 
 **Planned observables:** centerline v_g, inlet-pressure PSD, ΔP,
 inventory, spout/fountain structure from VTP particle output.
@@ -201,18 +206,24 @@ inventory, spout/fountain structure from VTP particle output.
    {exp PIV/pressure-sensor | TFM simulation output}, section X.Y of
    ORNL/TM-2006/520."*  Without this, PIC-vs-S1 comparisons risk
    silently drifting from validation to model-to-model.
-2. **Confirm stub topology.**  `v3d.L_stub_m = 0.010 m` is a 10 mm
-   short stub, NOT the NETL-tutorial full-height stub.  Verify F_AT
-   propagates through the full 200 mm vessel (set
-   `cad_propagate_order='IJK'` as insurance, or extend L_stub to
-   full-height).
+2. **~~Confirm stub topology.~~  RESOLVED (Day-10 R1).**  The Day-10
+   R1 NETL-clone redesign extended `L_stub_m` to `2.0e-2` (= 20 mm =
+   10 × R_i) and switched to a uniform 2 mm Cartesian mesh with the MI
+   applied across the FULL box bottom face; the STL stub cylinder
+   carves the inflow to the orifice footprint. `cad_propagate_order`
+   and `set_corner_cells` are intentionally NOT set — NETL's shipped
+   tutorial does not set them and they interact pathologically with
+   graded meshes + dense STL (the F_AT trap that killed the Day-10
+   initial attempt).
 3. **Resolve coherent-vs-pulsatory framing.**  Case V's `U_in=30 m/s =
    1.9×U_ms` claim targets coherent spouting; Marshall17 explicitly
    describes INL operation as pulsatory (below U_ms).  Decide which
    regime Case V actually models and align the thesis.
-4. **Verify U_ms correlation source.**  The 1.9×U_ms claim needs an
-   explicit correlation citation in `params/geometry.yaml` (Olazar
-   conical vs Mathur-Gishler cylindrical give 6× different U_ms).
+4. **~~Verify U_ms correlation source.~~  RESOLVED.** S2's direct
+   measurement (U_ms = 12 L/min = 0.1019 m/s) is now the primary
+   anchor; Olazar 1992 is the supporting correlation class. See
+   `params/geometry.yaml:operating_point_V` and cross-cutting audit
+   item 3 in §4 below.
 5. **Chase MB10 institutional access.**  If accessible, MB10 is the
    only Marshall-adjacent paper with quantitative pressure spectra.
 
@@ -221,10 +232,16 @@ inventory, spout/fountain structure from VTP particle output.
 ### Day 11-12 — CFD-DEM residence-time histograms (planned)
 
 **Planned run:** Full 3D CFD-DEM with the same corrected STL geometry
-as the Day-10 PIC pivot.  N_particles ≈ 137 600 (54.5 g / 500 µm
-ZrO₂); soft-sphere `k_n=1000 N/m`, `dt_DEM ≈ 8.8×10⁻⁷ s`, estimated
-run cost 85-200 hr wall on 6 cores — **cloud, not laptop.**  Possibly
-CGP-DEM (coarse-grained parcels) to reduce particle count.
+as the Day-10 PIC pivot (`cases/V_3d/template_dem.mfx.j2`, built by
+`src/make_case.py:build_V_3d_dem_params`).  N_real = 1.376×10⁵
+particles (54.5 g / 500 µm ZrO₂, 6050 kg/m³); soft-sphere
+`kn=kn_w=1000 N/m`, `kt_fac=kt_w_fac=2/7`, `mew=mew_w=0.3`,
+`des_en_input=des_en_wall_input=0.9`, `des_etat_fac=des_etat_w_fac=0.5`
+(all pinned in `params/geometry.yaml:spouted_bed_V_3d_dem`). Default
+is **CGP-DEM** with `cgp_stat_wt=10.0` (`solids_model='CGP'`) → parcel
+count ~1.4×10⁴ (same order as Day-10 PIC's 32 k), target `dem_dt_s =
+2.0e-5` s (~Rayleigh dt at CGP×10). `cgp_factor=1.0` selects pure DEM
+(`solids_model='DEM'`). Estimated run cost — **cloud, not laptop.**
 
 **Planned observables:** particle residence-time histograms in
 spout/fountain/annulus, individual particle trajectories, circulation
@@ -309,13 +326,23 @@ resolved before the final REPORT.md:
 2. **Re-digitize placeholder validation traces.**  `s1_fig1_centerline_vg.csv`
    is a shape-only placeholder; must be re-digitized before any
    quantitative claim.
-3. **Document the U_ms correlation.**  The "1.9×U_ms" claim implies
-   U_ms ≈ 0.10 m/s, but Mathur-Gishler gives ~0.65 m/s for Case V
-   geometry.  Pin the correlation source in `params/geometry.yaml`.
+3. **~~Document the U_ms correlation.~~  RESOLVED (2026-10).**  See
+   `params/geometry.yaml` `operating_point_V` block (lines 371-478):
+   `U_ms = 0.1019 m/s` is S2's **direct experimental measurement**
+   (12 L/min for 500 µm ZrO₂ in the UTK rig), not a correlation output.
+   Olazar (1992) conical correlation gives 0.077 m/s (24% below S2,
+   within Olazar's ±30% band) and is the correct correlation CLASS;
+   Mathur-Gishler (cylindrical) gives 0.245 m/s and is explicitly
+   flagged as the wrong formula for this geometry. The derived
+   `U_over_U_ms = 1.88` lives in the same yaml block.
 4. **Resolve coherent-vs-pulsatory regime framing.**  Marshall17
    describes INL operation as pulsatory (below U_ms); Case V's current
-   operating-point description is "coherent spouting at 1.9×U_ms."
-   These are inconsistent — pick one.
+   operating-point description is "coherent spouting at 1.88×U_ms"
+   (`params/geometry.yaml:operating_point_V.U_over_U_ms`). S2 reports
+   stable coherent spouting across U/U_ms ∈ [1.0, 1.9], so 1.88 is at
+   the upper edge of S2's stable range — distinct from Marshall17's
+   below-U_ms pulsatory regime. The thesis framing should cite S2's
+   stable-spouting band, not Marshall17's pulsatory regime.
 5. **PIC closure substitution note.**  When citing S1 Table 1 TFM
    closures (`phi=15°`, `ep_star=0.42`, `c_e=0.9`) in the final report,
    state explicitly which values are consumed by the PIC path

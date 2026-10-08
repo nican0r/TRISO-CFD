@@ -6,32 +6,47 @@ Day 9 adds the Welch-PSD helper, the Day-9 run driver, the post-processor
 (frames + ΔP + inventory + PSD + CFL check), and executes the Case V 2D TFM
 smoke test to 3 s of simulated time.
 
-- `src/post/psd.py` — `welch_psd()` returning (freqs, PSD, dominant_hz, fs);
-  `dominant_frequency()` convenience wrapper. DC is masked so the dominant
+- `src/post/psd.py` — `welch_psd()` (src/post/psd.py:24) returns a
+  `PSDResult` dataclass (fields `freqs_hz`, `psd`, `dominant_hz`, `fs_hz`;
+  dataclass defined at src/post/psd.py:16); `dominant_frequency()`
+  convenience wrapper (src/post/psd.py:59). DC is masked so the dominant
   peak is strictly > 0 Hz.
 - `tests/test_psd.py` — four tests: single-sine recovery within the
   frequency-bin resolution; DC-rejection; louder-tone-wins with two sines;
   bad-input validation.
 - `src/run_V_2d_day9.py` — rebuilt around the ORNL/UTK Case V. Renders
-  `cases/V_2d/day9/V_2d_day9.mfx`, writes `manifest.json` with a Day-3
-  CFL-tool wall-time estimate (`dt_for_cfl` → ~1.67×10⁻⁵ s → ~180 k steps
-  for tstop = 3 s), and writes a `run.sh` that invokes MFiX 26.1.2.
-- `src/post/plot_V_2d_day9.py` — reads BACKGROUND.pvd + the four monitor
-  CSVs, produces four figures (solids-fraction frame grid, ΔP time
-  series, inventory retention trace, inlet-pressure PSD) and a CFL CSV.
+  `cases/V_2d/day9/V_2d_day9.mfx` via `build_V_2d_params` +
+  `render_case` (src/run_V_2d_day9.py:54,93), writes `manifest.json` with
+  a Day-3 CFL-tool wall-time estimate (`dt_for_cfl`, src/cfl_check.py:46,
+  → ~1.67×10⁻⁵ s → ~180 k steps for tstop = 3 s), and writes a `run.sh`
+  (src/run_V_2d_day9.py:29) that invokes MFiX 26.1.2 at the hard-coded
+  `MFIX_SOLVER` path.
+- `src/post/plot_V_2d_day9.py` — reads BACKGROUND.pvd (via
+  `src.post.read_vtk.read_pvd`/`read_vtu`) + the four monitor CSVs (via
+  `src.post.read_monitors.read_monitor`), produces four figures
+  (solids-fraction frame grid, ΔP time series, inventory retention trace,
+  inlet-pressure PSD) and a CFL CSV. Key entry points:
+  `plot_solids_frames` (src/post/plot_V_2d_day9.py:75),
+  `plot_dp_timeseries` (:117), `plot_inventory_trace` (:152),
+  `plot_inlet_psd` (:176), `check_max_cfl` (:216). Headless-safe
+  (prefixes `MPLBACKEND=Agg` at module load, line 14).
 - `cases/V_2d/template.mfx.j2` — monitor_type(3) switched to 11 (volume
-  integral; the earlier choice 2 is MIN, which always returns ~0 and
-  cannot measure inventory); monitor 4 switched to a mid-bed centerline
-  v_g probe (`monitor_type = 4` arithmetic average over a thin strip at
-  `H_mid`).
+  integral; see template line 237 and comment at :236 — the earlier
+  choice 2 is MIN, which always returns ~0 and cannot measure
+  inventory); monitor 4 switched to a mid-bed centerline v_g probe
+  (`monitor_type = 4` arithmetic average over a thin strip at `H_mid`,
+  template line 253).
 - `tests/test_make_case.py` — monitor-type assertions updated.
 
 ## How it works
 
 1. **Welch PSD** (`src/post/psd.py`). Uses `scipy.signal.welch` with a
-   Hann window and `nperseg = min(len/4, 1024)`. Returns the DC-masked
-   argmax of the PSD. Unit-tested on an 8-s, 20-Hz sine at fs = 1 kHz:
-   recovered peak within one frequency bin (df = fs/nperseg).
+   Hann window and `nperseg = min(max(len/4, 64), 1024)` (the 64-sample
+   floor keeps the segment usable on short monitor traces; see
+   src/post/psd.py:46-48). Returns the DC-masked argmax of the PSD as
+   `PSDResult.dominant_hz`. Unit-tested on an 8-s, 20-Hz sine at
+   fs = 1 kHz: recovered peak within one frequency bin
+   (df = fs/nperseg).
 
 2. **Run driver** (`src/run_V_2d_day9.py`). Calls `build_V_2d_params` from
    `src.make_case` with the Case-V inputs; estimates dt_CFL from `src.cfl_check.dt_for_cfl`
@@ -39,18 +54,23 @@ smoke test to 3 s of simulated time.
    serializes the manifest; writes a self-contained `run.sh`.
 
 3. **Post-processing pipeline** (`src/post/plot_V_2d_day9.py`).
-   - `plot_solids_frames`: ε_s = 1 − EP_G from BACKGROUND.pvd, 6 panels at
-     evenly spaced times after a 0.5-s startup skip; `tricontourf`.
-   - `plot_dp_timeseries`: top panel gauge pressures (inlet, top-of-bed);
-     bottom panel ΔP_bed = P_top − P_inlet.
-   - `plot_inventory_trace`: fraction retained vs t using the volume
-     integral of ε_s(1); 95 % floor overlaid.
-   - `plot_inlet_psd`: Welch PSD on P_inlet(t) − P_atm after the 0.5-s
-     startup; axvspan 17–25 Hz for S2, axvline 10.5 Hz for S1, axvline
-     at the recovered dominant peak; caption states the window.
-   - `check_max_cfl`: parses dt from V_2D_DAY9.TXT, pairs each VTK frame
-     with the local solver dt, calls `cfl_number` from `src.cfl_check`,
-     writes `fig_d9_V_2d_cfl.csv`.
+   - `plot_solids_frames` (:75): ε_s = 1 − EP_G from BACKGROUND.pvd, 6
+     panels at evenly spaced times after a 0.5-s startup skip;
+     `tricontourf`. Reads cell-centred fields via
+     `read_vtk.read_vtu(...).cell_data["EP_G"]` (see `_frame_eps_s`,
+     :52).
+   - `plot_dp_timeseries` (:117): top panel gauge pressures (inlet,
+     top-of-bed) from `V_2D_P_INLET.csv` / `V_2D_P_TOP_BED.csv`; bottom
+     panel ΔP_bed = P_top − P_inlet.
+   - `plot_inventory_trace` (:152): fraction retained vs t using the
+     volume integral of ε_s(1) from `V_2D_SOLIDS_INVENTORY.csv`; 95 %
+     floor overlaid.
+   - `plot_inlet_psd` (:176): Welch PSD on P_inlet(t) − P_atm after the
+     0.5-s startup; axvspan 17–25 Hz for S2, axvline 10.5 Hz for S1,
+     axvline at the recovered dominant peak; caption states the window.
+   - `check_max_cfl` (:216): parses dt from V_2D_DAY9.TXT, pairs each
+     VTK frame with the local solver dt, calls `cfl_number` from
+     `src.cfl_check` (src/cfl_check.py:29), writes `fig_d9_V_2d_cfl.csv`.
 
 4. **Run.** MFiX 26.1.2 was launched on the rendered .mfx and ran to
    tstop = 3.000 s in 20.71 min wall (≈ 6.9 min / sim-s on this box),
