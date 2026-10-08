@@ -139,6 +139,11 @@ def main() -> None:
         L_stub_m=params["L_stub_m"],
         dx_sample_m=params["dx_sample_m"],
         out_path=stl_path,
+        # Day-10 R1 fix: push the top cap 5 mm above the box face (y = H_dom)
+        # so the PO plane cuts through STL side-wall facets rather than
+        # through the top-cap facets (which MFiX discards as "flush with
+        # box face"; see get_stl_data.f line 2130).
+        top_extend_m=5.0e-3,
     )
 
     # Count facets in the generated STL for provenance.

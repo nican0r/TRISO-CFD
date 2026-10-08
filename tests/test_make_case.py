@@ -262,36 +262,55 @@ def test_V_3d_cartesian_grid_and_stl(tmp_path):
     assert params["kmax"] > 1
 
 
-def test_V_3d_graded_mesh_sum(tmp_path):
-    """Sum of per-cell dx must equal D_c (= 2*R_c = 0.050 m); dy must equal
-    H_dom + L_stub (Day-10 fix 2 adds a stub tube below y = 0).
+def test_V_3d_uniform_mesh_sum(tmp_path):
+    """Day-10 R1: UNIFORM 2 mm Cartesian mesh.  x,z box spans ±(R_c + 5 mm
+    margin) = ±30 mm so sum_x = sum_z = 60 mm > D_c = 50 mm.  y box spans
+    [-L_stub, H_dom] so sum_y = L_stub + H_dom = 220 mm.
     """
     _, params = _render_V3(tmp_path)
-    assert sum(params["dx_m_list"]) == pytest.approx(2.0 * params["R_c_m"], abs=1e-9)
-    assert sum(params["dz_m_list"]) == pytest.approx(2.0 * params["R_c_m"], abs=1e-9)
+    # Symmetric x,z box, encloses vessel.
+    sum_x = sum(params["dx_m_list"])
+    sum_z = sum(params["dz_m_list"])
+    assert sum_x == pytest.approx(sum_z, abs=1e-9)
+    assert sum_x >= 2.0 * params["R_c_m"]            # encloses D_c
+    assert sum_x == pytest.approx(0.060, abs=1e-9)   # R1 numbers: 60 mm
+    # y box = L_stub + H_dom.
     assert sum(params["dy_m_list"]) == pytest.approx(
         params["H_dom_m"] + params["L_stub_m"], abs=1e-9
     )
     assert params["imax"] == len(params["dx_m_list"])
     assert params["jmax"] == len(params["dy_m_list"])
     assert params["kmax"] == len(params["dz_m_list"])
+    # Uniform mesh: every cell is dx_uniform_m (R1 = 2 mm).
+    dx_u = params["dx_uniform_m"]
+    assert dx_u == pytest.approx(2.0e-3)
+    assert all(d == pytest.approx(dx_u) for d in params["dx_m_list"])
+    assert all(d == pytest.approx(dx_u) for d in params["dy_m_list"])
+    assert all(d == pytest.approx(dx_u) for d in params["dz_m_list"])
+    # Day-10 R1 cell counts.
+    assert params["imax"] == 30
+    assert params["jmax"] == 110
+    assert params["kmax"] == 30
 
 
 def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
-    """Day 10 rules:
-      - cell size <= 10*d_p = 5 mm in the particle zone;
-      - at least 4 cells across the 4 mm inlet (near-axis cell <= 1 mm).
+    """Day-10 R1 (NETL-clone trade-off):
+      - cell size <= 10 * d_p = 5 mm in the particle zone (met at 2 mm);
+      - "4 cells across the 4 mm inlet" is impractical on a uniform mesh at
+        feasible cell counts.  NETL's shipped pic/spouted_bed_3d tutorial
+        uses ~4 cells across a 15 mm spout (a 2x cell-to-radius ratio);
+        R1 accepts 2 cells across the 4 mm orifice on a uniform 2 mm mesh
+        (same cell-to-radius ratio).  This mirrors the recipe that avoids
+        the F_AT cut-cell classifier bug (see notes/day10_summary.md R1).
     """
     _, params = _render_V3(tmp_path)
     d_p = params["d_p_m"]
-    # Particle zone is y < some bed+fountain cap; use the y-segments with
-    # dy <= 10*d_p as the particle zone test. In our mesh the freeboard
-    # segment (dy = 5 mm) is at the cap (10*d_p = 5 mm) so still within rule.
+    # All cell sizes <= 10 * d_p = 5 mm in x, y, z.
     assert max(params["dy_m_list"]) <= 10.0 * d_p + 1e-12
-    # x,z particle zone: all cells <= 10*d_p = 5 mm (we use 1 mm and 2.3 mm).
     assert max(params["dx_m_list"]) <= 10.0 * d_p + 1e-12
     assert max(params["dz_m_list"]) <= 10.0 * d_p + 1e-12
-    # Count orifice cells across x: cells with centre in [-R_i, R_i].
+    # Count orifice cells across x: cells with centre in [-R_i, R_i].  On
+    # the uniform 2 mm mesh with R_i = 2 mm, 2 cells span the diameter.
     R_i = params["R_i_m"]
     xs = []
     x = params["x_min_m"]
@@ -299,7 +318,7 @@ def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
         xs.append(x + 0.5 * d)
         x += d
     n_orifice_x = sum(1 for xc in xs if abs(xc) <= R_i)
-    assert n_orifice_x >= 4
+    assert n_orifice_x >= 2        # R1 NETL-pattern lower bound
     # Same across z.
     zs = []
     z = params["z_min_m"]
@@ -307,15 +326,20 @@ def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
         zs.append(z + 0.5 * d)
         z += d
     n_orifice_z = sum(1 for zc in zs if abs(zc) <= R_i)
-    assert n_orifice_z >= 4
-    # Near-axis cell size <= 1 mm per Day-10 rule.
+    assert n_orifice_z >= 2
+    # R1 near-axis cell size is exactly dx_uniform_m = 2 mm.
     near_axis_dx = min(params["dx_m_list"])
     near_axis_dz = min(params["dz_m_list"])
-    assert near_axis_dx <= 1.0e-3 + 1e-12
-    assert near_axis_dz <= 1.0e-3 + 1e-12
+    assert near_axis_dx == pytest.approx(2.0e-3)
+    assert near_axis_dz == pytest.approx(2.0e-3)
 
 
 def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
+    """Day-10 R1 (NETL-clone pattern): MI spans the FULL box bottom face;
+    the STL stub cylinder (radius R_i) carves out the circular orifice-
+    equivalent inflow footprint.  Compare NETL tutorials/pic/spouted_bed_3d
+    which uses the same full-face MI pattern.
+    """
     text, params = _render_V3(tmp_path)
     # BC_1 CG_NSW (STL walls, no region bounds -> applied to all cut-cells).
     assert re.search(r"bc_type\(1\)\s*=\s*'CG_NSW'", text)
@@ -323,8 +347,7 @@ def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
     assert re.search(r"bc_type\(2\)\s*=\s*'PO'", text)
     m = re.search(r"bc_y_s\(2\)\s*=\s*([-+eE.0-9]+)", text)
     assert m is not None and float(m.group(1)) == pytest.approx(params["H_dom_m"])
-    # BC_3 MI at the box bottom (y = -L_stub, Day-10 fix 2 stub tube),
-    # across the orifice square, bc_v_g = U_in_m_s.
+    # BC_3 MI at the box bottom (y = -L_stub), FULL BOX BOTTOM FACE.
     assert re.search(r"bc_type\(3\)\s*=\s*'MI'", text)
     m2 = re.search(r"bc_v_g\(3\)\s*=\s*([-+eE.0-9]+)", text)
     assert m2 is not None and float(m2.group(1)) == pytest.approx(params["U_in_m_s"])
@@ -332,10 +355,11 @@ def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
     m_xe = re.search(r"bc_x_e\(3\)\s*=\s*([-+eE.0-9]+)", text)
     m_zb = re.search(r"bc_z_b\(3\)\s*=\s*([-+eE.0-9]+)", text)
     m_zt = re.search(r"bc_z_t\(3\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_xw.group(1)) == pytest.approx(-params["R_i_m"])
-    assert float(m_xe.group(1)) == pytest.approx(params["R_i_m"])
-    assert float(m_zb.group(1)) == pytest.approx(-params["R_i_m"])
-    assert float(m_zt.group(1)) == pytest.approx(params["R_i_m"])
+    # Full box face bounds.
+    assert float(m_xw.group(1)) == pytest.approx(params["x_min_m"])
+    assert float(m_xe.group(1)) == pytest.approx(params["x_max_m"])
+    assert float(m_zb.group(1)) == pytest.approx(params["z_min_m"])
+    assert float(m_zt.group(1)) == pytest.approx(params["z_max_m"])
     m_ys = re.search(r"bc_y_s\(3\)\s*=\s*([-+eE.0-9]+)", text)
     m_yn = re.search(r"bc_y_n\(3\)\s*=\s*([-+eE.0-9]+)", text)
     assert float(m_ys.group(1)) == pytest.approx(-params["L_stub_m"])
@@ -451,13 +475,17 @@ def test_V_3d_bed_ic_matches_case_V(tmp_path):
     m_sw = re.search(r"ic_pic_const_statwt\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
     assert m_sw is not None
     assert float(m_sw.group(1)) == pytest.approx(params["ic_pic_const_statwt"])
-    # IC4 covers the stub tube region below the orifice (full box x,z;
+    # IC_3 covers the stub tube region below the orifice (full box x,z;
     # STL cut-cells block r > R_i so only the stub-interior cells get fluid).
-    m_ys4 = re.search(r"ic_y_s\(4\)\s*=\s*([-+eE.0-9]+)", text)
-    assert m_ys4 is not None
-    assert float(m_ys4.group(1)) == pytest.approx(-params["L_stub_m"])
-    m_yn4 = re.search(r"ic_y_n\(4\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_yn4.group(1)) == pytest.approx(0.0, abs=1e-12)
+    # The TFM-era pre-opened spout IC was removed for PIC (parcel-vs-gas
+    # drag spike at t=0 crashed the first launch); NETL doesn't use one.
+    # Stub tube renumbered IC_4 -> IC_3; IC_4 should not render.
+    m_ys3 = re.search(r"ic_y_s\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    assert m_ys3 is not None
+    assert float(m_ys3.group(1)) == pytest.approx(-params["L_stub_m"])
+    m_yn3 = re.search(r"ic_y_n\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_yn3.group(1)) == pytest.approx(0.0, abs=1e-12)
+    assert re.search(r"ic_x_w\(4\)", text) is None
 
 
 def test_V_3d_dx_rendered_in_template(tmp_path):
@@ -475,17 +503,32 @@ def test_V_3d_dx_rendered_in_template(tmp_path):
         assert float(m.group(1)) == pytest.approx(d, rel=1e-5)
 
 
-def test_V_3d_square_mi_vs_circle_q(tmp_path):
-    """The square MI (2*R_i)^2 = 16 mm^2 is 27% larger than the circular
-    orifice area pi*R_i^2 = 12.57 mm^2.  The STL cut-cell geometry masks the
-    MI to the circular orifice, so only cells inside the cone (r <= R_i)
-    receive the inflow.  Document the geometric ratio for the Day-10 note.
+def test_V_3d_stl_stub_circular_cross_section(tmp_path):
+    """Day-10 R1 (NETL-clone pattern): the MI spans the FULL box bottom
+    face, so the earlier "square MI vs circular orifice" ratio check
+    (ratio = 4/pi) no longer applies.  What matters now is that the STL
+    stub cylinder, which carves the MI down to a circular inflow
+    footprint, has cross-section pi * R_i^2 at y = y_min.  Check that
+    orifice-aligned params expose this radius and the circular area is
+    the expected 12.57 mm^2.
     """
     _, params = _render_V3(tmp_path)
     R_i = params["R_i_m"]
-    A_square = (2.0 * R_i) ** 2
+    # The stub cylinder cross-section at y = y_min is pi R_i^2 (R_i = 2 mm
+    # => A_circle = 12.566 mm^2).  The STL cuts the box-bottom MI down to
+    # this circle; cells outside r = R_i are BLOCKED by the STL and see
+    # no inflow.
     A_circle = math.pi * R_i ** 2
-    assert A_square > A_circle
-    ratio = A_square / A_circle
-    # Should be 4/pi ~ 1.273.
-    assert ratio == pytest.approx(4.0 / math.pi, rel=1e-4)
+    assert A_circle == pytest.approx(1.2566e-5, rel=5e-3)
+    # Orifice-aligned bounds are now distinct from the MI bounds and sit
+    # at |x|,|z| <= R_i (used by Monitors 1 and 4 — inlet-plane gas
+    # pressure and centerline v_g).  The TFM-era pre-opened spout IC
+    # that previously consumed these bounds has been removed for PIC
+    # (NETL pattern: inlet jet carves the spout dynamically).
+    assert params["orifice_x_w_m"] == pytest.approx(-R_i)
+    assert params["orifice_x_e_m"] == pytest.approx(R_i)
+    assert params["orifice_z_b_m"] == pytest.approx(-R_i)
+    assert params["orifice_z_t_m"] == pytest.approx(R_i)
+    # MI bounds now span the full box bottom face (NETL pattern).
+    assert params["bc_mi_x_w_m"] == pytest.approx(params["x_min_m"])
+    assert params["bc_mi_x_e_m"] == pytest.approx(params["x_max_m"])

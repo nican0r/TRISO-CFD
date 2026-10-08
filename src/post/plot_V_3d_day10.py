@@ -299,11 +299,15 @@ def main() -> None:
         raise FileNotFoundError(pvd)
     manifest = _load_manifest(args.run_dir)
     dx_min_m = float(manifest["dx_min_m"])
-    # r_select for the centerline column: R_i (orifice radius) + near-axis
-    # cell size.  MFiX cut-cell VTUs report centroids shifted into the fluid
-    # portion of each cell, so the nominal-centerline cells have centroid
-    # r > R_i.  R_i = 0.002 m from params/geometry.yaml bed_V.
-    r_select_m = 0.002 + dx_min_m
+    # r_select for the centerline column: R_i (orifice radius) + 1.5 x
+    # near-axis cell size.  Day-10 R1 uses a uniform 2 mm mesh, so the
+    # near-axis cells on either side of the axis have centroids at r up
+    # to ~1.4 mm; r_select = R_i + 1.5*dx_min_m = 2 + 3 = 5 mm captures
+    # the central column.  MFiX cut-cell VTUs report centroids shifted
+    # into the fluid portion of each cell, so the nominal-centerline
+    # cells have centroid r > R_i.  R_i = 0.002 m (params/geometry.yaml
+    # bed_V).
+    r_select_m = 0.002 + 1.5 * dx_min_m
 
     centerline_png = args.out_dir / "fig_d10_V_3d_centerline_vg.png"
     psd_png = args.out_dir / "fig_d10_V_3d_psd.png"

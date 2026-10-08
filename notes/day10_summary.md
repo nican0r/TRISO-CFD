@@ -1,10 +1,110 @@
 # Day 10 Summary — Case V (ORNL/UTK) 3D MP-PIC spouted bed
 
-> **State: implementation complete, run pending.**  The model has not yet
-> been launched.  All .mfx keywords were verified against the installed
-> MFiX 26.1.2 reference (CLAUDE.md rule 1) and the deck renders cleanly
-> through `src/make_case.py`.  No results have been recorded in
-> `results/run_log.csv` yet.
+> **State: R1 implementation complete, re-run pending (2026-10-08).**  The
+> first PIC attempt (committed in 760d4b0) rendered cleanly but did not
+> produce a spout: the gas jet collapsed to 4.3 m/s one cell above the
+> orifice.  Root-cause traced to MFiX 26.1.2's F_AT cut-cell classifier
+> extending its mis-classification to the gas phase on the graded fine-
+> cell mesh.  R1 re-implements the Day-10 setup to NETL's shipped
+> `tutorials/pic/spouted_bed_3d` pattern (uniform 2 mm Cartesian mesh,
+> full-face MI at box bottom, stub cylinder as orifice-equivalent, no
+> cad_propagate_order / set_corner_cells).  See "R1 — NETL-clone redesign
+> (2026-10-08)" below.  No results have been recorded in
+> `results/run_log.csv` yet; the committed TFM-era and PIC-first-attempt
+> rows are historical records and left in place.
+
+## R1 — NETL-clone redesign (2026-10-08)
+
+### What was wrong
+
+The first PIC run (committed, state `V_3d_day10_pic`) produced no spout.
+At `U_in = 30 m/s` the gas jet should propagate at least a few cm above
+the orifice and lift bed material; instead the centerline `v_g` reading
+collapsed to ~4.3 m/s one cell above the inlet and never recovered.
+
+Diagnosis: the F_AT cut-cell classifier bug previously attributed only
+to the TFM solids phase in fact extends to the gas phase as well.  The
+Day-10 initial design triggered the bug in three mutually reinforcing
+ways:
+
+1. **Graded fine-cell mesh.**  The near-axis `1 mm` cells (xz-segment 2)
+   plus the `2 mm` axial cells near the stub tube put the 30 m/s jet in
+   a cluster of cells whose corners were farther from any STL facet
+   than the typical cell diagonal.
+2. **Dense 322 k-facet STL.**  The implicit-boolean + marching-cubes STL
+   generated at `dx_sample = 0.5 mm` placed many near-coincident facets
+   in the stub-tube sidewall, which the F_AT classifier treats as "near
+   a facet" individually but whose combined contribution still leaves
+   the near-axis cell corners `UNDEFINED`.
+3. **Tiny orifice-aligned square MI.**  The MI at `|x|,|z| ≤ R_i`
+   (16 mm² footprint) is a small island at the box bottom; cut-cell
+   preprocessing then needed to classify the near-axis cells above it
+   from scratch, with no F_AT "seed" from the MI face.
+
+The combination produced a phantom 2 mm "solid rod" of BLOCKED cells
+up the vessel axis; `fluid_at` skipped those cells so the gas momentum
+equation never saw the inlet, and the resolved jet speed collapsed one
+cell above the MI.
+
+### Why the NETL pattern avoids this
+
+A survey of NETL's shipped `tutorials/pic/*_bed_*/*.mfx` templates
+revealed a single consistent pattern for cone + central-jet problems:
+
+1. **Uniform Cartesian mesh**, no grading.
+2. **Implicit-sampled STL** with ~20 k facets (not hundreds of thousands).
+3. **"Orifice" is a straight stub cylinder** of orifice radius extending
+   from the cone apex ALL THE WAY DOWN to the box bottom.
+4. **MI defined across the FULL box bottom face**
+   (`bc_x_w/e = x_min/x_max, bc_z_b/t = z_min/z_max`).  The STL blocks
+   all cells outside the stub cylinder; only the ~`π R_i² / dx²` cells
+   inside the stub cylinder see the inflow.
+5. **No cut-cell-propagation knobs** (`cad_propagate_order`,
+   `set_corner_cells`, `flip_stl_normals` are absent from the shipped
+   working tutorial).
+
+Reference tutorial:
+`/Users/nelsonpereira/mamba/envs/mfix-26.1.2/share/mfix/templates/tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx`.
+
+### R1 changes
+
+- **Mesh**: uniform `dx = dy = dz = 2 mm` (was graded 1 mm near-axis,
+  2 mm bed, 4 mm fountain, 5 mm freeboard, 4.6 mm outer xz).
+- **Box**: x,z = ±30 mm (R_c + 5 mm margin); y = [-L_stub, H_dom]
+  = [-20 mm, 200 mm].  `imax = kmax = 30`, `jmax = 110`, 99 000 total
+  cells (was `imax = kmax = 14, jmax = 61`, 11 956 cells).
+- **Stub tube length**: `L_stub = 20 mm` (was 10 mm; 10 × stub radius
+  gives inflow developing length).
+- **STL sampling**: `dx_sample = 1 mm` = `0.5 × dx_cell` per rule of
+  thumb (was 0.5 mm). Produces ~80 k facets (was 322 k; NETL ships 22 k).
+- **MI**: full box bottom face (`bc_x_w/e = x_min/x_max`,
+  `bc_z_b/t = z_min/z_max`); the STL stub cylinder masks it down to
+  the circular orifice-equivalent (`π R_i² = 12.57 mm²`) footprint.
+- **Deleted** `cad_propagate_order = 'JKI'` and `set_corner_cells = .True.`
+  from the template.  NETL does not set either; they interact poorly
+  with graded meshes and dense STL.
+- **Monitors / IC_3**: orifice-aligned (`±R_i`) bounds now live under
+  new `orifice_x_w_m`/`orifice_x_e_m`/`orifice_z_b_m`/`orifice_z_t_m`
+  params so IC_3 (pre-opened spout column) and Monitors 1/4 keep the
+  tight near-axis sampling even though the MI now spans the full face.
+- **Wall-time estimate**: `dt_for_cfl(u = 30, dx = 2 mm, cfl = 0.5)
+  ≈ 3.3e-5 s`; `tstop = 5.5 s` ⇒ ~165 000 explicit-equivalent steps.
+  Semi-implicit MFiX actual `dt` is expected to stabilise near 1e-3 s
+  after startup, same regime as Day-9.
+- Previous attempt's "no spout" result stands as documented history
+  (sections below); R1 is a fresh attempt with a NETL-aligned
+  geometry + mesh and has not yet been run.
+
+### Status
+
+| Criterion | Target | Observed |
+| --- | --- | --- |
+| ≥ 5 s simulated past startup without `DT < DT_MIN` | 5 s | TBD (R1 implementation complete, re-run pending) |
+| Centerline `v_g` within stated tolerance vs S1 Fig. 1 | report without tuning | TBD (post-run; overlay figure already wired) |
+| PSD peak reported next to S2's 17–25 Hz band and S1's ~10–11 Hz line | report, no tuning | TBD (post-run; Welch PSD wired) |
+| All tests pass | — | **37 / 37 PASS** on the make_case + make_stl suite |
+| Run logged in `results/run_log.csv` | — | TBD (no R1 run has happened) |
+
 
 ## What was implemented
 
@@ -325,3 +425,60 @@ Both quantities feed into Day 11-12's CFD-DEM residence-time
 histograms and Day 13's parametric design study.  Switching to PIC
 on Day 10 keeps the pipeline intact (same post-processor, same
 figures, same monitors); only the solids-stress branch changes.
+
+## References
+
+The implementation combines a well-defined solver methodology with a
+documented reference template and published validation targets.
+
+**Primary methodology paper (MP-PIC solver):**
+
+- Snider, D.M. (2001). "An Incompressible Three-Dimensional Multiphase
+  Particle-in-Cell Model for Dense Particle Flows."
+  *Journal of Computational Physics* 170(2): 523–549.
+  DOI: [10.1006/jcph.2001.6747](https://doi.org/10.1006/jcph.2001.6747).
+  Defines the MP-PIC method implemented in MFiX as `solids_model = 'PIC'`:
+  parcels tracked in continuous space, Eulerian gas phase on the
+  Cartesian grid, two-way coupling via drag + an interpolated
+  solids-stress gradient.  All of the `mppic_coeff_*` and
+  `fric_*_pic` keywords in our template trace to this paper's closure.
+
+**Continuum solids-stress closure (Harris–Crighton):**
+
+- Harris, S.E. and Crighton, D.G. (1994). "Solitons, Solitary Waves,
+  and Voidage Disturbances in Gas-Fluidized Beds."
+  *Journal of Fluid Mechanics* 266: 243–276.
+  DOI: [10.1017/S0022112094000996](https://doi.org/10.1017/S0022112094000996).
+  Source of the `P_s = P_s0 · ε_s^β / max(ε_cp - ε_s, δ)` form used by
+  MFiX's PIC frictional-stress branch; the keywords
+  `psfac_fric_pic = 100`, `fric_exp_pic = 3`, and
+  `fric_non_sing_fac = 1e-7` are the P_s0, β, and δ in that expression.
+
+**Reference template (NETL-shipped working MP-PIC spouted-bed case):**
+
+- NETL (2020). `tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx`,
+  shipped with MFiX 26.1.2
+  (`/Users/nelsonpereira/mamba/envs/mfix-26.1.2/share/mfix/templates/
+   tutorials/pic/spouted_bed_3d/`).  No peer-reviewed paper backs this
+  tutorial directly, but it is NETL's canonical validated 3D-PIC
+  spouted-bed template and is the pattern R1 clones (uniform 2 mm
+  Cartesian mesh, stub-cylinder-to-box-bottom geometry, full-face MI,
+  no `cad_propagate_order` / `set_corner_cells`).
+
+**Validation experiment (Case V = ORNL/UTK coater geometry):**
+
+- **S1** — Collins, J.L. et al. (2006). *Oak Ridge National Laboratory
+  TM-2006/520*, "Hydrodynamic Studies of a Cold-Model Spouted-Bed
+  Fluidization Chamber for Pyrocarbon-Coated Nuclear Fuel Particles"
+  (ORNL/TM-2006/520).  Source of the vessel geometry
+  (50 mm column, 60° cone, 4 mm orifice), the 54.5 g ZrO₂ bed
+  specification, and the centerline-`v_g(y)` validation trace used
+  for the Fig. 1 digitized overlay in the post-processor.
+
+- **S2** — Zhou, Y.-P., Tung, Y.-K., Guo, J., Collins, J.L.,
+  Hunt, R.D., and Ebner, A.D. (2005). "Hydrodynamics of a Spouted Bed
+  with Draft Tube: An Experimental Study by Pressure Fluctuation
+  Measurements." Proceedings of the ANS Winter Meeting (UTK/ORNL
+  cold-mockup).  Source of the inlet-pressure pulsation band
+  (17-25 Hz) that the Welch-PSD post-processor overlays as a reference
+  region on the `fig_d10_V_3d_psd.png` figure.

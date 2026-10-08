@@ -79,76 +79,61 @@ spouted_bed_V_2d:
                              # z_min = -z_thickness/2, z_max = +z_thickness/2,
                              # zlength = z_thickness. source: assumed (cosmetic).
 
-# Day 10: Case V 3D spouted-bed template (ORNL/UTK cold mockup).
-# STL cut-cell geometry: full surface of revolution (60 deg cone + straight
-# cylindrical column, 4 mm constant-diameter orifice at the apex).  Mesh is
-# graded in x and z so the orifice spans >= 4 cells (1 mm near-axis cells) and
-# the particle-zone cell size stays <= 10*d_p = 5 mm (10*500 um) elsewhere.
+# Day 10 R1 (NETL-clone redesign, 2026-10-08): Case V 3D spouted-bed template.
+# UNIFORM 2 mm Cartesian mesh.  Replaces the Day-10 graded mesh (1 mm near-axis,
+# 4.6 mm outer) that triggered MFiX 26.1.2's F_AT cut-cell classifier bug on a
+# dense STL — the near-axis fine cells got mis-classified as BLOCKED, producing
+# a phantom 2 mm "solid rod" up the vessel axis and preventing the 30 m/s inlet
+# jet from forming a spout.  See notes/day10_summary.md "R1 — NETL-clone
+# redesign" for the full diagnosis.
 #
-# source: implementation-steps/day-10.md.
+# Design matches NETL's shipped tutorials/pic/spouted_bed_3d pattern:
+#  - uniform Cartesian mesh (no grading);
+#  - implicit-SDF STL with ~20 k facets (sampled at 0.5 x cell size);
+#  - stub cylinder (radius R_i) extends from y = -L_stub to y = 0 and acts as
+#    the physical orifice-equivalent that the STL cuts the MI through;
+#  - MI applied across the FULL box bottom face — the STL (not the BC bounds)
+#    restricts gas entry to the stub-cylinder footprint;
+#  - no cad_propagate_order / set_corner_cells (NETL does not set them).
+#
+# Box in x,z: ±(R_c + 5 mm margin) = ±30 mm — 2*30/dx = 30 cells each axis.
+# Box in y: [-L_stub, H_dom] = [-20 mm, 200 mm] — 220/dy = 110 cells.
+# Total 30 * 110 * 30 = 99 000 cells (~7x Day-10 initial graded mesh).
+#
+# source: implementation-steps/day-10.md; NETL tutorials/pic/spouted_bed_3d.
 spouted_bed_V_3d:
-  H_dom_m: 0.20              # axial domain extent [m]
-                             # Same as V_2d.  ~3x H_static + fountain headroom.
-                             # source: implementation-steps/day-10.md
-  theta_segments: 60         # angular facets around the vessel axis [-]
-                             # 60 segments => chord error ~ R*(1-cos(pi/60))
-                             # ~ 0.14% of R, well below the near-axis 1 mm cell.
-                             # source: assumed (standard axisymmetric STL
-                             #         discretization for a 50 mm vessel).
-  # Non-uniform meshing in x,z: three segments by cell count + cell width.
-  # Segment widths SI (m). The orifice region is in segment 2 (center).
-  xz_segments:
-    - { n_cells:  5, dx_m: 4.6e-3 }   # outer: 5 cells x 4.6 mm = 23 mm
-    - { n_cells:  4, dx_m: 1.0e-3 }   # near-axis: 4 cells x 1 mm = 4 mm (orifice)
-    - { n_cells:  5, dx_m: 4.6e-3 }   # outer: 5 cells x 4.6 mm = 23 mm
-                             # Total x,z extent = 50 mm = D_c.
-                             # Orifice (4 mm) spans 4 cells x 1 mm (meets the
-                             # Day-10 >=4-cells-across-inlet rule).
-                             # Outer cells 4.6 mm = 9.2*d_p < 10*d_p = 5 mm,
-                             # so the "cell size <= 10*d_p in the particle
-                             # zone" rule is still satisfied.
-                             # source: implementation-steps/day-10.md
-                             # ("Cell size <= 10*d_p = 5 mm in the particle
-                             #  zone; at least 4 cells across the 4 mm inlet
-                             #  (so the near-axis cell size is <= 1 mm;
-                             #  grade if needed)").
-                             # Coarser-than-initial outer x,z (4.6 mm vs
-                             # 2.3 mm) halves the per-axis cell count from
-                             # 24 to 14 and the total cell count from 40 k
-                             # to ~11 k, which is the mesh that actually
-                             # finishes the >= 5 s target on this box in
-                             # the Day-10 wall-time budget.
-  dx_sample_m: 5.0e-4         # SDF sampling resolution for marching cubes [m]
-                              # 0.5 mm is half the smallest solver cell (1 mm);
-                              # keeps the sampled STL at least 2x finer than the
-                              # solver mesh so every edge of a solver cell
-                              # intersects at least one STL facet, which is the
-                              # key to avoiding F_AT UNDEFINED in near-axis
-                              # cells (notes/day10_summary.md fix 3).
-                              # source: assumed (standard rule of thumb).
-  L_stub_m: 1.0e-2            # inlet stub tube length [m] (10 mm = 5*dy_min_m)
-                              # Extends the vessel geometry below y=0 as a
-                              # cylinder of radius R_i so MI sits at the
-                              # box bottom (y = -L_stub) and the near-axis
-                              # STL sidewall facets seed F_AT along J.
+  H_dom_m: 0.20              # axial domain extent above the orifice [m]
+                              # ~3x H_static (0.032 m) + fountain headroom.
                               # source: implementation-steps/day-10.md
-                              #         (fix 2 in notes/day10_summary.md,
-                              #          mirrors pic/spouted_bed_3d tutorial)
-  # Non-uniform y-mesh: four segments (stub + bed + fountain + freeboard).
-  y_segments:
-    - { n_cells:  5, dy_m: 2.0e-3 }   # stub tube: 5 cells x 2 mm = 10 mm
-                                      # (y: -10 to 0; L_stub inlet stub tube)
-    - { n_cells: 20, dy_m: 2.0e-3 }   # bed region: 20 cells x 2 mm = 40 mm
-                                      # (covers H_static = 32.2 mm + near-bed)
-    - { n_cells: 20, dy_m: 4.0e-3 }   # fountain region: 20 cells x 4 mm = 80 mm
-                                      # (covers typical fountain ~ 2-3x H_static;
-                                      #  4 mm = 8*d_p < 10*d_p cap)
-    - { n_cells: 16, dy_m: 5.0e-3 }   # freeboard: 16 cells x 5 mm = 80 mm
-                                      # (freeboard, no particles expected;
-                                      #  5 mm = 10*d_p is still at the rule
-                                      #  cap in case particles stray up.)
-                             # Total y = 210 mm (10 mm stub + 200 mm vessel).
-                             # source: implementation-steps/day-10.md
+  theta_segments: 60         # angular facets (retained for API symmetry with
+                              # the legacy surface-of-revolution writer; the
+                              # Day-10 R1 driver uses build_spouted_bed_stl_
+                              # implicit which ignores it)
+                              # source: assumed (unused in R1)
+  dx_uniform_m: 2.0e-3        # uniform Cartesian cell size (dx = dy = dz) [m]
+                              # 2 mm; matches NETL's tutorial cell size for a
+                              # 5 cm vessel.  2 cells span the 4 mm orifice —
+                              # fewer than the Day-10 "4 cells" ambition, but
+                              # mirrors NETL's shipped tutorial trade-off (NETL
+                              # spans ~4 cells across a 15 mm spout, i.e. a 2x
+                              # cell-to-radius ratio; we accept the same).
+                              # source: implementation-steps/day-10.md R1
+  dx_sample_m: 1.0e-3         # SDF sampling grid for marching cubes [m]
+                              # 1 mm = 0.5 x dx_uniform.  Rule of thumb:
+                              # dx_sample <= 0.5 x solver cell size so every
+                              # solver-cell edge intersects at least one STL
+                              # facet.  Expected facet count ~20-50 k (NETL
+                              # ships 22 028 at a similar sampling density).
+                              # source: assumed; mirrors NETL tutorial density.
+  L_stub_m: 2.0e-2            # inlet stub-cylinder length [m] (20 mm = 10 x R_i)
+                              # Long enough to let the inlet profile develop
+                              # (10x stub radius) but short enough to keep the
+                              # cell count down.  The stub cylinder (radius R_i)
+                              # extends from y = -L_stub to y = 0 and IS the
+                              # physical orifice; the MI is applied across the
+                              # entire box bottom face and the STL carves it
+                              # down to the stub circle.
+                              # source: implementation-steps/day-10.md R1
 
 # Day 10 PIC closure block for Case V (used when solids_model='PIC').
 # Values sourced from NETL's tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx
@@ -217,13 +202,129 @@ spouted_bed_V_3d_pic:
                                # that seed parcels (bed IC2).  Larger value
                                # => fewer physical parcels per cell; smaller
                                # => more parcels and higher wall-time.
+                               # For Case V inventory (54.5 g, 500 um ZrO2,
+                               # rho_p=6050 kg/m^3), N_phys = m / (rho * V_p)
+                               # = 0.0545 / (6050 * (pi/6)(5e-4)^3)
+                               # = 1.376e5 real particles; with statwt=4.2,
+                               # parcel count ~ 32,800 (observed post-Fix-A:
+                               # 32,006 parcels, 2% below theoretical due to
+                               # IC region clipping at cone-box corners).
                                # keyword: IC_PIC_CONST_STATWT(IC, PHASE)
                                # source: NETL pic/spouted_bed_3d tutorial
-                               #         (ic_pic_const_statwt(2,1)=4.2 for a
-                               #          ~15k-parcel bed in a 5 cm vessel)
+                               #         (statwt value; parcel-count target
+                               #          scales with inventory per Case V).
   bc_pic_mi_const_statwt: 5.0  # Stat-weight for BC MI (sentinel value;
                                # bc_ep_s(3,1)=0.0 so no parcels actually
                                # enter via the gas inlet, but the parser
                                # requires this field to be set).
                                # keyword: BC_PIC_MI_CONST_STATWT(BC, PHASE)
                                # source: NETL pic/spouted_bed_3d tutorial
+
+# -----------------------------------------------------------------------
+# Operating-point reference values for Case V spouted bed.
+# U_ms (minimum spouting velocity) is a critical regime parameter; the
+# source must be documented per CLAUDE.md rule 2 (no magic numbers).
+#
+# The "1.9×U_ms" claim in run_log.csv (Day-8 notes) and PLAN.md §1.1
+# derives from S2's direct experimental measurement of U_ms = 12 L/min
+# for 500 µm ZrO₂ in the UTK cold-mockup (D_c=50 mm, D_i=4 mm, 60° cone,
+# air at ~25 °C). It is NOT derived from Mathur-Gishler or any other
+# purely analytical formula.
+#
+# Correlation cross-checks (all at air 25 °C, rho_g=1.179 kg/m^3,
+# mu_g=1.854e-5 Pa.s, Ar=25433):
+#
+#  (a) Mathur-Gishler (1955) — cylindrical spouted beds:
+#        U_ms = (d_p/D_c) * (D_i/D_c)^(1/3) * sqrt(2*g*H*(rho_p-rho_g)/rho_g)
+#        At H_static = 32.2 mm  →  U_ms = 0.245 m/s  →  U/U_ms = 0.78
+#        BELOW spouting threshold.  M-G is derived for cylindrical beds
+#        and systematically over-predicts U_ms in conical geometries with
+#        small H/D_c (< 1); the 0.78 result does NOT mean the bed cannot
+#        spout — it means M-G is the wrong formula here.
+#        Reference: Mathur & Gishler (1955), AIChE J. 1(2):157–164;
+#                   Mathur & Epstein, "Spouted Beds" (1974), Eq. 2.1.
+#
+#  (b) Olazar et al. (1992) — conical spouted beds:
+#        U_ms = 0.126 * Ar^0.39 * (D_i/D_c)^1.68 * tan(γ/2)^0.38
+#        (γ = 60° included angle; D_b = D_i = cone-base ≡ orifice diameter)
+#        At Ar=25433, D_i/D_c=0.08, tan(30°)=0.5774  →  U_ms = 0.077 m/s
+#        U/U_ms = 2.50  (H-independent form, Eq. 2 of the 1992 paper).
+#        Olazar's accuracy band is ±30%; 0.077 m/s is 24% below S2's
+#        measured 0.102 m/s — within the correlation uncertainty.
+#        Reference: Olazar, M.; San José, M.J.; Aguayo, A.T.; Arandes, J.M.;
+#                   Bilbao, J. (1992) "Stable operation conditions for
+#                   gas-solid contact regimes in conical spouted beds,"
+#                   Ind. Eng. Chem. Res. 31(7):1784–1791.
+#                   DOI 10.1021/ie00007a024.
+#
+# Conclusion: Olazar (1992) is the theoretically appropriate correlation
+# class for a conical spouted bed (confirms U > U_ms, consistent with
+# observed spouting). S2's direct measurement is the primary numerical
+# anchor for the 1.9× operating-point ratio.
+# -----------------------------------------------------------------------
+operating_point_V:
+  U_in_m_s: 30.0              # Inlet (orifice) gas velocity [m/s]
+                               # MFiX BC: bc_v_g at the 4 mm orifice MI.
+                               # source: S2 (Zhou et al. 2005, UTK mockup,
+                               #         22.6 L/min at 500 µm — upper end of
+                               #         S2's stable-spouting range).
+
+  U_sup_m_s: 0.1920            # Superficial velocity in the cylindrical
+                               # column at U_in = 30 m/s [m/s]:
+                               #   Q = U_in * (pi/4 * D_i^2)
+                               #     = 30 * pi/4 * (0.004)^2
+                               #     = 3.770e-4 m^3/s  = 22.62 L/min
+                               #   U_sup = Q / (pi/4 * D_c^2)
+                               #         = 3.770e-4 / 1.963e-3
+                               #         = 0.1920 m/s
+                               # source: geometric; see src/make_case.py
+                               #         build_V_2d_params / build_V_3d_params.
+
+  U_ms_m_s: 0.1019             # Minimum spouting velocity [m/s] (superficial
+                               # in 50 mm column).
+                               # PRIMARY SOURCE: S2 (Zhou, Bruns, Finney, Daw
+                               # et al., UTK cold-mockup, AIChE Annual Meeting
+                               # 2005), which reports U_ms = 12 L/min for
+                               # 500 µm ZrO₂ in the UTK rig (D_c=50 mm,
+                               # D_i=4 mm, 60° cone, air ~25 °C):
+                               #   U_ms = (12 L/min) / (1000*60) / A_column
+                               #        = 2.000e-4 m^3/s / 1.963e-3 m^2
+                               #        = 0.1019 m/s
+                               # This is an experimental measurement, not a
+                               # correlation output.
+                               #
+                               # CORRELATION CONTEXT (Olazar et al. 1992,
+                               # conical spouted beds, Eq. 2):
+                               #   U_ms = 0.126 * Ar^0.39 * (D_i/D_c)^1.68
+                               #                          * tan(γ/2)^0.38
+                               #        = 0.126 * (25433)^0.39 * (0.08)^1.68
+                               #               * tan(30°)^0.38
+                               #        = 0.126 * 52.25 * 0.0144 * 0.8116
+                               #        = 0.0767 m/s
+                               # (24% below S2; within Olazar ±30% accuracy.)
+                               # Olazar is the correct correlation CLASS for
+                               # this geometry; it confirms U > U_ms (spouting
+                               # regime) even at its conservative estimate.
+                               # Reference: Olazar et al. (1992), Ind. Eng.
+                               # Chem. Res. 31(7):1784–1791,
+                               # DOI 10.1021/ie00007a024.
+                               #
+                               # MATHUR-GISHLER NOTE: Mathur-Gishler (1955)
+                               # cylindrical correlation gives U_ms = 0.245 m/s
+                               # at H=32 mm (U/U_ms = 0.78, below threshold).
+                               # M-G systematically over-predicts U_ms for
+                               # conical beds at low H/D_c — do NOT use M-G
+                               # for this geometry. See notes/benchmarks.md §4
+                               # audit item 3 (now resolved).
+                               # source: S2 (primary); Olazar 1992 (supporting).
+
+  U_over_U_ms: 1.88            # U_sup / U_ms = 0.1920 / 0.1019 = 1.883
+                               # ≈ 1.9 (rounded in PLAN.md and run_log.csv).
+                               # S2 reports stable coherent spouting over
+                               # U/U_ms = 1.0–1.9 for 500 µm ZrO₂; 1.88
+                               # places Case V at the upper edge of S2's
+                               # stable-spouting range (not the "pulsatory"
+                               # regime described in Marshall17, which operates
+                               # below U_ms with a different geometry).
+                               # source: derived from U_sup_m_s / U_ms_m_s;
+                               #         S2 for the stable-spouting bound.

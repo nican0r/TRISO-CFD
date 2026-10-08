@@ -288,20 +288,29 @@ def build_V_2d_params(
     return params
 
 
-def _build_graded_axis(segments: list[dict]) -> list[float]:
-    """Flatten a list of {n_cells, d*_m} segments into a per-cell size list.
+def _uniform_axis(dx_m: float, length_m: float) -> list[float]:
+    """Return a flat per-cell size list [m] for a uniform-mesh axis.
 
-    segments : [{n_cells: int, dx_m: float}, ...] (or dy_m / dz_m key)
-    Returns the per-cell size list [m] of length sum(n_cells).
+    dx_m     : uniform cell size [m]
+    length_m : total axis extent [m]
+
+    The number of cells is round(length_m / dx_m); the function raises
+    ValueError if the implied extent differs from length_m by more than
+    one tenth of a cell (= 10 % of dx_m), which would indicate a
+    bad user input (dx_m that does not divide length_m).
     """
-    out: list[float] = []
-    for seg in segments:
-        n = int(seg["n_cells"])
-        # Accept dx_m, dy_m or dz_m.
-        key = next(k for k in seg if k != "n_cells")
-        d = float(seg[key])
-        out.extend([d] * n)
-    return out
+    if dx_m <= 0.0 or length_m <= 0.0:
+        raise ValueError("dx_m and length_m must both be positive")
+    n = int(round(length_m / dx_m))
+    if n < 1:
+        raise ValueError(f"length_m {length_m} / dx_m {dx_m} rounds to 0 cells")
+    implied = n * dx_m
+    if abs(implied - length_m) > 0.1 * dx_m:
+        raise ValueError(
+            f"dx_m {dx_m} does not divide length_m {length_m} (implied "
+            f"{implied} vs requested {length_m})"
+        )
+    return [dx_m] * n
 
 
 def build_V_3d_params(
@@ -333,12 +342,20 @@ def build_V_3d_params(
     notes/day10_summary.md for the full diagnosis).
 
     Geometry comes from params/geometry.yaml bed_V (R_c = 25 mm,
-    R_i = 2 mm, cone half-angle 30 deg) and the Day-10 spouted_bed_V_3d
-    block (graded x,z and y meshes, L_stub = 10 mm inlet stub tube).
+    R_i = 2 mm, cone half-angle 30 deg) and the Day-10 R1 spouted_bed_V_3d
+    block (uniform 2 mm Cartesian mesh, L_stub = 20 mm stub cylinder).
+
+    Day-10 R1 design (NETL-clone, see notes/day10_summary.md "R1 — NETL-
+    clone redesign"):
+      - uniform 2 mm cells in x, y, z (no grading);
+      - Cartesian box in x,z: [-30 mm, +30 mm] (5 mm margin outside R_c);
+      - Cartesian box in y: [-L_stub, H_dom] = [-20 mm, 200 mm];
+      - MI applied across the FULL box bottom face (y = -L_stub); the
+        STL stub-cylinder cross-section carves out the orifice-equivalent
+        inflow footprint (circle of radius R_i).
 
     U_in_m_s     : physical inlet jet velocity through the 4 mm orifice [m/s]
-                   (bc_v_g on the MI slab box |x|<=R_i, |z|<=R_i at
-                   y = -L_stub).
+                   (bc_v_g on the full box bottom face at y = -L_stub).
     tstop_s      : run end time [s]
     run_name     : MFiX run_name (also used for VTK and monitor file names)
     description  : free-form description string for the .mfx header
@@ -367,29 +384,39 @@ def build_V_3d_params(
     H_dom_m = float(v3d["H_dom_m"])
     theta_segments = int(v3d["theta_segments"])
     L_stub_m = float(v3d.get("L_stub_m", 0.0))
-    dx_sample_m = float(v3d.get("dx_sample_m", 5.0e-4))
+    dx_sample_m = float(v3d.get("dx_sample_m", 1.0e-3))
+    dx_uniform_m = float(v3d["dx_uniform_m"])
     H_total_m = H_dom_m + L_stub_m
 
-    dx_m_list = _build_graded_axis(v3d["xz_segments"])
-    dy_m_list = _build_graded_axis(v3d["y_segments"])
-    dz_m_list = _build_graded_axis(v3d["xz_segments"])
-    dy_min = min(dy_m_list)
+    # Day-10 R1: uniform mesh in x, y, z.  Box in x,z spans ±(R_c + 5 mm
+    # margin) = ±30 mm so there is clearance around the vessel wall for
+    # the cut-cell preprocessor; this is 6 mm larger than D_c (2 x 30 vs
+    # 2 x 25 mm).  Box in y spans [-L_stub, H_dom] = [-20, 200] mm.
+    x_half_m = R_c_m + 5.0e-3           # 25 mm + 5 mm margin = 30 mm half-width
+    sum_xz_m = 2.0 * x_half_m           # 60 mm box width in x and z
+    dx_m_list = _uniform_axis(dx_uniform_m, sum_xz_m)
+    dy_m_list = _uniform_axis(dx_uniform_m, H_total_m)
+    dz_m_list = _uniform_axis(dx_uniform_m, sum_xz_m)
+    dx_min_m = dx_uniform_m
     imax = len(dx_m_list)
     jmax = len(dy_m_list)
     kmax = len(dz_m_list)
 
-    # Sanity: xz-mesh centred on 0, sums must equal domain extents.
-    # y-mesh now sums to H_total = L_stub + H_dom (stub tube below y=0).
+    # Sanity: xz-mesh symmetric, sum >= D_c; y-mesh sums to L_stub + H_dom.
     sum_x = sum(dx_m_list)
     sum_z = sum(dz_m_list)
     sum_y = sum(dy_m_list)
-    if abs(sum_x - D_c_m) > 1e-9 or abs(sum_z - D_c_m) > 1e-9:
+    if abs(sum_x - sum_z) > 1e-9:
         raise ValueError(
-            f"xz_segments sum ({sum_x} m) must equal D_c_m ({D_c_m} m)."
+            f"dx sum ({sum_x} m) must equal dz sum ({sum_z} m)."
+        )
+    if sum_x < D_c_m:
+        raise ValueError(
+            f"dx sum ({sum_x} m) must enclose the vessel D_c = {D_c_m} m."
         )
     if abs(sum_y - H_total_m) > 1e-9:
         raise ValueError(
-            f"y_segments sum ({sum_y} m) must equal H_total "
+            f"dy sum ({sum_y} m) must equal H_total "
             f"(L_stub + H_dom = {H_total_m} m)."
         )
 
@@ -412,14 +439,16 @@ def build_V_3d_params(
         cone_half_angle_deg=cone_half_angle_deg,
     )
 
-    x_min_m = -R_c_m
-    x_max_m = R_c_m
-    z_min_m = -R_c_m
-    z_max_m = R_c_m
-    # Day-10 fix 2: Cartesian box extends from y = -L_stub to y = H_dom so
-    # the MI BC sits at the physical box bottom (MFiX error 1100 avoided)
-    # and the near-axis column of cells inside the stub has STL sidewall
-    # facets within 1-2 cells (seeds F_AT propagation along J).
+    x_min_m = -x_half_m
+    x_max_m = x_half_m
+    z_min_m = -x_half_m
+    z_max_m = x_half_m
+    # Day-10 R1 NETL pattern: Cartesian box extends from y = -L_stub to
+    # y = H_dom; the MI BC sits at the box bottom (y = -L_stub) across
+    # the FULL box face.  The STL (stub cylinder of radius R_i) carves
+    # the MI down to the circular orifice-equivalent footprint; the gas
+    # cannot enter any cell outside the stub cylinder because the STL
+    # marks them as blocked.
     y_min_m = -L_stub_m
     y_max_m = H_dom_m
     bc_mi_y_s_m = -L_stub_m
@@ -456,17 +485,31 @@ def build_V_3d_params(
         "cone_top_y_m": cone_top_y_m,
         "theta_segments": theta_segments,
         "dx_sample_m": dx_sample_m,
-        "bc_mi_x_w_m": -R_i_m,
-        "bc_mi_x_e_m": R_i_m,
-        "bc_mi_z_b_m": -R_i_m,
-        "bc_mi_z_t_m": R_i_m,
+        "dx_uniform_m": dx_uniform_m,
+        # Day-10 R1: MI spans the FULL box bottom face (x_min..x_max,
+        # z_min..z_max).  The STL stub cylinder restricts the actual gas
+        # inflow to the circular orifice-equivalent footprint.
+        "bc_mi_x_w_m": x_min_m,
+        "bc_mi_x_e_m": x_max_m,
+        "bc_mi_z_b_m": z_min_m,
+        "bc_mi_z_t_m": z_max_m,
         "bc_mi_y_s_m": bc_mi_y_s_m,
         "bc_mi_y_n_m": bc_mi_y_n_m,
+        # Orifice-aligned square bounds (|x|,|z| <= R_i).  Used by:
+        #  - IC_3: pre-opened spout column through the bed, gas-only.
+        #  - Monitor 1 (inlet-plane P_g probe).
+        #  - Monitor 4 (centerline V_g probe at mid-bed).
+        # These bounds are NOT applied to the MI BC in Day-10 R1; the MI
+        # covers the full box bottom face (see bc_mi_x_w_m etc.).
+        "orifice_x_w_m": -R_i_m,
+        "orifice_x_e_m": R_i_m,
+        "orifice_z_b_m": -R_i_m,
+        "orifice_z_t_m": R_i_m,
         "H_static_m": H_static_m,
         "H_dom_m": H_dom_m,
         "H_mid_m": 0.5 * H_static_m,
         "H0_over_Dc": H_static_m / D_c_m,
-        "dy_min_m": float(dy_min),
+        "dy_min_m": float(dx_min_m),
         "ep_g_bed": 1.0 - eps_s_bed,
         "eps_s_bed": eps_s_bed,
         "ep_star": ep_star,
