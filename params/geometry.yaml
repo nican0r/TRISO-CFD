@@ -78,3 +78,152 @@ spouted_bed_V_2d:
   z_thickness_m: 0.001       # single-cell slab thickness [m] = dx so dz = dx.
                              # z_min = -z_thickness/2, z_max = +z_thickness/2,
                              # zlength = z_thickness. source: assumed (cosmetic).
+
+# Day 10: Case V 3D spouted-bed template (ORNL/UTK cold mockup).
+# STL cut-cell geometry: full surface of revolution (60 deg cone + straight
+# cylindrical column, 4 mm constant-diameter orifice at the apex).  Mesh is
+# graded in x and z so the orifice spans >= 4 cells (1 mm near-axis cells) and
+# the particle-zone cell size stays <= 10*d_p = 5 mm (10*500 um) elsewhere.
+#
+# source: implementation-steps/day-10.md.
+spouted_bed_V_3d:
+  H_dom_m: 0.20              # axial domain extent [m]
+                             # Same as V_2d.  ~3x H_static + fountain headroom.
+                             # source: implementation-steps/day-10.md
+  theta_segments: 60         # angular facets around the vessel axis [-]
+                             # 60 segments => chord error ~ R*(1-cos(pi/60))
+                             # ~ 0.14% of R, well below the near-axis 1 mm cell.
+                             # source: assumed (standard axisymmetric STL
+                             #         discretization for a 50 mm vessel).
+  # Non-uniform meshing in x,z: three segments by cell count + cell width.
+  # Segment widths SI (m). The orifice region is in segment 2 (center).
+  xz_segments:
+    - { n_cells:  5, dx_m: 4.6e-3 }   # outer: 5 cells x 4.6 mm = 23 mm
+    - { n_cells:  4, dx_m: 1.0e-3 }   # near-axis: 4 cells x 1 mm = 4 mm (orifice)
+    - { n_cells:  5, dx_m: 4.6e-3 }   # outer: 5 cells x 4.6 mm = 23 mm
+                             # Total x,z extent = 50 mm = D_c.
+                             # Orifice (4 mm) spans 4 cells x 1 mm (meets the
+                             # Day-10 >=4-cells-across-inlet rule).
+                             # Outer cells 4.6 mm = 9.2*d_p < 10*d_p = 5 mm,
+                             # so the "cell size <= 10*d_p in the particle
+                             # zone" rule is still satisfied.
+                             # source: implementation-steps/day-10.md
+                             # ("Cell size <= 10*d_p = 5 mm in the particle
+                             #  zone; at least 4 cells across the 4 mm inlet
+                             #  (so the near-axis cell size is <= 1 mm;
+                             #  grade if needed)").
+                             # Coarser-than-initial outer x,z (4.6 mm vs
+                             # 2.3 mm) halves the per-axis cell count from
+                             # 24 to 14 and the total cell count from 40 k
+                             # to ~11 k, which is the mesh that actually
+                             # finishes the >= 5 s target on this box in
+                             # the Day-10 wall-time budget.
+  dx_sample_m: 5.0e-4         # SDF sampling resolution for marching cubes [m]
+                              # 0.5 mm is half the smallest solver cell (1 mm);
+                              # keeps the sampled STL at least 2x finer than the
+                              # solver mesh so every edge of a solver cell
+                              # intersects at least one STL facet, which is the
+                              # key to avoiding F_AT UNDEFINED in near-axis
+                              # cells (notes/day10_summary.md fix 3).
+                              # source: assumed (standard rule of thumb).
+  L_stub_m: 1.0e-2            # inlet stub tube length [m] (10 mm = 5*dy_min_m)
+                              # Extends the vessel geometry below y=0 as a
+                              # cylinder of radius R_i so MI sits at the
+                              # box bottom (y = -L_stub) and the near-axis
+                              # STL sidewall facets seed F_AT along J.
+                              # source: implementation-steps/day-10.md
+                              #         (fix 2 in notes/day10_summary.md,
+                              #          mirrors pic/spouted_bed_3d tutorial)
+  # Non-uniform y-mesh: four segments (stub + bed + fountain + freeboard).
+  y_segments:
+    - { n_cells:  5, dy_m: 2.0e-3 }   # stub tube: 5 cells x 2 mm = 10 mm
+                                      # (y: -10 to 0; L_stub inlet stub tube)
+    - { n_cells: 20, dy_m: 2.0e-3 }   # bed region: 20 cells x 2 mm = 40 mm
+                                      # (covers H_static = 32.2 mm + near-bed)
+    - { n_cells: 20, dy_m: 4.0e-3 }   # fountain region: 20 cells x 4 mm = 80 mm
+                                      # (covers typical fountain ~ 2-3x H_static;
+                                      #  4 mm = 8*d_p < 10*d_p cap)
+    - { n_cells: 16, dy_m: 5.0e-3 }   # freeboard: 16 cells x 5 mm = 80 mm
+                                      # (freeboard, no particles expected;
+                                      #  5 mm = 10*d_p is still at the rule
+                                      #  cap in case particles stray up.)
+                             # Total y = 210 mm (10 mm stub + 200 mm vessel).
+                             # source: implementation-steps/day-10.md
+
+# Day 10 PIC closure block for Case V (used when solids_model='PIC').
+# Values sourced from NETL's tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx
+# (installed under /Users/nelsonpereira/mamba/envs/mfix-26.1.2/share/mfix/
+# templates/tutorials/pic/spouted_bed_3d/).  The tutorial is MFiX's canonical
+# PIC 3D-spouted-bed template and uses defaults that are known to run
+# stably with a 60-deg cone + 4 mm orifice and SYAM_OBRIEN gas drag.
+#
+# All keywords here are verified against the installed MFiX 26.1.2 keyword
+# reference under share/mfix/doc/html/reference/particle_in_cell.html,
+# discrete_element.html, initial_condition.html and boundary_condition.html.
+spouted_bed_V_3d_pic:
+  # --- PIC frictional-stress closure (Harris-Crighton continuum) ---
+  fric_exp_pic: 3.0            # Volume-fraction exponential scale factor
+                               # in frictional-stress model [-]
+                               # keyword: FRIC_EXP_PIC
+                               # source: NETL pic/spouted_bed_3d tutorial
+  fric_non_sing_fac: 1.0e-7    # Non-singularity term in frictional-stress
+                               # model [-]
+                               # keyword: FRIC_NON_SING_FAC
+                               # source: NETL pic/spouted_bed_3d tutorial
+  psfac_fric_pic: 100.0        # Pressure linear scale factor in frictional
+                               # stress model [Pa]
+                               # keyword: PSFAC_FRIC_PIC
+                               # source: NETL pic/spouted_bed_3d tutorial
+  # --- Parcel-collision damping / restitution ---
+  mppic_coeff_en1: 0.85        # Empirical damping factor for frictional
+                               # stress model (parcel-parcel) [-]
+                               # keyword: MPPIC_COEFF_EN1
+                               # source: NETL pic/spouted_bed_3d tutorial
+  mppic_coeff_en_wall: 0.85    # Normal restitution for parcel-wall
+                               # collisions [-]
+                               # keyword: MPPIC_COEFF_EN_WALL
+                               # source: NETL pic/spouted_bed_3d tutorial
+  mppic_coeff_et_wall: 1.0     # Tangential restitution for parcel-wall
+                               # collisions [-]
+                               # keyword: MPPIC_COEFF_ET_WALL
+                               # source: NETL pic/spouted_bed_3d tutorial
+  mppic_velfac_coeff: 1.0      # Solids slip-velocity scale factor [-]
+                               # keyword: MPPIC_VELFAC_COEFF
+                               # source: NETL pic/spouted_bed_3d tutorial
+  # --- Gas->parcel interpolation (shared with DEM) ---
+  des_interp_scheme: 'LINEAR_HAT'
+                               # Interpolation scheme used by
+                               # DES_INTERP_ON/DES_INTERP_MEAN_FIELDS.
+                               # keyword: DES_INTERP_SCHEME
+                               # source: NETL pic/spouted_bed_3d tutorial
+  des_epg_clip: 0.42           # Minimum gas volume fraction used to clip
+                               # drag.  Equal to Case V's ep_star
+                               # (= min-fluidization void fraction);
+                               # NETL ships 0.42 as the PIC tutorial
+                               # default.  Note the NETL tutorial also
+                               # uses des_epg_clip = 0.42 which happens
+                               # to match ep_star identically; this is a
+                               # physics coincidence, not a yaml typo.
+                               # keyword: DES_EPG_CLIP
+                               # source: NETL pic/spouted_bed_3d tutorial
+                               # (ties ep_star to the drag/stress clip).
+  friction_model: 'SCHAEFFER'  # Frictional-stress model name.  Shared with
+                               # TFM but applied through the PIC solids
+                               # stress for PIC runs.
+                               # keyword: FRICTION_MODEL
+                               # source: NETL pic/spouted_bed_3d tutorial
+  # --- Parcel statistical weights ---
+  ic_pic_const_statwt: 4.2     # Constant stat-weight for the IC regions
+                               # that seed parcels (bed IC2).  Larger value
+                               # => fewer physical parcels per cell; smaller
+                               # => more parcels and higher wall-time.
+                               # keyword: IC_PIC_CONST_STATWT(IC, PHASE)
+                               # source: NETL pic/spouted_bed_3d tutorial
+                               #         (ic_pic_const_statwt(2,1)=4.2 for a
+                               #          ~15k-parcel bed in a 5 cm vessel)
+  bc_pic_mi_const_statwt: 5.0  # Stat-weight for BC MI (sentinel value;
+                               # bc_ep_s(3,1)=0.0 so no parcels actually
+                               # enter via the gas inlet, but the parser
+                               # requires this field to be set).
+                               # keyword: BC_PIC_MI_CONST_STATWT(BC, PHASE)
+                               # source: NETL pic/spouted_bed_3d tutorial

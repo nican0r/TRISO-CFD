@@ -62,6 +62,9 @@ def build_spouted_bed_stl(
     H_dom_m: float,
     theta_segments: int,
     out_path: Path,
+    close_bottom: bool = False,
+    close_top: bool = False,
+    L_stub_m: float = 0.0,
 ) -> Path:
     """Build the Case V spouted-bed inner-wall STL.
 
@@ -71,18 +74,41 @@ def build_spouted_bed_stl(
     H_dom_m             : axial domain extent [m] (y: 0 -> H_dom)
     theta_segments      : number of angular facets around the axis [-]
     out_path            : destination .stl file (ASCII format)
+    close_bottom        : if True, emit an annular floor at y=0 from
+                          r=R_i to r=R_c (keeps the orifice open at r<R_i).
+                          Normals point in -y (outward from the fluid region).
+    close_top           : if True, emit a disk cap at y=H_dom from r=0
+                          to r=R_c. Normals point in +y (outward).
+    L_stub_m            : if > 0, prepend an inlet stub tube of radius R_i
+                          from y = -L_stub to y = 0 to the profile.  Used
+                          by the Day-10 fix to replicate NETL's PIC
+                          spouted_bed_3d tutorial topology so the MI BC
+                          can sit at the box bottom (y = -L_stub) and the
+                          near-axis cells have STL sidewall facets within
+                          1-2 cells (seeds F_AT propagation along J).
 
     Returns the written path.
 
-    Geometry:
-        y = 0           : orifice plane (annular floor, hole r <= R_i for MI)
+    Geometry (side walls always; floor / cap only when requested):
+        y = 0           : orifice plane
         0 < y < h_cone  : conical wall at r = R_i + y * tan(theta)
         y = h_cone      : cone top (meets cylindrical column)
         y > h_cone      : cylindrical wall at r = R_c
-        y = H_dom       : open top (no cap - PO boundary face)
+        y = H_dom       : top
 
     Normals point outward (toward -r on the walls, toward -y on the floor
-    annulus), i.e. away from the fluid region.
+    annulus, toward +y on the top cap), i.e. away from the fluid region.
+
+    Day-10 note.  The Day-8 run on the planar quadric slab used an open
+    (side-walls-only) STL and only tested STL writing; MFiX never consumed
+    it.  On Day 10 the STL IS consumed by MFiX cut-cell preprocessing,
+    which runs an inside/outside classifier (``F_AT`` in
+    cartesian_grid/intersect.f) that leaves cells with no local facet
+    neighbour as UNDEFINED and marks them BLOCKED.  An open-top /
+    open-floor shell therefore mis-classifies the near-axis cells inside
+    the vessel.  ``close_bottom=True`` + ``close_top=True`` make the STL
+    watertight (except for the orifice hole), restoring the correct
+    fluid-cell count.
     """
     out_path = Path(out_path)
     tan_h = math.tan(math.radians(cone_half_angle_deg))
@@ -98,7 +124,20 @@ def build_spouted_bed_stl(
     #   P0 = (R_i, 0)       -- cone bottom edge (orifice rim)
     #   P1 = (R_c, h_cone)  -- cone top / cylinder bottom edge
     #   P2 = (R_c, H_dom)   -- top opening edge
-    profile = [(R_i_m, 0.0), (R_c_m, h_cone), (R_c_m, H_dom_m)]
+    # When L_stub_m > 0, prepend an inlet stub-tube profile point at
+    # (R_i, -L_stub) so the stub cylinder sidewalls are swept together
+    # with the cone + column.  The stub is open at y = -L_stub (MI BC
+    # sits at the Cartesian box bottom there; MFiX handles the "closure"
+    # from a BC perspective).
+    if L_stub_m > 0.0:
+        profile = [
+            (R_i_m, -L_stub_m),
+            (R_i_m, 0.0),
+            (R_c_m, h_cone),
+            (R_c_m, H_dom_m),
+        ]
+    else:
+        profile = [(R_i_m, 0.0), (R_c_m, h_cone), (R_c_m, H_dom_m)]
 
     # Angular discretization.
     thetas = np.linspace(0.0, 2.0 * math.pi, theta_segments + 1)
@@ -128,17 +167,217 @@ def build_spouted_bed_stl(
             triangles.append((v00, v10, v11))
             triangles.append((v00, v11, v01))
 
-    # Bottom annular floor at y = 0: inner edge r = R_i, outer edge r = R_c
-    # cone-rim radius (but the cone rim is already at R_i at y=0, so the
-    # floor is actually zero-width here -- the wall goes straight into the
-    # orifice).  Nothing to emit for the bottom; the orifice plane is left
-    # open as the MI face r <= R_i, and the cone wall closes everything
-    # else.  (If the orifice tube were extruded below y=0, a floor annulus
-    # would be needed here; this template does not model that stub.)
+    # Bottom annular floor at y = 0: a ring from r = R_i (orifice rim) to
+    # r = R_c (vessel wall).  The wall at y = 0 has r = R_i (cone bottom
+    # edge) so the floor annulus degenerates to r in [R_i, R_c].  Facet
+    # normals point in -y (outward, since the fluid is above the floor).
+    # Only emitted when close_bottom=True (Day 10 run with closed STL).
+    if close_bottom:
+        for k in range(theta_segments):
+            k2 = k + 1
+            # Inner ring edge (r=R_i), outer ring edge (r=R_c), at y=0.
+            vi0 = vertex(R_i_m, 0.0, k)
+            vi1 = vertex(R_i_m, 0.0, k2)
+            vo0 = vertex(R_c_m, 0.0, k)
+            vo1 = vertex(R_c_m, 0.0, k2)
+            # Right-handed ordering for -y normal (clockwise when viewed
+            # from above): (inner_k2, inner_k, outer_k), (inner_k2,
+            # outer_k, outer_k2).  Verified by taking cross product and
+            # confirming n_y < 0.
+            triangles.append((vi1, vi0, vo0))
+            triangles.append((vi1, vo0, vo1))
 
-    # Top is left open (PO face at y = H_dom).
+    # Top is left open (PO face at y = H_dom covers the full cross-section;
+    # a disk cap would collide with the PO BC region).  close_top is
+    # accepted for API symmetry but kept False by callers.
+    if close_top:
+        v_axis = np.array([0.0, H_dom_m, 0.0])
+        for k in range(theta_segments):
+            k2 = k + 1
+            vo0 = vertex(R_c_m, H_dom_m, k)
+            vo1 = vertex(R_c_m, H_dom_m, k2)
+            triangles.append((v_axis, vo0, vo1))
 
     _write_ascii_stl(triangles, "spouted_bed_V_3d", out_path)
+    return out_path
+
+
+def build_spouted_bed_stl_implicit(
+    R_c_m: float,
+    R_i_m: float,
+    cone_half_angle_deg: float,
+    H_dom_m: float,
+    L_stub_m: float,
+    dx_sample_m: float,
+    out_path: Path,
+) -> Path:
+    """Build the Case V spouted-bed STL via implicit-boolean sampling.
+
+    Samples a signed-distance function (SDF) on a dense Cartesian grid,
+    extracts the zero isosurface with marching cubes (via PyVista), then
+    rewrites the triangles through ``_write_ascii_stl`` so the output has
+    MFiX-standard ASCII STL formatting and outward-pointing normals.
+
+    All inputs SI:
+
+    R_c_m               : column (cylindrical section) inside radius [m]
+    R_i_m               : inlet orifice radius [m]
+    cone_half_angle_deg : cone half-angle from the vertical axis [deg]
+    H_dom_m             : axial domain extent above the orifice [m]
+                          (vessel runs y: 0 -> H_dom)
+    L_stub_m            : inlet stub-tube length below the orifice [m]
+                          (stub runs y: -L_stub -> 0 at radius R_i).  Must
+                          be > 0 for Day-10 fix 3 (closes the SDF below the
+                          orifice so marching cubes produces a watertight
+                          solid; MFiX cuts the MI through the bottom cap).
+    dx_sample_m         : SDF sampling grid cell size [m].  Should be
+                          <= 0.5 * (smallest solver cell) so every solver
+                          cell edge intersects at least one STL facet
+                          (notes/day10_summary.md fix 3).
+    out_path            : destination .stl file (ASCII format)
+
+    Returns the written path.
+
+    SDF primitives (all axisymmetric around the y-axis):
+      - inlet stub tube : cylinder r = R_i, y in [-L_stub, 0]
+      - cone frustum    : r = R_i at y = 0 up to r = R_c at y = h_cone
+                          where h_cone = (R_c - R_i) / tan(theta)
+      - freeboard       : cylinder r = R_c, y in [h_cone, H_dom]
+    Each primitive's SDF is the max of (r - R_bound, y_bot - y, y - y_top),
+    i.e. negative inside the solid, zero on the boundary, positive outside.
+    The vessel SDF is the min of the three (union).  Marching cubes at the
+    zero isosurface returns the watertight closed boundary, including a
+    bottom-disk cap at y = -L_stub and a top-disk cap at y = H_dom.  MFiX
+    cuts the MI/PO BCs through these caps via its BC-region logic.
+    """
+    out_path = Path(out_path)
+    tan_h = math.tan(math.radians(cone_half_angle_deg))
+    if tan_h <= 0.0:
+        raise ValueError("cone_half_angle_deg must be positive and < 90 deg")
+    h_cone_m = (R_c_m - R_i_m) / tan_h
+    if h_cone_m <= 0.0 or h_cone_m >= H_dom_m:
+        raise ValueError(
+            f"cone top ({h_cone_m:.4g} m) must satisfy 0 < h_cone < H_dom "
+            f"({H_dom_m} m)"
+        )
+    if L_stub_m <= 0.0:
+        raise ValueError("L_stub_m must be > 0 for the implicit SDF path")
+    if dx_sample_m <= 0.0:
+        raise ValueError("dx_sample_m must be positive")
+
+    # Lazy import so pytest collection doesn't require pyvista at import time
+    # of the module (keeps CLI/Day-8 users decoupled from the marching-cubes
+    # dependency).  pyvista is already a project dependency used by
+    # src/post/read_vtk.py so this is a free call.
+    import pyvista as pv
+
+    # Sampling grid.  Margin of 2 * dx on all sides so the surface closes
+    # on the box faces instead of leaving dangling edges where the solid
+    # meets the sampling-grid boundary.
+    margin = 2.0 * dx_sample_m
+    x0 = -R_c_m - margin
+    x1 = R_c_m + margin
+    y0 = -L_stub_m - margin
+    y1 = H_dom_m + margin
+    z0 = -R_c_m - margin
+    z1 = R_c_m + margin
+
+    # Point counts (not cell counts): ImageData.dimensions is number of
+    # grid points along each axis.  Use ceil so no face is skipped.
+    nx = int(math.ceil((x1 - x0) / dx_sample_m)) + 1
+    ny = int(math.ceil((y1 - y0) / dx_sample_m)) + 1
+    nz = int(math.ceil((z1 - z0) / dx_sample_m)) + 1
+
+    # Build sample point coordinates per axis.
+    xs = x0 + dx_sample_m * np.arange(nx)
+    ys = y0 + dx_sample_m * np.arange(ny)
+    zs = z0 + dx_sample_m * np.arange(nz)
+
+    # Mesh them: use ij indexing so X[i,j,k] etc.
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
+    R = np.sqrt(X * X + Z * Z)
+
+    # Primitive SDFs (negative inside, positive outside).
+    # Stub tube: cylinder radius R_i, y in [-L_stub, 0].
+    sdf_stub = np.maximum.reduce(
+        [R - R_i_m, -L_stub_m - Y, Y - 0.0]
+    )
+
+    # Cone frustum: r_bound = R_i + y * tan(theta); y in [0, h_cone].
+    r_cone_bound = R_i_m + Y * tan_h
+    sdf_cone = np.maximum.reduce(
+        [R - r_cone_bound, 0.0 - Y, Y - h_cone_m]
+    )
+
+    # Freeboard cylinder: radius R_c, y in [h_cone, H_dom].
+    sdf_free = np.maximum.reduce(
+        [R - R_c_m, h_cone_m - Y, Y - H_dom_m]
+    )
+
+    # Union: min of all primitive SDFs.
+    sdf = np.minimum.reduce([sdf_stub, sdf_cone, sdf_free]).astype(np.float32)
+
+    # PyVista ImageData flattening order is Fortran-order (first axis varies
+    # fastest when written to point_data).
+    grid = pv.ImageData(
+        dimensions=(nx, ny, nz),
+        spacing=(dx_sample_m, dx_sample_m, dx_sample_m),
+        origin=(x0, y0, z0),
+    )
+    grid.point_data["sdf"] = sdf.flatten(order="F")
+
+    surface = grid.contour(isosurfaces=[0.0], scalars="sdf")
+    surface = surface.triangulate()
+
+    # Extract triangles and rewrite via the project's ASCII STL helper so
+    # the file matches MFiX's expected header/footer and so normals are
+    # recomputed from vertex order.  PyVista returns a PolyData whose
+    # faces have mixed polygon sizes; after triangulate() they're all 3-gons.
+    faces = surface.regular_faces  # (n_tri, 3) int ndarray
+    pts = np.asarray(surface.points)
+    if faces is None or len(faces) == 0:
+        raise RuntimeError(
+            "marching cubes produced no triangles; check SDF sign convention"
+        )
+
+    # Determine which winding gives outward-pointing normals (toward +sdf,
+    # i.e. away from the vessel interior).  Sample the SDF at (centroid +
+    # eps * computed_normal) for one triangle; if that sample is negative,
+    # the normal points inward and we flip all triangles.
+    centroids = (pts[faces[:, 0]] + pts[faces[:, 1]] + pts[faces[:, 2]]) / 3.0
+    e1 = pts[faces[:, 1]] - pts[faces[:, 0]]
+    e2 = pts[faces[:, 2]] - pts[faces[:, 0]]
+    tri_normals = np.cross(e1, e2)
+    norms = np.linalg.norm(tri_normals, axis=1)
+    norms[norms == 0.0] = 1.0
+    tri_normals /= norms[:, None]
+
+    probe_eps = 0.25 * dx_sample_m
+    probe = centroids + probe_eps * tri_normals
+    # Evaluate the analytic union-SDF at the probe points.
+    r_probe = np.sqrt(probe[:, 0] ** 2 + probe[:, 2] ** 2)
+    yp = probe[:, 1]
+    def _sdf_point(rp, yp):
+        s_stub = np.maximum.reduce([rp - R_i_m, -L_stub_m - yp, yp - 0.0])
+        rc = R_i_m + yp * tan_h
+        s_cone = np.maximum.reduce([rp - rc, 0.0 - yp, yp - h_cone_m])
+        s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - H_dom_m])
+        return np.minimum.reduce([s_stub, s_cone, s_free])
+    sdf_at_probe = _sdf_point(r_probe, yp)
+    # Majority vote on outward: if more probe samples are negative (inside)
+    # than positive, the current winding points inward -> flip.
+    inside_frac = float(np.mean(sdf_at_probe < 0.0))
+    flip = inside_frac > 0.5
+
+    triangles: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    for f in faces:
+        a, b, c = pts[f[0]], pts[f[1]], pts[f[2]]
+        if flip:
+            triangles.append((a, c, b))
+        else:
+            triangles.append((a, b, c))
+
+    _write_ascii_stl(triangles, "spouted_bed_V_3d_implicit", out_path)
     return out_path
 
 

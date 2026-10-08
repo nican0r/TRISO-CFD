@@ -26,6 +26,8 @@ cases/**/MESH_STATS.LOG
 cases/**/VTU_FRAME_INDEX.TXT
 cases/**/*_FACETS_READ.stl
 cases/**/*_FACETS_IGNORED.stl
+# STL input files are generated deterministically by src/make_stl.py.
+cases/**/geometry_*.stl
 cases/**/*_boundary.vtk
 cases/**/*_MESH.vtu
 cases/**/*.TXT

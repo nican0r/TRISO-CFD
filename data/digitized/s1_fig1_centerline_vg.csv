@@ -1,0 +1,26 @@
+# source: digitized placeholder for S1 Fig. 1 (ORNL/TM-2006/520, Pannala et al. 2006)
+# S1 Fig. 1: centerline axial gas velocity vs height, ORNL 2-inch coater,
+#   500 um ZrO2, 54.5 g inventory, 60 deg cone, 4 mm orifice, 30 m/s inlet jet.
+# Status: PLACEHOLDER. The exact digitized trace must be re-extracted from
+#   the figure before the final REPORT.md; this file has the published
+#   shape (axial jet decay from ~30 m/s at the orifice down to ~2 m/s in the
+#   freeboard) so the overlay can be produced today. Numeric values are
+#   indicative only, NOT precise digitizations.
+# units: y_m [m] (height above orifice plane); v_g_m_s [m/s] (axial gas velocity).
+y_m,v_g_m_s
+0.000,30.0
+0.005,28.0
+0.010,24.0
+0.015,20.0
+0.020,17.0
+0.025,14.0
+0.030,11.5
+0.040,8.5
+0.050,6.5
+0.060,5.0
+0.080,3.5
+0.100,2.5
+0.120,1.8
+0.150,1.2
+0.180,0.8
+0.200,0.5

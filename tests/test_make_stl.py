@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.make_stl import build_spouted_bed_stl
+from src.make_stl import build_spouted_bed_stl, build_spouted_bed_stl_implicit
 
 
 @pytest.fixture()
@@ -107,3 +107,63 @@ def test_invalid_cone_rejected(tmp_path):
             theta_segments=20,
             out_path=tmp_path / "bad.stl",
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests for the Day-10 fix 3 implicit-boolean / marching-cubes STL generator.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def implicit_stl_path(tmp_path_factory) -> Path:
+    """Build a coarse implicit-SDF STL once per test session (slow)."""
+    out = tmp_path_factory.mktemp("implicit") / "spouted_implicit.stl"
+    build_spouted_bed_stl_implicit(
+        R_c_m=0.025,
+        R_i_m=0.002,
+        cone_half_angle_deg=30.0,
+        H_dom_m=0.20,
+        L_stub_m=0.010,
+        dx_sample_m=0.001,   # 1 mm sampling (coarse to keep the test fast)
+        out_path=out,
+    )
+    return out
+
+
+def test_implicit_header_and_footer(implicit_stl_path):
+    text = implicit_stl_path.read_text()
+    assert text.startswith("solid spouted_bed_V_3d_implicit\n")
+    assert text.rstrip().endswith("endsolid spouted_bed_V_3d_implicit")
+
+
+def test_implicit_facet_count_lower_bound(implicit_stl_path):
+    text = implicit_stl_path.read_text()
+    nfacets = len(re.findall(r"\bfacet normal\b", text))
+    # Loose lower bound; at 1 mm sampling we expect ~5k-20k triangles.
+    assert nfacets >= 1000, f"expected >=1000 facets, got {nfacets}"
+
+
+def test_implicit_bounding_box(implicit_stl_path):
+    verts = _parse_vertices(implicit_stl_path.read_text())
+    # y-span should cover [-L_stub, H_dom] with small overrun due to the
+    # 2*dx margin and marching-cubes grid alignment.
+    y = verts[:, 1]
+    assert y.min() <= -0.010 + 0.002   # within 2 mm of -L_stub
+    assert y.max() >= 0.20 - 0.002     # within 2 mm of H_dom
+
+
+def test_implicit_no_nan_inf(implicit_stl_path):
+    verts = _parse_vertices(implicit_stl_path.read_text())
+    assert np.all(np.isfinite(verts))
+
+
+def test_implicit_orifice_rim_radius(implicit_stl_path):
+    """At y=0 the minimum vertex radius should be close to R_i."""
+    verts = _parse_vertices(implicit_stl_path.read_text())
+    r = np.sqrt(verts[:, 0] ** 2 + verts[:, 2] ** 2)
+    # Find vertices near y=0 (the orifice plane).
+    near_floor = np.abs(verts[:, 1]) < 1.5e-3  # within 1.5*dx of y=0
+    r_near = r[near_floor]
+    assert r_near.size > 0
+    # Within 2 * dx_sample = 2 mm of R_i = 2 mm.
+    assert np.min(r_near) == pytest.approx(0.002, abs=2e-3)
