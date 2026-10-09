@@ -242,6 +242,7 @@ def build_spouted_bed_stl_implicit(
     out_path: Path,
     top_extend_m: float = 0.0,
     R_stub_m: float | None = None,
+    taper_length_m: float = 0.0,
 ) -> Path:
     """Build the Case V spouted-bed STL via implicit-boolean sampling.
 
@@ -289,6 +290,18 @@ def build_spouted_bed_stl_implicit(
                           (r = R_i, y = 0+).  Callers should
                           correspondingly scale bc_v_g by (R_i/R_stub)**2
                           to preserve the orifice jet velocity.
+    taper_length_m      : if > 0, replaces the hard shelf at y = 0 with a
+                          linear taper of this axial length [m].  The
+                          vessel inner-wall radius narrows continuously
+                          from R_stub (at y = -taper_length_m) down to
+                          R_i (at y = 0).  Day-10 R2 Option 2 (2026-10-09):
+                          the Option-4 hard shelf triggered a shock on
+                          AWS (Vg >> 100 m/s in a stub-interior cell) that
+                          stalled the solver; a 1-cell taper smooths the
+                          area contraction and eliminates the shock.  Must
+                          satisfy taper_length_m <= L_stub_m.  Default 0.0
+                          preserves bit-identical behaviour with the
+                          Day-10 R1/R2-Option-4 hard-shelf build.
 
     Returns the written path.
 
@@ -324,6 +337,15 @@ def build_spouted_bed_stl_implicit(
         raise ValueError(
             f"R_stub_m ({R_stub_m}) must be >= R_i_m ({R_i_m}); a stub tube "
             "narrower than the orifice is non-physical."
+        )
+    if taper_length_m < 0.0:
+        raise ValueError(
+            f"taper_length_m ({taper_length_m}) must be >= 0."
+        )
+    if taper_length_m > L_stub_m:
+        raise ValueError(
+            f"taper_length_m ({taper_length_m}) must be <= L_stub_m "
+            f"({L_stub_m}); the taper must fit inside the stub region."
         )
 
     # Lazy import so pytest collection doesn't require pyvista at import time
@@ -368,8 +390,21 @@ def build_spouted_bed_stl_implicit(
     # Stub tube: cylinder radius R_stub, y in [-L_stub, 0].  R_stub >= R_i
     # (Day-10 R2 Option 4); when R_stub == R_i the stub tapers to the
     # orifice and the behaviour is identical to the Day-10 R1 build.
+    # Day-10 R2 Option 2: when taper_length_m > 0, the stub inner wall
+    # linearly narrows from R_stub (at y = -taper_length_m) down to R_i
+    # (at y = 0) so the SDF matches a converging-diverging nozzle instead
+    # of a hard shelf.  taper_length_m == 0 recovers the hard-shelf build.
+    if taper_length_m > 0.0:
+        # r_bound(y) = R_stub for y <= -taper, then linearly down to R_i at y=0.
+        r_bound_stub = np.where(
+            Y >= -taper_length_m,
+            R_stub_m + (R_i_m - R_stub_m) * (Y + taper_length_m) / taper_length_m,
+            R_stub_m,
+        )
+    else:
+        r_bound_stub = R_stub_m
     sdf_stub = np.maximum.reduce(
-        [R - R_stub_m, -L_stub_m - Y, Y - 0.0]
+        [R - r_bound_stub, -L_stub_m - Y, Y - 0.0]
     )
 
     # Cone frustum: r_bound = R_i + y * tan(theta); y in [0, h_cone].
@@ -444,7 +479,17 @@ def build_spouted_bed_stl_implicit(
     r_probe = np.sqrt(probe[:, 0] ** 2 + probe[:, 2] ** 2)
     yp = probe[:, 1]
     def _sdf_point(rp, yp):
-        s_stub = np.maximum.reduce([rp - R_stub_m, -L_stub_m - yp, yp - 0.0])
+        # Day-10 R2 Option 2 taper: match the gridded SDF above so the
+        # inward/outward probe sees the same geometry as marching cubes.
+        if taper_length_m > 0.0:
+            rb_stub = np.where(
+                yp >= -taper_length_m,
+                R_stub_m + (R_i_m - R_stub_m) * (yp + taper_length_m) / taper_length_m,
+                R_stub_m,
+            )
+        else:
+            rb_stub = R_stub_m
+        s_stub = np.maximum.reduce([rp - rb_stub, -L_stub_m - yp, yp - 0.0])
         rc = R_i_m + yp * tan_h
         s_cone = np.maximum.reduce([rp - rc, 0.0 - yp, yp - h_cone_m])
         s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - y_top_m])

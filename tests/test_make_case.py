@@ -515,6 +515,23 @@ def test_V_3d_dx_rendered_in_template(tmp_path):
         assert float(m.group(1)) == pytest.approx(d, rel=1e-5)
 
 
+def test_V_3d_option2_taper_params(tmp_path):
+    """Day-10 R2 Option 2: taper_length_m decouples the stub->orifice
+    transition from the hard shelf.  Default 2 mm = 1 cell on the uniform
+    2 mm mesh (narrows r from R_stub to R_i over one axial cell).
+    """
+    _, params = _render_V3(tmp_path)
+    assert params["taper_length_m"] == pytest.approx(2.0e-3)
+    # Option-4 still active: stub radius wider than the orifice.
+    assert params["R_stub_m"] > params["R_i_m"]
+    # Taper fits inside the stub region.
+    assert params["taper_length_m"] <= params["L_stub_m"]
+    # Mass-flux identity still holds (bc_v_g * R_stub^2 == U_in * R_i^2).
+    assert params["bc_v_g_mi_m_s"] * params["R_stub_m"] ** 2 == pytest.approx(
+        params["U_in_m_s"] * params["R_i_m"] ** 2
+    )
+
+
 def test_V_3d_stl_stub_circular_cross_section(tmp_path):
     """Day-10 R1 (NETL-clone pattern): the MI spans the FULL box bottom
     face, so the earlier "square MI vs circular orifice" ratio check

@@ -395,6 +395,19 @@ def build_V_3d_params(
             f"spouted_bed_V_3d.R_stub_m ({R_stub_m}) must be >= R_i "
             f"({R_i_m}); a stub narrower than the orifice is non-physical."
         )
+    # Day-10 R2 Option 2: linear-taper length from R_stub down to R_i.
+    # 0 recovers the hard-shelf build; the taper eliminates the shelf-
+    # induced velocity shock observed on AWS (see geometry.yaml comment).
+    taper_length_m = float(v3d.get("taper_length_m", 0.0))
+    if taper_length_m < 0.0:
+        raise ValueError(
+            f"spouted_bed_V_3d.taper_length_m ({taper_length_m}) must be >= 0."
+        )
+    if taper_length_m > L_stub_m:
+        raise ValueError(
+            f"spouted_bed_V_3d.taper_length_m ({taper_length_m}) must be "
+            f"<= L_stub_m ({L_stub_m}); the taper must fit inside the stub."
+        )
     H_total_m = H_dom_m + L_stub_m
 
     # Day-10 R1: uniform mesh in x, y, z.  Box in x,z spans ±(R_c + 5 mm
@@ -490,6 +503,7 @@ def build_V_3d_params(
         "R_i_m": R_i_m,
         "R_stub_m": R_stub_m,
         "L_stub_m": L_stub_m,
+        "taper_length_m": taper_length_m,
         "cone_half_angle_deg": cone_half_angle_deg,
         "cone_apex_y_m": cone_apex_y_m,
         "cone_top_y_m": cone_top_y_m,

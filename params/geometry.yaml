@@ -136,6 +136,32 @@ spouted_bed_V_3d:
                               # face and the STL carves it down to the stub
                               # cross-section.
                               # source: implementation-steps/day-10.md R1
+  taper_length_m: 2.0e-3      # linear-taper length from R_stub down to R_i [m]
+                              # Day-10 R2 Option 2 (2026-10-09): the Option-4
+                              # smoke passed Phase-3 locally (ratio v_adj/
+                              # bc_v_g_mi = 0.998) but the AWS Batch 32-vCPU
+                              # run (job d10-pic-r2-option4-32vcpu, cancelled
+                              # 2026-10-09) hit catastrophic velocity-limit
+                              # warnings at a stub-interior cell (Vg peaks
+                              # +865 / -1064 m/s vs bc_v_g_mi=7.5 m/s) and the
+                              # solver stalled in dt-bisection -- zero visible
+                              # timestep lines after 59 min wall.  Root cause:
+                              # the SDF had a hard shelf at y=0 where the wall
+                              # jumped instantaneously from r=R_stub (4 mm) to
+                              # r=R_i (2 mm), a 75% area contraction over zero
+                              # axial distance.  The SIMPLE pressure correction
+                              # cannot handle this discontinuity on a 2 mm cut-
+                              # cell mesh.  Replacing the shelf with a 1-cell
+                              # linear taper (R narrows from R_stub to R_i over
+                              # taper_length_m) produces a continuous
+                              # converging-diverging nozzle shape through the
+                              # orifice and eliminates the shock.  Set to 0
+                              # to recover the hard-shelf (R1/R2 Option-4)
+                              # behaviour exactly.
+                              # source: notes/day10_summary.md Option-2 taper
+                              # analysis (shelf-induced velocity shock on AWS;
+                              # run_log row d10-pic-r2-option4-32vcpu cancelled
+                              # 2026-10-09).
   R_stub_m: 4.0e-3            # inlet-stub cylinder RADIUS [m] (= 2 x R_i, 2 mm orifice)
                               # Day-10 R2 (Option 4, 2026-10-09): decouple the
                               # stub-tube radius from the physical orifice radius

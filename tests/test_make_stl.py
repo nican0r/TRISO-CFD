@@ -200,6 +200,125 @@ def test_implicit_orifice_rim_radius(implicit_stl_path):
     assert np.min(r_near) == pytest.approx(0.002, abs=2e-3)
 
 
+def test_implicit_no_degenerate_facets(implicit_stl_path):
+    """No written facet may have |cross(V2-V1, V3-V1)| below MFiX's safe limit.
+
+    Regression guard for the Day-10 AWS Batch SIGFPE: PyVista's marching cubes
+    on an SDF whose zero isosurface touches grid points emits "sliver" facets
+    with coincident or collinear vertices.  Those slivers pass MFiX's STL
+    reader filter (get_stl_data.f:973-992) when their written normal has unit
+    length, then crash IS_POINT_INSIDE_FACET (get_stl_data.f:2386) with
+    division by zero at Inv_denom = 1 / ||cross||^2.  The STL writer must
+    either drop the sliver entirely or write [0, 0, 0] for the normal so
+    MFiX's NORM > TOL_STL = 1e-6 branch catches it.
+    """
+    text = implicit_stl_path.read_text()
+    facet_re = re.compile(
+        r"facet normal\s+(\S+)\s+(\S+)\s+(\S+).*?"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+).*?"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+).*?"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)",
+        re.DOTALL,
+    )
+    survivors = 0
+    for m in facet_re.finditer(text):
+        f = [float(x) for x in m.groups()]
+        normal = np.array(f[:3])
+        v1 = np.array(f[3:6])
+        v2 = np.array(f[6:9])
+        v3 = np.array(f[9:12])
+        normal_mag = np.linalg.norm(normal)
+        cross_mag = np.linalg.norm(np.cross(v2 - v1, v3 - v1))
+        # MFiX reads the written normal; if NORM > TOL_STL=1e-6 the facet
+        # is accepted.  For the facet to then be safe in IS_POINT_INSIDE_FACET,
+        # the vertex cross product must be well above float precision.
+        if normal_mag > 1.0e-6 and cross_mag < 1.0e-12:
+            survivors += 1
+    assert survivors == 0, (
+        f"{survivors} degenerate facets slipped past the STL writer; MFiX "
+        f"would SIGFPE on them in cartesian_grid/get_stl_data.f:2386."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Day-10 R2 Option 2: tapered-stub STL
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def tapered_stl_path(tmp_path_factory) -> Path:
+    """Build an implicit-SDF STL with Option-2 taper (R_stub -> R_i taper).
+
+    Uses the same R_stub = 4 mm / R_i = 2 mm / L_stub = 20 mm numbers as the
+    production geometry, with taper_length_m = 2 mm.  The 1 mm sampling
+    (coarser than production 0.5 mm) keeps the test fast.
+    """
+    out = tmp_path_factory.mktemp("tapered") / "tapered.stl"
+    build_spouted_bed_stl_implicit(
+        R_c_m=0.025,
+        R_i_m=0.002,
+        cone_half_angle_deg=30.0,
+        H_dom_m=0.20,
+        L_stub_m=_PROD_L_STUB_M,
+        dx_sample_m=0.001,
+        out_path=out,
+        R_stub_m=0.004,
+        taper_length_m=0.002,
+    )
+    return out
+
+
+def test_tapered_stub_radius_profile(tapered_stl_path):
+    """Verify the stub radius narrows linearly through the taper.
+
+    At y = -1.5 mm (deep in bulk stub, below taper): max r ~ R_stub = 4 mm.
+    At y = -0.5 mm (75% through the 2 mm taper): max r ~ R_stub + 0.75 *
+        (R_i - R_stub) = 4 + 0.75*(2-4) = 2.5 mm (tolerance for 1 mm sampling).
+    At y = 0: max r ~ R_i = 2 mm.
+    """
+    verts = _parse_vertices(tapered_stl_path.read_text())
+    r = np.sqrt(verts[:, 0] ** 2 + verts[:, 2] ** 2)
+    y = verts[:, 1]
+    dx = 0.001  # test-fixture sampling grid
+
+    # Bulk stub (y around -1.5 mm, below the 2 mm taper that starts at y=-2 mm):
+    bulk_mask = np.abs(y - (-0.0015)) < 0.5 * dx
+    if bulk_mask.any():
+        # Within one sampling-cell of 4 mm.
+        assert r[bulk_mask].max() == pytest.approx(0.004, abs=1.5 * dx)
+
+    # Mid-taper (y around -0.5 mm, 75% through the 2 mm taper): r_bound =
+    # R_stub + (R_i - R_stub)*(y + taper)/taper = 4 + (-2)*(1.5)/2 = 2.5 mm.
+    mid_mask = np.abs(y - (-0.0005)) < 0.5 * dx
+    if mid_mask.any():
+        r_max_mid = r[mid_mask].max()
+        # Expected ~2.5 mm; chord/sampling error ~1 mm.
+        assert r_max_mid == pytest.approx(0.0025, abs=1.5 * dx)
+        # And it must be strictly less than the bulk stub radius.
+        assert r_max_mid < 0.004
+
+    # Orifice plane (y = 0): r_bound = R_i = 2 mm.
+    orifice_mask = np.abs(y) < 0.5 * dx
+    if orifice_mask.any():
+        assert r[orifice_mask].max() == pytest.approx(0.002, abs=1.5 * dx)
+
+
+def test_tapered_rejects_taper_longer_than_stub(tmp_path):
+    """taper_length_m > L_stub_m must raise (taper would spill out of stub)."""
+    with pytest.raises(ValueError):
+        build_spouted_bed_stl_implicit(
+            R_c_m=0.025,
+            R_i_m=0.002,
+            cone_half_angle_deg=30.0,
+            H_dom_m=0.20,
+            L_stub_m=0.020,
+            dx_sample_m=0.002,
+            out_path=tmp_path / "bad.stl",
+            R_stub_m=0.004,
+            taper_length_m=0.025,  # > L_stub_m
+        )
+
+
 # ---------------------------------------------------------------------------
 # Regression guard: production L_stub_m must stay at or above the minimum
 # that allows stable PIC spouting.  The pre-R1 value of 0.010 m crashed the

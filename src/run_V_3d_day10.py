@@ -88,6 +88,7 @@ def main() -> None:
         "L_stub_m": params["L_stub_m"],
         "R_i_m": params["R_i_m"],
         "R_stub_m": params["R_stub_m"],
+        "taper_length_m": params["taper_length_m"],
         "eps_s_bed": params["eps_s_bed"],
         "ep_star": params["ep_star"],
         "solids_model": "PIC",
@@ -153,6 +154,11 @@ def main() -> None:
         # into).  bc_v_g has been scaled DOWN in build_V_3d_params by
         # (R_i/R_stub)^2 to keep the physical orifice velocity.
         R_stub_m=params["R_stub_m"],
+        # Day-10 R2 Option 2: linear taper from R_stub down to R_i over
+        # taper_length_m smooths the Option-4 hard shelf; 0 recovers the
+        # shelf behaviour (see params/geometry.yaml for the AWS shock
+        # analysis).
+        taper_length_m=params["taper_length_m"],
     )
 
     # Count facets in the generated STL for provenance.
