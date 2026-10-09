@@ -128,12 +128,42 @@ spouted_bed_V_3d:
   L_stub_m: 2.0e-2            # inlet stub-cylinder length [m] (20 mm = 10 x R_i)
                               # Long enough to let the inlet profile develop
                               # (10x stub radius) but short enough to keep the
-                              # cell count down.  The stub cylinder (radius R_i)
-                              # extends from y = -L_stub to y = 0 and IS the
-                              # physical orifice; the MI is applied across the
-                              # entire box bottom face and the STL carves it
-                              # down to the stub circle.
+                              # cell count down.  The stub cylinder extends
+                              # from y = -L_stub to y = 0; at y = 0 a horizontal
+                              # shelf narrows to the physical orifice radius
+                              # R_i, and the cone frustum opens from there.
+                              # The MI is applied across the entire box bottom
+                              # face and the STL carves it down to the stub
+                              # cross-section.
                               # source: implementation-steps/day-10.md R1
+  R_stub_m: 4.0e-3            # inlet-stub cylinder RADIUS [m] (= 2 x R_i, 2 mm orifice)
+                              # Day-10 R2 (Option 4, 2026-10-09): decouple the
+                              # stub-tube radius from the physical orifice radius
+                              # (R_i = 2 mm set in bed_V.D_i_m / 2).  Rationale:
+                              # the R1 attempt set R_stub = R_i so the stub was
+                              # 1 cell wide on dx = 2 mm; MFiX's F_AT classifier
+                              # then blocked every cell in the stub and the 30
+                              # m/s MI never entered the vessel (see
+                              # notes/day10_summary.md + cases/V_3d/day10/aws_out
+                              # diagnostics -- centerline v_g peaked at 0.07
+                              # m/s over 5.5 s).  NETL's shipped reference
+                              # (templates/tutorials/pic/spouted_bed_3d) uses
+                              # R_stub = 1.5 x R_i (11.25 mm stub / 7.5 mm
+                              # orifice), i.e. a wider stub pipe below the
+                              # orifice -- physically plausible for a feed line
+                              # and gives multiple fluid cells across the MI
+                              # face.  We set R_stub = 2 x R_i = 4 mm so
+                              # R_stub/dx = 2 (same ratio NETL uses between
+                              # stub and dx), while keeping R_i = 2 mm as the
+                              # paper's physical orifice.  Mass-flux
+                              # conservation: bc_v_g at the stub face is
+                              # scaled DOWN by (R_i/R_stub)^2 = 0.25 so steady-
+                              # state orifice velocity still equals the paper's
+                              # 30 m/s (bc_v_g_stub = 7.5 m/s -> accelerates
+                              # 4x through the orifice contraction at y = 0).
+                              # source: notes/day10_summary.md Option-4
+                              # analysis; NETL spouted_bed_pic_3d GUI geometry
+                              # (cylinder2 radius = spout_rad * 1.5).
 
 # Day 10 PIC closure block for Case V (used when solids_model='PIC').
 # Values sourced from NETL's tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx
@@ -219,6 +249,154 @@ spouted_bed_V_3d_pic:
                                # requires this field to be set).
                                # keyword: BC_PIC_MI_CONST_STATWT(BC, PHASE)
                                # source: NETL pic/spouted_bed_3d tutorial
+
+# Day 11-12: CFD-DEM closure block for Case V (used when solids_model='DEM'
+# or 'CGP' for coarse-grained DEM).  Values sourced primarily from NETL's
+# shipped tutorials/dem/spouted_bed_pseudo_2d (MFiX 23.4.1) and
+# tutorials/cgp/fluidbed_cgp_3d (MFiX 20.3.1) templates, cross-referenced
+# against the Day-10 PIC Case V closure where possible so the DEM run is
+# directly comparable to Day-10 (same drag law, same restitution, same
+# wall contact behaviour).  Keywords verified against MFiX 26.1.2 keyword
+# reference under share/mfix/doc/html/reference/discrete_element.html and
+# share/mfix/doc/html/reference/particle_in_cell.html.
+#
+# Particle-count estimate (per implementation-steps/day-11-12.md):
+#   N_real = m / (rho_p * V_p)
+#         = 54.5e-3 / (6050 * (pi/6) * (500e-6)^3)
+#         = 1.376e5 real particles.
+# With cgp_stat_wt = 10, parcel count = N_real / 10 ~ 1.4e4 (same order
+# as Day-10 PIC, which seeded 32 k parcels at statwt=4.2).  Rayleigh
+# critical contact time with kn=1000 N/m and parcel mass = 10*m_particle
+# = 3.96e-6 kg is dt_c = pi * sqrt(m/kn) = pi * sqrt(3.96e-6/1000)
+# = 1.98e-4 s; practical DEM dt is 0.1 * dt_c ~ 2e-5 s (NETL rule).
+# For tstop = 5.5 s this projects to ~2.75e5 steps.
+#
+# source: implementation-steps/day-11-12.md; NETL dem/spouted_bed_pseudo_2d;
+#         NETL cgp/fluidbed_cgp_3d.
+spouted_bed_V_3d_dem:
+  # --- Normal (particle-particle, particle-wall) linear-spring stiffness ---
+  kn: 1000.0                   # Normal spring stiffness, particle-particle
+                               # [N/m].  NETL dem/spouted_bed_pseudo_2d
+                               # uses 1000; its 3 mm glass beads at
+                               # 3000 kg/m^3 have ~1.4e-5 kg each. Case V's
+                               # 500 um ZrO2 at 6050 kg/m^3 is 3.96e-7 kg
+                               # (36x lighter per particle); the softer
+                               # kn=100 of the CGP tutorial would halve the
+                               # Rayleigh dt but admit unphysical overlap.
+                               # 1000 N/m keeps the Rayleigh dt at ~6 us
+                               # (pure DEM) / ~63 us (CGP x10) and overlap
+                               # under 5% of d_p at the operating point.
+                               # keyword: KN
+                               # source: NETL dem/spouted_bed_pseudo_2d
+  kn_w: 1000.0                 # Normal spring stiffness, particle-wall
+                               # [N/m].  Set equal to kn.
+                               # keyword: KN_W
+                               # source: NETL dem/spouted_bed_pseudo_2d
+  # --- Tangential/normal spring ratio ---
+  kt_fac: 0.2857142857142857   # Tangential/normal spring ratio, p-p [-]
+                               # = 2/7 for compatible Hertzian contact
+                               # (equal natural frequencies of normal and
+                               # tangential elastic springs).
+                               # keyword: KT_FAC
+                               # source: Cundall & Strack (1979), Geotech
+                               # 29(1):47-65 (foundational DEM paper); also
+                               # NETL dem/spouted_bed_pseudo_2d.
+  kt_w_fac: 0.2857142857142857 # Tangential/normal spring ratio, p-wall [-]
+                               # = 2/7, same reasoning as kt_fac.
+                               # keyword: KT_W_FAC
+                               # source: Cundall & Strack 1979.
+  # --- Sliding friction ---
+  mew: 0.3                     # Coulomb friction coefficient, p-p [-]
+                               # 0.3 is the standard literature value for
+                               # ceramic (ZrO2) sliding on ceramic; NETL's
+                               # tutorials use 0.1 for glass beads and 0.1
+                               # for CGP sand+biomass, both softer surfaces.
+                               # keyword: MEW
+                               # source: assumed (ZrO2-on-ZrO2 default;
+                               # Day 13 c_e sensitivity could also sweep
+                               # mew but that is out of scope for 11-12).
+  mew_w: 0.3                   # Coulomb friction coefficient, p-wall [-]
+                               # Set equal to mew (same ZrO2 particle in
+                               # contact with stainless or glass vessel
+                               # wall; the pair ratio is of similar order).
+                               # keyword: MEW_W
+                               # source: assumed.
+  # --- Normal restitution (particle-particle, particle-wall) ---
+  des_en_input_pp: 0.9         # Normal restitution coefficient, p-p [-]
+                               # Matches case_V.c_e = 0.9 in
+                               # params/particles.yaml (same particles,
+                               # same contact; the Day-13 c_e sensitivity
+                               # study sweeps this field).
+                               # keyword: DES_EN_INPUT(1)
+                               # source: assumed (not reported in S1/S2;
+                               # same provenance as particles.yaml case_V.c_e).
+  des_en_input_pw: 0.9         # Normal restitution coefficient, p-wall [-]
+                               # Set equal to des_en_input_pp (same bulk
+                               # behaviour; wall is smoother so if anything
+                               # c_e is higher at the wall, but we treat
+                               # them identically here).
+                               # keyword: DES_EN_WALL_INPUT(1)
+                               # source: assumed.
+  des_etat_fac: 0.5            # Tangential/normal damping ratio, p-p [-]
+                               # 0.5 is the NETL default; drives a well-
+                               # posed tangential dashpot without over-
+                               # damping that would suppress spout
+                               # entrainment of parcels.
+                               # keyword: DES_ETAT_FAC
+                               # source: NETL dem/spouted_bed_pseudo_2d
+  des_etat_w_fac: 0.5          # Tangential/normal damping ratio, p-wall [-]
+                               # Set equal to des_etat_fac.
+                               # keyword: DES_ETAT_W_FAC
+                               # source: NETL dem/spouted_bed_pseudo_2d
+  # --- Gas-side interpolation (shared with PIC) ---
+  des_interp_scheme: 'LINEAR_HAT'
+                               # Shared with Day-10 PIC run so the drag law
+                               # evaluates on identical interpolated gas
+                               # velocities.
+                               # keyword: DES_INTERP_SCHEME
+                               # source: NETL dem/spouted_bed_pseudo_2d
+                               # uses 'NONE' (cell-centred); we use
+                               # LINEAR_HAT to match Day-10 PIC for a clean
+                               # DEM-vs-PIC comparison (see 11-12.md).
+  des_epg_clip: 0.42           # Minimum gas volume fraction for drag
+                               # evaluation.  Equal to case_V.ep_star
+                               # (min-fluidization void fraction).
+                               # keyword: DES_EPG_CLIP
+                               # source: NETL dem/spouted_bed_pseudo_2d.
+  # --- Coarse-grained statistical weight (used only when solids_model='CGP') ---
+  cgp_stat_wt: 10.0            # Number of real particles represented by
+                               # each parcel in CGP mode [-].  Chosen so
+                               # the parcel count (~1.4e4) sits in the same
+                               # order as Day-10 PIC (32 k parcels) and so
+                               # the Rayleigh contact time dt_c scales to
+                               # ~2e-4 s (~10x the pure-DEM value), making
+                               # a 5.5 s run tractable within the AWS
+                               # Batch 60 h budget noted in notes/
+                               # aws_batch.md.  Set to 1.0 in the builder
+                               # to request pure DEM (solids_model='DEM').
+                               # keyword: CGP_STAT_WT(1)
+                               # source: NETL cgp/fluidbed_cgp_3d tutorial
+                               # (uses cgp_stat_wt=8 for 1 mm particles).
+                               # Day-11-12 justification: real particle
+                               # count 1.376e5 at a 500 um Rayleigh dt of
+                               # ~6 us is prohibitive on a 10-core laptop
+                               # (5.5 s run >= 900 k steps); factor 10
+                               # keeps parcel count comparable to PIC and
+                               # cuts step count ~10x.
+  # --- Time-stepping constraints ---
+  dem_dt_s: 2.0e-5             # Target DEM solid-phase sub-step [s].
+                               # Rule of thumb: 0.1 x Rayleigh contact
+                               # time dt_c = pi * sqrt(m_parcel/kn).
+                               # Pure DEM: m=3.96e-7, kn=1000 => dt_c =
+                               # 6.26e-6, pick 2e-5 as 3x dt_c worst case
+                               # (relies on MFiX's adaptive sub-stepping).
+                               # CGP x10: m=3.96e-6, dt_c = 1.98e-5, so
+                               # 2e-5 is at the Rayleigh limit (adequate
+                               # for the linear spring-dashpot model).
+                               # keyword: DT (gas-side) and
+                               # DES_EN_INPUT drives MFiX's internal
+                               # sub-cycling bound (no direct keyword).
+                               # source: Rayleigh dt hand-calc; NETL rule.
 
 # -----------------------------------------------------------------------
 # Operating-point reference values for Case V spouted bed.

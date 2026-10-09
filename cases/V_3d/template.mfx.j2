@@ -208,10 +208,14 @@
 
   # BC 3: Mass-inflow at the box bottom (y = -L_stub).  Day-10 R1 NETL
   # pattern: the MI spans the FULL box bottom face; the STL stub cylinder
-  # (radius R_i) masks all cells outside the orifice-equivalent circle
-  # as BLOCKED, so only the ~pi R_i^2 area actually sees inflow.  Gas-
-  # only inlet (bc_ep_s(3,1)=0.0); bc_pic_mi_const_statwt is set but no
-  # parcels actually enter via this BC.
+  # (radius R_stub) masks all cells outside the stub-tube footprint as
+  # BLOCKED, so only the ~pi R_stub^2 area actually sees inflow.  Day-10
+  # R2 Option 4: R_stub > R_i (default 2 x R_i); bc_v_g is scaled DOWN
+  # by (R_i/R_stub)^2 so steady-state mass flux through the physical
+  # orifice (radius R_i, at y = 0 above the stub) gives the paper's jet
+  # velocity.  Gas-only inlet (bc_ep_s(3,1)=0.0);
+  # bc_pic_mi_const_statwt is set but no parcels actually enter via
+  # this BC.
     bc_type(3) = 'MI'
     bc_x_w(3)  = {{ bc_mi_x_w_m }}
     bc_x_e(3)  = {{ bc_mi_x_e_m }}
@@ -223,7 +227,7 @@
     bc_p_g(3)  = 101325
     bc_t_g(3)  = 293.15
     bc_u_g(3)  = 0.0
-    bc_v_g(3)  = {{ U_in_m_s }}
+    bc_v_g(3)  = {{ bc_v_g_mi_m_s }}
     bc_w_g(3)  = 0.0
     bc_ep_s(3,1) = 0.0
     bc_pic_mi_const_statwt(3,1) = {{ bc_pic_mi_const_statwt }}

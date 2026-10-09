@@ -75,6 +75,8 @@ def main() -> None:
         "run_name": RUN_NAME,
         "case": "V_3d (ORNL/UTK, 3D STL cut-cell)",
         "U_in_m_s": params["U_in_m_s"],
+        "bc_v_g_mi_m_s": params["bc_v_g_mi_m_s"],
+        "stub_to_orifice_area_ratio": params["stub_to_orifice_area_ratio"],
         "tstop_s": params["tstop_s"],
         "imax": params["imax"],
         "jmax": params["jmax"],
@@ -84,6 +86,8 @@ def main() -> None:
         "H_static_m": params["H_static_m"],
         "H_dom_m": params["H_dom_m"],
         "L_stub_m": params["L_stub_m"],
+        "R_i_m": params["R_i_m"],
+        "R_stub_m": params["R_stub_m"],
         "eps_s_bed": params["eps_s_bed"],
         "ep_star": params["ep_star"],
         "solids_model": "PIC",
@@ -144,6 +148,11 @@ def main() -> None:
         # through the top-cap facets (which MFiX discards as "flush with
         # box face"; see get_stl_data.f line 2130).
         top_extend_m=5.0e-3,
+        # Day-10 R2 Option 4: stub tube wider than the orifice so the MI
+        # face spans multiple fluid cells (escapes the F_AT trap R1 fell
+        # into).  bc_v_g has been scaled DOWN in build_V_3d_params by
+        # (R_i/R_stub)^2 to keep the physical orifice velocity.
+        R_stub_m=params["R_stub_m"],
     )
 
     # Count facets in the generated STL for provenance.

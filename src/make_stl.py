@@ -32,11 +32,27 @@ from pathlib import Path
 import numpy as np
 
 
+# Minimum ||cross(V2-V1, V3-V1)|| magnitude required for a triangle to be
+# considered non-degenerate.  MFiX's IS_POINT_INSIDE_FACET
+# (get_stl_data.f:2386) computes Inv_denom = 1 / (|V0|^2 * |V1|^2 - (V0.V1)^2)
+# = 1 / ||cross||^2 with no guard.  Marching cubes on an SDF whose zero-level
+# touches grid points emits "sliver" facets whose two edges are coincident or
+# collinear.  Those facets pass MFiX's STL filter when the written normal has
+# unit length (|cross| normalized away), then trigger SIGFPE in the barycentric
+# check.  Writing [0,0,0] for crosses below this threshold lets MFiX's
+# NORM > TOL_STL = 1e-6 filter drop them cleanly.
+_CROSS_TOL_M2 = 1.0e-12
+
+
 def _unit_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """Return the unit normal of triangle (a, b, c), right-handed order."""
+    """Return the unit normal of triangle (a, b, c), right-handed order.
+
+    Returns ``[0, 0, 0]`` for degenerate triangles (|cross| < _CROSS_TOL_M2)
+    so downstream STL consumers (MFiX) can filter them via the zero-normal check.
+    """
     n = np.cross(b - a, c - a)
     norm = np.linalg.norm(n)
-    if norm == 0.0:
+    if norm < _CROSS_TOL_M2:
         return np.array([0.0, 0.0, 0.0])
     return n / norm
 
@@ -225,6 +241,7 @@ def build_spouted_bed_stl_implicit(
     dx_sample_m: float,
     out_path: Path,
     top_extend_m: float = 0.0,
+    R_stub_m: float | None = None,
 ) -> Path:
     """Build the Case V spouted-bed STL via implicit-boolean sampling.
 
@@ -257,11 +274,26 @@ def build_spouted_bed_stl_implicit(
                           discards as "flush with box face").  5 mm is
                           sufficient at typical mesh resolutions.
                           Default 0.0 keeps backward compatibility.
+    R_stub_m            : inlet-stub cylinder radius [m].  If None (the
+                          default), R_stub = R_i (stub tube narrows to
+                          match the orifice).  Day-10 R2 Option 4 passes
+                          R_stub > R_i so the stub-tube cross-section has
+                          multiple fluid cells on the MI face; this
+                          escapes MFiX 26.1.2's F_AT cut-cell classifier
+                          failure mode when R_i / dx <= 1.  The cone
+                          frustum still narrows from R_c (at y = h_cone)
+                          down to the physical R_i (at y = 0), so the
+                          orifice remains the paper's dimension; a
+                          horizontal shelf (ring annulus) connects the
+                          stub top (r = R_stub, y = 0-) to the cone apex
+                          (r = R_i, y = 0+).  Callers should
+                          correspondingly scale bc_v_g by (R_i/R_stub)**2
+                          to preserve the orifice jet velocity.
 
     Returns the written path.
 
     SDF primitives (all axisymmetric around the y-axis):
-      - inlet stub tube : cylinder r = R_i, y in [-L_stub, 0]
+      - inlet stub tube : cylinder r = R_stub, y in [-L_stub, 0]
       - cone frustum    : r = R_i at y = 0 up to r = R_c at y = h_cone
                           where h_cone = (R_c - R_i) / tan(theta)
       - freeboard       : cylinder r = R_c, y in [h_cone, H_dom]
@@ -286,6 +318,13 @@ def build_spouted_bed_stl_implicit(
         raise ValueError("L_stub_m must be > 0 for the implicit SDF path")
     if dx_sample_m <= 0.0:
         raise ValueError("dx_sample_m must be positive")
+    if R_stub_m is None:
+        R_stub_m = R_i_m
+    if R_stub_m < R_i_m:
+        raise ValueError(
+            f"R_stub_m ({R_stub_m}) must be >= R_i_m ({R_i_m}); a stub tube "
+            "narrower than the orifice is non-physical."
+        )
 
     # Lazy import so pytest collection doesn't require pyvista at import time
     # of the module (keeps CLI/Day-8 users decoupled from the marching-cubes
@@ -301,6 +340,8 @@ def build_spouted_bed_stl_implicit(
     # side-wall facets.
     margin = 2.0 * dx_sample_m
     y_top_m = H_dom_m + top_extend_m
+    # Note R_c_m is always the widest radius (freeboard > cone top > stub);
+    # the sampling box only needs to clear it in x,z.
     x0 = -R_c_m - margin
     x1 = R_c_m + margin
     y0 = -L_stub_m - margin
@@ -324,9 +365,11 @@ def build_spouted_bed_stl_implicit(
     R = np.sqrt(X * X + Z * Z)
 
     # Primitive SDFs (negative inside, positive outside).
-    # Stub tube: cylinder radius R_i, y in [-L_stub, 0].
+    # Stub tube: cylinder radius R_stub, y in [-L_stub, 0].  R_stub >= R_i
+    # (Day-10 R2 Option 4); when R_stub == R_i the stub tapers to the
+    # orifice and the behaviour is identical to the Day-10 R1 build.
     sdf_stub = np.maximum.reduce(
-        [R - R_i_m, -L_stub_m - Y, Y - 0.0]
+        [R - R_stub_m, -L_stub_m - Y, Y - 0.0]
     )
 
     # Cone frustum: r_bound = R_i + y * tan(theta); y in [0, h_cone].
@@ -366,16 +409,33 @@ def build_spouted_bed_stl_implicit(
             "marching cubes produced no triangles; check SDF sign convention"
         )
 
+    # Drop degenerate facets (coincident or near-collinear vertices) that
+    # marching cubes emits whenever the SDF has values of exactly 0 on a
+    # grid point.  MFiX's STL reader (get_stl_data.f:973-992) only ignores
+    # facets whose written normal has magnitude below TOL_STL=1e-6; a sliver
+    # with |cross|=1e-21 still gets normalized to a unit vector and passes
+    # that filter, then triggers divide-by-zero in IS_POINT_INSIDE_FACET
+    # (get_stl_data.f:2386, Inv_denom = 1 / ||cross||^2).  Filtering here
+    # removes the sliver entirely so the written STL is safe for any
+    # downstream STL consumer, not just MFiX.
+    e1 = pts[faces[:, 1]] - pts[faces[:, 0]]
+    e2 = pts[faces[:, 2]] - pts[faces[:, 0]]
+    tri_normals = np.cross(e1, e2)
+    norms = np.linalg.norm(tri_normals, axis=1)
+    valid_mask = norms >= _CROSS_TOL_M2
+    faces = faces[valid_mask]
+    tri_normals = tri_normals[valid_mask]
+    norms = norms[valid_mask]
+    if faces.shape[0] == 0:
+        raise RuntimeError(
+            "all marching-cubes faces were dropped as degenerate; check SDF"
+        )
+
     # Determine which winding gives outward-pointing normals (toward +sdf,
     # i.e. away from the vessel interior).  Sample the SDF at (centroid +
     # eps * computed_normal) for one triangle; if that sample is negative,
     # the normal points inward and we flip all triangles.
     centroids = (pts[faces[:, 0]] + pts[faces[:, 1]] + pts[faces[:, 2]]) / 3.0
-    e1 = pts[faces[:, 1]] - pts[faces[:, 0]]
-    e2 = pts[faces[:, 2]] - pts[faces[:, 0]]
-    tri_normals = np.cross(e1, e2)
-    norms = np.linalg.norm(tri_normals, axis=1)
-    norms[norms == 0.0] = 1.0
     tri_normals /= norms[:, None]
 
     probe_eps = 0.25 * dx_sample_m
@@ -384,7 +444,7 @@ def build_spouted_bed_stl_implicit(
     r_probe = np.sqrt(probe[:, 0] ** 2 + probe[:, 2] ** 2)
     yp = probe[:, 1]
     def _sdf_point(rp, yp):
-        s_stub = np.maximum.reduce([rp - R_i_m, -L_stub_m - yp, yp - 0.0])
+        s_stub = np.maximum.reduce([rp - R_stub_m, -L_stub_m - yp, yp - 0.0])
         rc = R_i_m + yp * tan_h
         s_cone = np.maximum.reduce([rp - rc, 0.0 - yp, yp - h_cone_m])
         s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - y_top_m])

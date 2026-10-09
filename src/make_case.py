@@ -386,6 +386,15 @@ def build_V_3d_params(
     L_stub_m = float(v3d.get("L_stub_m", 0.0))
     dx_sample_m = float(v3d.get("dx_sample_m", 1.0e-3))
     dx_uniform_m = float(v3d["dx_uniform_m"])
+    # Day-10 R2 Option 4: stub-tube radius decoupled from the physical
+    # orifice radius so the MI face has multiple fluid cells.  Fall back to
+    # R_i for backward compatibility with R1 decks.
+    R_stub_m = float(v3d.get("R_stub_m", R_i_m))
+    if R_stub_m < R_i_m:
+        raise ValueError(
+            f"spouted_bed_V_3d.R_stub_m ({R_stub_m}) must be >= R_i "
+            f"({R_i_m}); a stub narrower than the orifice is non-physical."
+        )
     H_total_m = H_dom_m + L_stub_m
 
     # Day-10 R1: uniform mesh in x, y, z.  Box in x,z spans ±(R_c + 5 mm
@@ -479,6 +488,7 @@ def build_V_3d_params(
         "z_max_m": z_max_m,
         "R_c_m": R_c_m,
         "R_i_m": R_i_m,
+        "R_stub_m": R_stub_m,
         "L_stub_m": L_stub_m,
         "cone_half_angle_deg": cone_half_angle_deg,
         "cone_apex_y_m": cone_apex_y_m,
@@ -514,6 +524,14 @@ def build_V_3d_params(
         "eps_s_bed": eps_s_bed,
         "ep_star": ep_star,
         "U_in_m_s": float(U_in_m_s),
+        # Day-10 R2 Option 4: the MI sits at y = -L_stub on the stub face
+        # (radius R_stub); mass conservation says the orifice jet velocity
+        # at y = 0 (where the cross-section narrows to pi*R_i^2) equals
+        # bc_v_g * (R_stub/R_i)^2.  To make the physical orifice velocity
+        # match U_in_m_s (= 30 m/s per S1), scale bc_v_g DOWN by the inverse
+        # area ratio.  When R_stub == R_i (R1 default) this is a no-op.
+        "bc_v_g_mi_m_s": float(U_in_m_s) * (R_i_m / R_stub_m) ** 2,
+        "stub_to_orifice_area_ratio": (R_stub_m / R_i_m) ** 2,
         "vtk_dt_s": 0.05,
         "monitor_dt_s": 1.0e-3,
         "drag_type": str(drag_type),
@@ -544,11 +562,133 @@ def build_V_3d_params(
     return params
 
 
+def build_V_3d_dem_params(
+    U_in_m_s: float = 30.0,
+    tstop_s: float = 5.5,
+    run_name: str = "V_3d_dem",
+    description: str = "",
+    drag_type: str = "SYAM_OBRIEN",
+    stl_filename: str = "geometry_0001.stl",
+    cgp_factor: float = 10.0,
+) -> dict:
+    """Assemble the Case V 3D (STL cut-cell, CFD-DEM) template params.
+
+    Day 11-12 build.  Reuses the Day-10 R1 PIC geometry, mesh, STL and
+    boundary layout verbatim (per implementation-steps/day-11-12.md: "Reuse
+    the Day-10 PIC STL vessel geometry and driver scaffolding ... Switch
+    solids_model(1) = 'PIC' -> 'DEM'").  Swaps the PIC Harris-Crighton
+    continuum stress for a spring-dashpot soft-sphere DEM contact model
+    with values from params/geometry.yaml spouted_bed_V_3d_dem.
+
+    ``cgp_factor`` controls the coarsening:
+      - ``cgp_factor == 1``: pure DEM, solids_model(1) = 'DEM', one parcel
+        per real particle.  At Case V's 1.376e5 real particles and 500 um
+        d_p this is expensive (Rayleigh dt_c ~ 6 us); use for short runs
+        or on a cluster.
+      - ``cgp_factor > 1``: coarse-grained DEM (CGP), solids_model(1) =
+        'CGP', cgp_stat_wt(1) = cgp_factor.  Each parcel represents
+        ``cgp_factor`` real particles; the parcel diameter and mass scale
+        with cgp_factor^(1/3) and cgp_factor respectively (MFiX internal).
+        Day-11-12 default of 10 keeps parcel count ~1.4e4 (same order as
+        Day-10 PIC) and raises the Rayleigh dt by sqrt(cgp_factor); see
+        notes/day11_summary.md for the full justification.
+
+    U_in_m_s     : physical inlet jet velocity through the 4 mm orifice [m/s]
+    tstop_s      : run end time [s]
+    run_name     : MFiX run_name (also used for VTK and monitor file names)
+    description  : free-form description string for the .mfx header
+    drag_type    : MFiX drag_type keyword (default SYAM_OBRIEN per S1 Table 1)
+    stl_filename : expected STL file name (same convention as Day-10)
+    cgp_factor   : coarse-graining statistical weight [-]; 1 = pure DEM.
+
+    Returns a dict with every template variable, including the per-cell
+    DX/DY/DZ lists and all DEM/CGP closure values.  SI units everywhere
+    (CLAUDE.md rule 3).
+    """
+    # Start from the Day-10 PIC params so geometry/mesh/BC/IC stay bit-
+    # identical.  Then strip PIC-only keys and add DEM/CGP keys.
+    params = build_V_3d_params(
+        U_in_m_s=U_in_m_s,
+        tstop_s=tstop_s,
+        run_name=run_name,
+        description=description or f"V_3d_dem UTK/ORNL U_in={U_in_m_s:.2f} m/s",
+        drag_type=drag_type,
+        stl_filename=stl_filename,
+    )
+
+    geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
+    dem = geometry["spouted_bed_V_3d_dem"]
+    particles = _load_yaml(PARAMS_DIR / "particles.yaml")
+    case_V = particles["case_V"]
+
+    # Decide solids model from the coarsening factor.  cgp_factor = 1 is
+    # pure DEM; > 1 is coarse-grained DEM (CGP) with cgp_stat_wt(1) set.
+    cgp_factor = float(cgp_factor)
+    if cgp_factor < 1.0:
+        raise ValueError(f"cgp_factor must be >= 1 (got {cgp_factor})")
+    if cgp_factor == 1.0:
+        solids_model = "DEM"
+        cgp_stat_wt = 1.0
+    else:
+        solids_model = "CGP"
+        cgp_stat_wt = cgp_factor
+
+    # Real-particle count for provenance (not an MFiX input; just logged in
+    # the manifest and in notes/day11_summary.md).
+    rho_p = float(case_V["rho_p_kg_per_m3"])
+    d_p = float(case_V["d_p_m"])
+    inventory_kg = float(case_V["inventory_g"]) * 1.0e-3
+    v_particle_m3 = (math.pi / 6.0) * d_p ** 3
+    n_real = inventory_kg / (rho_p * v_particle_m3)
+    n_parcels_est = n_real / cgp_stat_wt
+
+    # Strip PIC-only keys so the template never renders them for DEM.
+    pic_only_keys = (
+        "friction_model",          # PIC uses 'SCHAEFFER' label on its
+                                    # continuum-stress branch; DEM template
+                                    # does not reference it (see template).
+        "fric_exp_pic",
+        "fric_non_sing_fac",
+        "psfac_fric_pic",
+        "mppic_coeff_en1",
+        "mppic_coeff_en_wall",
+        "mppic_coeff_et_wall",
+        "mppic_velfac_coeff",
+        "ic_pic_const_statwt",
+        "bc_pic_mi_const_statwt",
+    )
+    for key in pic_only_keys:
+        params.pop(key, None)
+
+    # Add DEM closure fields.
+    params.update({
+        "solids_model": solids_model,          # 'DEM' or 'CGP'
+        "cgp_factor": float(cgp_factor),       # for the manifest
+        "cgp_stat_wt": float(cgp_stat_wt),     # 1.0 if DEM
+        "kn": float(dem["kn"]),
+        "kn_w": float(dem["kn_w"]),
+        "kt_fac": float(dem["kt_fac"]),
+        "kt_w_fac": float(dem["kt_w_fac"]),
+        "mew": float(dem["mew"]),
+        "mew_w": float(dem["mew_w"]),
+        "des_en_input_pp": float(dem["des_en_input_pp"]),
+        "des_en_input_pw": float(dem["des_en_input_pw"]),
+        "des_etat_fac": float(dem["des_etat_fac"]),
+        "des_etat_w_fac": float(dem["des_etat_w_fac"]),
+        "des_interp_scheme": str(dem["des_interp_scheme"]),
+        "des_epg_clip": float(dem["des_epg_clip"]),
+        "dem_dt_s": float(dem["dem_dt_s"]),
+        "n_real_particles": float(n_real),
+        "n_parcels_est": float(n_parcels_est),
+    })
+    return params
+
+
 def _cli() -> None:
     p = argparse.ArgumentParser(description="Render an MFiX .mfx case from a Jinja2 template.")
     p.add_argument(
         "--kind",
-        choices=["fb_sweep", "V_2d", "V_3d"],
+        choices=["fb_sweep", "V_2d", "V_3d", "V_3d_dem"],
         default="fb_sweep",
     )
     p.add_argument("--template", type=Path, required=True)
@@ -581,6 +721,13 @@ def _cli() -> None:
         )
     elif args.kind == "V_3d":
         params = build_V_3d_params(
+            U_in_m_s=args.U,
+            tstop_s=args.tstop,
+            run_name=args.run_name,
+            description=args.description,
+        )
+    elif args.kind == "V_3d_dem":
+        params = build_V_3d_dem_params(
             U_in_m_s=args.U,
             tstop_s=args.tstop,
             run_name=args.run_name,

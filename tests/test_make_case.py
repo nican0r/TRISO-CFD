@@ -11,6 +11,7 @@ from src.make_case import (
     REPO_ROOT,
     build_fb_sweep_params,
     build_V_2d_params,
+    build_V_3d_dem_params,
     build_V_3d_params,
     render_case,
 )
@@ -18,6 +19,7 @@ from src.make_case import (
 TEMPLATE = REPO_ROOT / "cases" / "fb_sweep" / "template.mfx.j2"
 V2D_TEMPLATE = REPO_ROOT / "cases" / "V_2d" / "template.mfx.j2"
 V3D_TEMPLATE = REPO_ROOT / "cases" / "V_3d" / "template.mfx.j2"
+V3D_DEM_TEMPLATE = REPO_ROOT / "cases" / "V_3d" / "template_dem.mfx.j2"
 
 
 # ---------- fb_sweep (Day 6-7) ----------
@@ -347,10 +349,20 @@ def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
     assert re.search(r"bc_type\(2\)\s*=\s*'PO'", text)
     m = re.search(r"bc_y_s\(2\)\s*=\s*([-+eE.0-9]+)", text)
     assert m is not None and float(m.group(1)) == pytest.approx(params["H_dom_m"])
-    # BC_3 MI at the box bottom (y = -L_stub), FULL BOX BOTTOM FACE.
+    # BC_3 MI at the box bottom (y = -L_stub), FULL BOX BOTTOM FACE.  Day-10
+    # R2 Option 4: bc_v_g is scaled DOWN by (R_i / R_stub)**2 so the orifice
+    # jet velocity at y = 0 (above the stub, where the cross-section narrows
+    # to pi*R_i^2) matches U_in_m_s; the physical device velocity is still
+    # params["U_in_m_s"].
     assert re.search(r"bc_type\(3\)\s*=\s*'MI'", text)
     m2 = re.search(r"bc_v_g\(3\)\s*=\s*([-+eE.0-9]+)", text)
-    assert m2 is not None and float(m2.group(1)) == pytest.approx(params["U_in_m_s"])
+    assert m2 is not None and float(m2.group(1)) == pytest.approx(
+        params["bc_v_g_mi_m_s"]
+    )
+    # Mass flux check: bc_v_g * (R_stub)**2 == U_in_m_s * R_i**2.
+    assert params["bc_v_g_mi_m_s"] * params["R_stub_m"] ** 2 == pytest.approx(
+        params["U_in_m_s"] * params["R_i_m"] ** 2
+    )
     m_xw = re.search(r"bc_x_w\(3\)\s*=\s*([-+eE.0-9]+)", text)
     m_xe = re.search(r"bc_x_e\(3\)\s*=\s*([-+eE.0-9]+)", text)
     m_zb = re.search(r"bc_z_b\(3\)\s*=\s*([-+eE.0-9]+)", text)
@@ -532,3 +544,191 @@ def test_V_3d_stl_stub_circular_cross_section(tmp_path):
     # MI bounds now span the full box bottom face (NETL pattern).
     assert params["bc_mi_x_w_m"] == pytest.approx(params["x_min_m"])
     assert params["bc_mi_x_e_m"] == pytest.approx(params["x_max_m"])
+
+
+# ---------- Day 11-12: Case V UTK/ORNL 3D CFD-DEM template ----------
+
+def _render_V3_dem(tmp_path, U=30.0, tstop=5.5, name="V_3d_dem",
+                   cgp_factor=10.0):
+    params = build_V_3d_dem_params(
+        U_in_m_s=U, tstop_s=tstop, run_name=name, cgp_factor=cgp_factor,
+    )
+    out = tmp_path / f"{name}.mfx"
+    render_case(V3D_DEM_TEMPLATE, params, out)
+    return out.read_text(), params
+
+
+def test_V_3d_dem_shares_geometry_with_pic(tmp_path):
+    """DEM variant must reuse the Day-10 R1 PIC mesh/geometry verbatim.
+
+    Same uniform 2 mm Cartesian box, same per-cell dx/dy/dz lists, same
+    H_static (inventory-derived), same L_stub, same orifice.
+    """
+    _, dem = _render_V3_dem(tmp_path)
+    pic = build_V_3d_params()
+    for key in ("imax", "jmax", "kmax",
+                "x_min_m", "x_max_m", "y_min_m", "y_max_m",
+                "z_min_m", "z_max_m",
+                "R_c_m", "R_i_m", "L_stub_m",
+                "H_dom_m", "H_static_m",
+                "eps_s_bed", "ep_star",
+                "dx_uniform_m"):
+        assert dem[key] == pytest.approx(pic[key]), (
+            f"DEM variant diverged from Day-10 PIC on {key}: "
+            f"{dem[key]} vs {pic[key]}"
+        )
+    assert dem["dx_m_list"] == pic["dx_m_list"]
+    assert dem["dy_m_list"] == pic["dy_m_list"]
+    assert dem["dz_m_list"] == pic["dz_m_list"]
+
+
+def test_V_3d_dem_default_cgp_solids_model(tmp_path):
+    """Default (cgp_factor=10) selects CGP with cgp_stat_wt(1)=10."""
+    text, params = _render_V3_dem(tmp_path, cgp_factor=10.0)
+    assert params["solids_model"] == "CGP"
+    assert params["cgp_stat_wt"] == pytest.approx(10.0)
+    assert re.search(r"solids_model\(1\)\s*=\s*'CGP'", text)
+    assert re.search(r"cgp_stat_wt\(1\)\s*=\s*10(\.0)?\b", text)
+
+
+def test_V_3d_dem_pure_dem_option(tmp_path):
+    """cgp_factor=1 selects pure DEM (no cgp_stat_wt rendered)."""
+    text, params = _render_V3_dem(tmp_path, cgp_factor=1.0)
+    assert params["solids_model"] == "DEM"
+    assert params["cgp_stat_wt"] == pytest.approx(1.0)
+    assert re.search(r"solids_model\(1\)\s*=\s*'DEM'", text)
+    # Pure DEM must not emit the CGP stat-weight keyword as an active
+    # input line (header comment is allowed; strip comments for the check).
+    deck_only = "\n".join(
+        ln for ln in text.splitlines()
+        if not ln.lstrip().startswith("#!")
+    )
+    assert not re.search(r"^\s*cgp_stat_wt\(1\)\s*=", deck_only, re.MULTILINE)
+
+
+def test_V_3d_dem_contact_keywords(tmp_path):
+    """DEM contact block (kn, kt_fac, mew, des_en_*) must be present with
+    values from params/geometry.yaml spouted_bed_V_3d_dem (sourced to
+    NETL dem/spouted_bed_pseudo_2d).
+    """
+    text, params = _render_V3_dem(tmp_path)
+    # Normal spring stiffness
+    assert re.search(r"^\s*kn\s*=\s*1000(\.0)?\b", text, re.MULTILINE)
+    assert re.search(r"^\s*kn_w\s*=\s*1000(\.0)?\b", text, re.MULTILINE)
+    # 2/7 ratio for tangential/normal spring (Cundall & Strack 1979)
+    m_kt = re.search(r"^\s*kt_fac\s*=\s*([0-9.eE+\-]+)", text, re.MULTILINE)
+    assert m_kt is not None
+    assert float(m_kt.group(1)) == pytest.approx(2.0 / 7.0, rel=1e-5)
+    m_ktw = re.search(r"^\s*kt_w_fac\s*=\s*([0-9.eE+\-]+)", text, re.MULTILINE)
+    assert float(m_ktw.group(1)) == pytest.approx(2.0 / 7.0, rel=1e-5)
+    # Coulomb friction
+    assert re.search(r"^\s*mew\s*=\s*0\.3\b", text, re.MULTILINE)
+    assert re.search(r"^\s*mew_w\s*=\s*0\.3\b", text, re.MULTILINE)
+    # Normal restitution (particle-particle and particle-wall) = 0.9
+    # which also matches case_V.c_e in params/particles.yaml.
+    assert re.search(r"des_en_input\(1\)\s*=\s*0\.9\b", text)
+    assert re.search(r"des_en_wall_input\(1\)\s*=\s*0\.9\b", text)
+    # Damping ratios
+    assert re.search(r"des_etat_fac\s*=\s*0\.5\b", text)
+    assert re.search(r"des_etat_w_fac\s*=\s*0\.5\b", text)
+    # Dict mirrors
+    assert params["kn"] == pytest.approx(1000.0)
+    assert params["kt_fac"] == pytest.approx(2.0 / 7.0, rel=1e-5)
+    assert params["mew"] == pytest.approx(0.3)
+    assert params["des_en_input_pp"] == pytest.approx(0.9)
+    assert params["des_en_input_pw"] == pytest.approx(0.9)
+    assert params["des_etat_fac"] == pytest.approx(0.5)
+
+
+def test_V_3d_dem_shared_des_block(tmp_path):
+    """DEM template must share the gas->parcel interpolation block
+    (des_interp_mean_fields / des_interp_on / des_interp_scheme /
+    gener_part_config / des_epg_clip) with Day-10 PIC so the drag law
+    sees the same interpolated gas velocity.
+    """
+    text, _ = _render_V3_dem(tmp_path)
+    assert re.search(r"des_interp_mean_fields\s*=\s*\.True\.", text)
+    assert re.search(r"des_interp_on\s*=\s*\.True\.", text)
+    assert re.search(r"des_interp_scheme\s*=\s*'LINEAR_HAT'", text)
+    assert re.search(r"gener_part_config\s*=\s*\.True\.", text)
+    assert re.search(r"des_oneway_coupled\s*=\s*\.False\.", text)
+    assert re.search(r"des_epg_clip\s*=\s*0\.42\b", text)
+
+
+def test_V_3d_dem_no_pic_or_tfm_keywords(tmp_path):
+    """PIC-only and TFM-only keywords must NOT appear in the DEM deck."""
+    text, _ = _render_V3_dem(tmp_path)
+    # PIC-only (Harris-Crighton + MP-PIC damping + PIC stat-weights)
+    assert not re.search(r"\bfric_exp_pic\b", text)
+    assert not re.search(r"\bfric_non_sing_fac\b", text)
+    assert not re.search(r"\bpsfac_fric_pic\b", text)
+    assert not re.search(r"\bmppic_coeff_en1\b", text)
+    assert not re.search(r"\bmppic_coeff_en_wall\b", text)
+    assert not re.search(r"\bmppic_coeff_et_wall\b", text)
+    assert not re.search(r"\bmppic_velfac_coeff\b", text)
+    assert not re.search(r"\bic_pic_const_statwt\b", text)
+    assert not re.search(r"\bbc_pic_mi_const_statwt\b", text)
+    # TFM-only
+    assert not re.search(r"\bblending_function\b", text)
+    assert not re.search(r"\bkt_type\b", text)
+    assert not re.search(r"^\s*phi\s*=", text, re.MULTILINE)
+    assert not re.search(r"^\s*c_e\s*=", text, re.MULTILINE)
+    # The DEM template does not use the SCHAEFFER friction label; it is a
+    # TFM/PIC-only closure flag.  Verify absence.
+    assert not re.search(r"\bfriction_model\b", text)
+
+
+def test_V_3d_dem_particle_count(tmp_path):
+    """Hand calc: 54.5 g / (6050 * (pi/6) * (500e-6)^3) = 1.376e5 real
+    particles.  With default cgp_factor=10 the parcel count is ~1.4e4.
+    """
+    import math
+    _, params = _render_V3_dem(tmp_path, cgp_factor=10.0)
+    expected_real = 0.0545 / (6050.0 * (math.pi / 6.0) * (5.0e-4) ** 3)
+    assert params["n_real_particles"] == pytest.approx(expected_real, rel=1e-3)
+    # 1.376e5 particles / 10 = ~1.376e4 parcels at the default coarsening.
+    assert params["n_parcels_est"] == pytest.approx(expected_real / 10.0, rel=1e-3)
+    assert 1.3e5 < params["n_real_particles"] < 1.5e5
+
+
+def test_V_3d_dem_vtk_particle_id(tmp_path):
+    """Residence-time tracking requires vtk_part_id=.True. on the
+    Particles VTK dump (otherwise ids are not written and histograms
+    cannot follow parcels across frames).
+    """
+    text, _ = _render_V3_dem(tmp_path)
+    assert re.search(r"vtk_filebase\(2\)\s*=\s*'Particles'", text)
+    assert re.search(r"vtk_data\(2\)\s*=\s*'P'", text)
+    assert re.search(r"vtk_part_id\(2\)\s*=\s*\.True\.", text)
+    assert re.search(r"vtk_part_vel\(2\)\s*=\s*\.True\.", text)
+    assert re.search(r"vtk_part_diameter\(2\)\s*=\s*\.True\.", text)
+
+
+def test_V_3d_dem_cgp_factor_validation(tmp_path):
+    """cgp_factor < 1 should raise (prevents accidental fractional
+    coarsening, which MFiX does not accept)."""
+    with pytest.raises(ValueError):
+        build_V_3d_dem_params(cgp_factor=0.5)
+
+
+def test_V_3d_dem_shares_bc_and_ic_with_pic(tmp_path):
+    """DEM template must reuse the Day-10 PIC BC/IC layout: full-face MI
+    at box bottom, PO at top, three ICs (whole-domain gas / packed bed /
+    stub tube).
+    """
+    text, params = _render_V3_dem(tmp_path)
+    # BC_3 MI across the full box bottom face.
+    m_xw = re.search(r"bc_x_w\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    m_xe = re.search(r"bc_x_e\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_xw.group(1)) == pytest.approx(params["x_min_m"])
+    assert float(m_xe.group(1)) == pytest.approx(params["x_max_m"])
+    # IC_2 bed at [0, H_static] with eps_s = 0.57.
+    m_yn2 = re.search(r"ic_y_n\(2\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_yn2.group(1)) == pytest.approx(params["H_static_m"])
+    m_eps2 = re.search(r"ic_ep_s\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_eps2.group(1)) == pytest.approx(0.57)
+    # IC_3 stub tube at y in [-L_stub, 0].
+    m_ys3 = re.search(r"ic_y_s\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_ys3.group(1)) == pytest.approx(-params["L_stub_m"])
+    # No IC_4 (same renumbering as PIC R1).
+    assert re.search(r"ic_x_w\(4\)", text) is None
