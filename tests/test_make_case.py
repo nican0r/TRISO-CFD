@@ -462,42 +462,70 @@ def test_V_3d_closure_keywords(tmp_path):
 
 
 def test_V_3d_bed_ic_matches_case_V(tmp_path):
-    """IC2 bed in 3D uses the same H_static as 2D (derived from inventory).
-    In 3D, cut-cells intersect the IC box with the STL cone frustum.
-    IC4 (Day-10 fix 2 stub tube) sits at y_s = -L_stub, below IC2.
-    For PIC each IC that overlaps the solids region must set
-    ic_pic_const_statwt so parcels get seeded at startup.
+    """Day-10 R3 Fix A: packed bed is split into NETL's 4-quadrant strip
+    pattern (IC_2 +z, IC_3 -z, IC_4 -x center, IC_5 +x center) that leaves
+    a central gas-only column of half-width R_bed_gas_col untouched.  This
+    replaces Day-10 R2's single full-box IC_2, which seeded parcels
+    directly over the orifice and triggered the LINEAR_HAT projection
+    pathology documented in notes/day10_pathology_review.md.  The
+    inlet-stub IC_3 of R2 is dropped (redundant with IC_1).
     """
     text, params = _render_V3(tmp_path)
     assert params["eps_s_bed"] == pytest.approx(0.57)
-    # Hand calc from inventory 54.5 g, rho_p 6050 kg/m^3, eps_s = 0.57 gives
-    # frustum height ~ 32.2 mm (same as V_2d).
     assert params["H_static_m"] == pytest.approx(0.0322, abs=5e-4)
-    m = re.search(r"ic_y_n\(2\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m.group(1)) == pytest.approx(params["H_static_m"])
-    # IC2 still starts at y = 0 (bed sits above the stub).
-    m_ys2 = re.search(r"ic_y_s\(2\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_ys2.group(1)) == pytest.approx(0.0, abs=1e-12)
-    # IC2 solids volume fraction renders.
-    m_eps2 = re.search(r"ic_ep_s\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_eps2.group(1)) == pytest.approx(0.57)
-    # PIC: every IC that touches the solids region must carry
-    # ic_pic_const_statwt(IC, 1); for the bed IC (IC_2) check it matches
-    # the YAML-provided value (NETL tutorial default 4.2).
-    m_sw = re.search(r"ic_pic_const_statwt\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
-    assert m_sw is not None
-    assert float(m_sw.group(1)) == pytest.approx(params["ic_pic_const_statwt"])
-    # IC_3 covers the stub tube region below the orifice (full box x,z;
-    # STL cut-cells block r > R_i so only the stub-interior cells get fluid).
-    # The TFM-era pre-opened spout IC was removed for PIC (parcel-vs-gas
-    # drag spike at t=0 crashed the first launch); NETL doesn't use one.
-    # Stub tube renumbered IC_4 -> IC_3; IC_4 should not render.
-    m_ys3 = re.search(r"ic_y_s\(3\)\s*=\s*([-+eE.0-9]+)", text)
-    assert m_ys3 is not None
-    assert float(m_ys3.group(1)) == pytest.approx(-params["L_stub_m"])
-    m_yn3 = re.search(r"ic_y_n\(3\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_yn3.group(1)) == pytest.approx(0.0, abs=1e-12)
-    assert re.search(r"ic_x_w\(4\)", text) is None
+    R_col = params["R_bed_gas_col_m"]
+    # R_bed_gas_col must at least enclose the stub tube and provide a
+    # one-cell margin around the orifice.
+    assert R_col >= params["R_stub_m"] - 1e-12
+    assert R_col >= params["R_i_m"] + params["dx_uniform_m"] - 1e-12
+    # Each bed strip IC_2..IC_5 covers 0 <= y <= H_static with ep_s=0.57
+    # and the PIC statwt.
+    for ic in (2, 3, 4, 5):
+        m_ys = re.search(rf"ic_y_s\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
+        m_yn = re.search(rf"ic_y_n\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
+        m_eps = re.search(rf"ic_ep_s\({ic},1\)\s*=\s*([-+eE.0-9]+)", text)
+        m_sw = re.search(rf"ic_pic_const_statwt\({ic},1\)\s*=\s*([-+eE.0-9]+)", text)
+        assert m_ys is not None, f"IC_{ic} y_s missing"
+        assert float(m_ys.group(1)) == pytest.approx(0.0, abs=1e-12)
+        assert float(m_yn.group(1)) == pytest.approx(params["H_static_m"])
+        assert float(m_eps.group(1)) == pytest.approx(0.57)
+        assert float(m_sw.group(1)) == pytest.approx(params["ic_pic_const_statwt"])
+    # IC_2 is the +z strip (z_b = +R_col, full x extent).
+    m_zb2 = re.search(r"ic_z_b\(2\)\s*=\s*([-+eE.0-9]+)", text)
+    m_xw2 = re.search(r"ic_x_w\(2\)\s*=\s*([-+eE.0-9]+)", text)
+    m_xe2 = re.search(r"ic_x_e\(2\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_zb2.group(1)) == pytest.approx(R_col)
+    assert float(m_xw2.group(1)) == pytest.approx(params["x_min_m"])
+    assert float(m_xe2.group(1)) == pytest.approx(params["x_max_m"])
+    # IC_3 is the -z strip (z_t = -R_col, full x extent).
+    m_zt3 = re.search(r"ic_z_t\(3\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_zt3.group(1)) == pytest.approx(-R_col)
+    # IC_4 is the -x center strip (x_e = -R_col, |z| <= R_col).
+    m_xe4 = re.search(r"ic_x_e\(4\)\s*=\s*([-+eE.0-9]+)", text)
+    m_zb4 = re.search(r"ic_z_b\(4\)\s*=\s*([-+eE.0-9]+)", text)
+    m_zt4 = re.search(r"ic_z_t\(4\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_xe4.group(1)) == pytest.approx(-R_col)
+    assert float(m_zb4.group(1)) == pytest.approx(-R_col)
+    assert float(m_zt4.group(1)) == pytest.approx(R_col)
+    # IC_5 is the +x center strip (x_w = +R_col, |z| <= R_col).
+    m_xw5 = re.search(r"ic_x_w\(5\)\s*=\s*([-+eE.0-9]+)", text)
+    assert float(m_xw5.group(1)) == pytest.approx(R_col)
+    # IC_6 (and beyond) should not render: the inlet stub region is
+    # covered by IC_1, not an explicit IC per NETL's pattern.
+    assert re.search(r"ic_x_w\(6\)", text) is None
+    # Central gas column (|x| <= R_col AND |z| <= R_col) must not be
+    # covered by any bed-strip IC: assert no bed IC has both x and z
+    # bounds inside the column.
+    for ic in (2, 3, 4, 5):
+        xw = float(re.search(rf"ic_x_w\({ic}\)\s*=\s*([-+eE.0-9]+)", text).group(1))
+        xe = float(re.search(rf"ic_x_e\({ic}\)\s*=\s*([-+eE.0-9]+)", text).group(1))
+        zb = float(re.search(rf"ic_z_b\({ic}\)\s*=\s*([-+eE.0-9]+)", text).group(1))
+        zt = float(re.search(rf"ic_z_t\({ic}\)\s*=\s*([-+eE.0-9]+)", text).group(1))
+        x_inside = (xw >= -R_col - 1e-9) and (xe <= R_col + 1e-9)
+        z_inside = (zb >= -R_col - 1e-9) and (zt <= R_col + 1e-9)
+        assert not (x_inside and z_inside), (
+            f"IC_{ic} seeds parcels inside the central gas column"
+        )
 
 
 def test_V_3d_dx_rendered_in_template(tmp_path):
@@ -729,9 +757,12 @@ def test_V_3d_dem_cgp_factor_validation(tmp_path):
 
 
 def test_V_3d_dem_shares_bc_and_ic_with_pic(tmp_path):
-    """DEM template must reuse the Day-10 PIC BC/IC layout: full-face MI
-    at box bottom, PO at top, three ICs (whole-domain gas / packed bed /
-    stub tube).
+    """DEM template must reuse the Day-10 R3 PIC BC/IC layout: full-face
+    MI at box bottom, PO at top, five ICs (whole-domain gas + 4 packed
+    bed strips that leave a central gas column uncovered -- NETL's
+    tutorials/pic/spouted_bed_3d quadrant pattern).  See
+    notes/day10_pathology_review.md for why Day-10 R2's single-IC_2
+    bed + explicit stub IC_3 was replaced.
     """
     text, params = _render_V3_dem(tmp_path)
     # BC_3 MI across the full box bottom face.
@@ -739,13 +770,23 @@ def test_V_3d_dem_shares_bc_and_ic_with_pic(tmp_path):
     m_xe = re.search(r"bc_x_e\(3\)\s*=\s*([-+eE.0-9]+)", text)
     assert float(m_xw.group(1)) == pytest.approx(params["x_min_m"])
     assert float(m_xe.group(1)) == pytest.approx(params["x_max_m"])
-    # IC_2 bed at [0, H_static] with eps_s = 0.57.
-    m_yn2 = re.search(r"ic_y_n\(2\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_yn2.group(1)) == pytest.approx(params["H_static_m"])
-    m_eps2 = re.search(r"ic_ep_s\(2,1\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_eps2.group(1)) == pytest.approx(0.57)
-    # IC_3 stub tube at y in [-L_stub, 0].
-    m_ys3 = re.search(r"ic_y_s\(3\)\s*=\s*([-+eE.0-9]+)", text)
-    assert float(m_ys3.group(1)) == pytest.approx(-params["L_stub_m"])
-    # No IC_4 (same renumbering as PIC R1).
-    assert re.search(r"ic_x_w\(4\)", text) is None
+    # IC_2..IC_5 all cover y in [0, H_static] with eps_s = 0.57, HEXA lattice.
+    R_col = params["R_bed_gas_col_m"]
+    for ic in (2, 3, 4, 5):
+        m_ys = re.search(rf"ic_y_s\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
+        m_yn = re.search(rf"ic_y_n\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
+        m_eps = re.search(rf"ic_ep_s\({ic},1\)\s*=\s*([-+eE.0-9]+)", text)
+        m_lat = re.search(rf"ic_des_lattice\({ic},1\)\s*=\s*'HEXA'", text)
+        assert m_ys is not None
+        assert float(m_ys.group(1)) == pytest.approx(0.0, abs=1e-12)
+        assert float(m_yn.group(1)) == pytest.approx(params["H_static_m"])
+        assert float(m_eps.group(1)) == pytest.approx(0.57)
+        assert m_lat is not None, f"IC_{ic} missing ic_des_lattice=HEXA"
+    # The +z and -z strips span the full x extent; the center strips are
+    # bounded by |z| <= R_col.
+    assert float(re.search(r"ic_z_b\(2\)\s*=\s*([-+eE.0-9]+)", text).group(1)) == pytest.approx(R_col)
+    assert float(re.search(r"ic_z_t\(3\)\s*=\s*([-+eE.0-9]+)", text).group(1)) == pytest.approx(-R_col)
+    assert float(re.search(r"ic_x_e\(4\)\s*=\s*([-+eE.0-9]+)", text).group(1)) == pytest.approx(-R_col)
+    assert float(re.search(r"ic_x_w\(5\)\s*=\s*([-+eE.0-9]+)", text).group(1)) == pytest.approx(R_col)
+    # No IC_6: the inlet stub region is covered by IC_1, not an explicit IC.
+    assert re.search(r"ic_x_w\(6\)", text) is None

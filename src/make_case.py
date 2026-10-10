@@ -320,6 +320,7 @@ def build_V_3d_params(
     description: str = "",
     drag_type: str = "SYAM_OBRIEN",
     stl_filename: str = "geometry_0001.stl",
+    gas_case: str = "air_25C",
 ) -> dict:
     """Assemble the Case V 3D (STL cut-cell, MP-PIC) template params.
 
@@ -363,6 +364,10 @@ def build_V_3d_params(
     stl_filename : expected STL file name (MFiX reads 'geometry.stl' by
                    default; the Day-10 driver writes the STL to the run dir
                    under this name)
+    gas_case     : key in params/gases.yaml selecting the gas composition
+                   and temperature.  Default 'air_25C' preserves the Day-10
+                   baseline; the Day-13 sweep varies this across air_25C,
+                   ar_20C, ar_1300C and ar_h2_1300C.
 
     Returns a dict with every template variable, including the per-cell
     DX/DY/DZ lists (``dx_m_list``, ``dy_m_list``, ``dz_m_list``).  SI units
@@ -520,7 +525,6 @@ def build_V_3d_params(
         "bc_mi_y_s_m": bc_mi_y_s_m,
         "bc_mi_y_n_m": bc_mi_y_n_m,
         # Orifice-aligned square bounds (|x|,|z| <= R_i).  Used by:
-        #  - IC_3: pre-opened spout column through the bed, gas-only.
         #  - Monitor 1 (inlet-plane P_g probe).
         #  - Monitor 4 (centerline V_g probe at mid-bed).
         # These bounds are NOT applied to the MI BC in Day-10 R1; the MI
@@ -529,6 +533,19 @@ def build_V_3d_params(
         "orifice_x_e_m": R_i_m,
         "orifice_z_b_m": -R_i_m,
         "orifice_z_t_m": R_i_m,
+        # Day-10 R3 Fix A: central gas column half-width used to carve the
+        # packed-bed IC into NETL's 4-strip quadrant pattern.  Set to
+        # max(R_stub_m, R_i_m + dx_uniform_m) so the gas column at least
+        # encloses the stub-tube cross-section AND leaves a 1-cell margin
+        # around the orifice (one cell wider than LINEAR_HAT's smearing
+        # support, so parcel mass is never projected into orifice-adjacent
+        # cells).  Matches the ratio-1 construction NETL uses
+        # (column_half_width = R_spout) in tutorials/pic/spouted_bed_3d.
+        # R4 experiment (R_i + 2*dx = 6 mm) was reverted because the 25%
+        # parcel-count shortfall vs Case V inventory (54.5 g) was a worse
+        # paper-fidelity hit than the residual 2-3 stub cells it tried
+        # to fix.  See notes/day10_pathology_review.md.
+        "R_bed_gas_col_m": max(R_stub_m, R_i_m + dx_uniform_m),
         "H_static_m": H_static_m,
         "H_dom_m": H_dom_m,
         "H_mid_m": 0.5 * H_static_m,
@@ -572,7 +589,7 @@ def build_V_3d_params(
         "dz_m_list": dz_m_list,
         "stl_filename": str(stl_filename),
     }
-    params.update(_common_fluid_solid_params("air_25C"))
+    params.update(_common_fluid_solid_params(gas_case))
     return params
 
 

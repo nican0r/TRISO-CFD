@@ -133,16 +133,22 @@
     ic_v_s(1,1)  = 0.0
     ic_w_s(1,1)  = 0.0
 
-  # IC 2: Packed bed, 0 <= y <= H_static.  PIC generates parcels inside
-  # this box at startup from ic_ep_s + ic_pic_const_statwt; cut-cells trim
-  # to the cone frustum via the STL.  eps_s_bed = {{ eps_s_bed }} sits
-  # below eps_s_max = 1 - des_epg_clip = {{ "%.2f"|format(1.0 - des_epg_clip) }} so the
-  # Harris-Crighton frictional stress is inactive at t = 0.
+  # IC 2-5: Packed bed, 0 <= y <= H_static, split into NETL's 4-quadrant
+  # pattern that leaves a central gas-only column of half-width
+  # R_bed_gas_col = {{ "%.4f"|format(R_bed_gas_col_m) }} m untouched (IC_1 fills it with gas).
+  # Replaces Day-10 R2's single full-box IC_2 that seeded parcels
+  # directly over the orifice; LINEAR_HAT then projected parcel mass into
+  # orifice-adjacent cells, dropping EP_G to the 0.333 clip and spiking
+  # Vg to the MAX_INLET_VEL_FAC ceiling (see
+  # notes/day10_pathology_review.md).  Mirrors NETL's shipped
+  # tutorials/pic/spouted_bed_3d IC_2-5 (quadrant half-width = R_spout).
+  #
+  # IC 2: +z bed strip, full x extent above R_bed_gas_col.
     ic_x_w(2)    = {{ x_min_m }}
     ic_x_e(2)    = {{ x_max_m }}
     ic_y_s(2)    = 0.0
     ic_y_n(2)    = {{ H_static_m }}
-    ic_z_b(2)    = {{ z_min_m }}
+    ic_z_b(2)    = {{ R_bed_gas_col_m }}
     ic_z_t(2)    = {{ z_max_m }}
     ic_ep_g(2)   = {{ ep_g_bed }}
     ic_t_g(2)    = 293.15
@@ -157,35 +163,71 @@
     ic_v_s(2,1)  = 0.0
     ic_w_s(2,1)  = 0.0
 
-  # IC 3: Inlet stub tube region (gas-only, y in [-L_stub, 0]).  Sits
-  # BELOW the cone orifice; the STL stub cylinder (radius R_i) blocks all
-  # cells outside r > R_i.  v_g = 0 at t = 0 (matches NETL's norm_g=0 /
-  # all-ic-v_g=0 pattern); BC_3 (MI across full box bottom) drives the
-  # inlet jet from t=0 forward.
-  # Note: NETL's pic/spouted_bed_3d does not include a pre-opened spout
-  # IC in the bed; the inlet jet carves the spout dynamically through the
-  # packed parcels.  The TFM-era pre-opened spout IC was removed because
-  # (a) it conflicts with PIC parcel seeding in the same column and (b)
-  # NETL does not use it.
+  # IC 3: -z bed strip, full x extent below -R_bed_gas_col.
     ic_x_w(3)    = {{ x_min_m }}
     ic_x_e(3)    = {{ x_max_m }}
-    ic_y_s(3)    = {{ y_min_m }}
-    ic_y_n(3)    = 0.0
+    ic_y_s(3)    = 0.0
+    ic_y_n(3)    = {{ H_static_m }}
     ic_z_b(3)    = {{ z_min_m }}
-    ic_z_t(3)    = {{ z_max_m }}
-    ic_ep_g(3)   = 1.0
+    ic_z_t(3)    = {{ "%.6e"|format(-R_bed_gas_col_m) }}
+    ic_ep_g(3)   = {{ ep_g_bed }}
     ic_t_g(3)    = 293.15
     ic_u_g(3)    = 0.0
     ic_v_g(3)    = 0.0
     ic_w_g(3)    = 0.0
-    ic_p_g(3)    = 101325.0
-    ic_ep_s(3,1) = 0.0
+    ic_ep_s(3,1) = {{ eps_s_bed }}
     ic_pic_const_statwt(3,1) = {{ ic_pic_const_statwt }}
     ic_t_s(3,1)  = 293.15
     ic_theta_m(3,1) = 0.0
     ic_u_s(3,1)  = 0.0
     ic_v_s(3,1)  = 0.0
     ic_w_s(3,1)  = 0.0
+
+  # IC 4: -x center bed strip, between the +/-z strips, left of -R_bed_gas_col.
+    ic_x_w(4)    = {{ x_min_m }}
+    ic_x_e(4)    = {{ "%.6e"|format(-R_bed_gas_col_m) }}
+    ic_y_s(4)    = 0.0
+    ic_y_n(4)    = {{ H_static_m }}
+    ic_z_b(4)    = {{ "%.6e"|format(-R_bed_gas_col_m) }}
+    ic_z_t(4)    = {{ R_bed_gas_col_m }}
+    ic_ep_g(4)   = {{ ep_g_bed }}
+    ic_t_g(4)    = 293.15
+    ic_u_g(4)    = 0.0
+    ic_v_g(4)    = 0.0
+    ic_w_g(4)    = 0.0
+    ic_ep_s(4,1) = {{ eps_s_bed }}
+    ic_pic_const_statwt(4,1) = {{ ic_pic_const_statwt }}
+    ic_t_s(4,1)  = 293.15
+    ic_theta_m(4,1) = 0.0
+    ic_u_s(4,1)  = 0.0
+    ic_v_s(4,1)  = 0.0
+    ic_w_s(4,1)  = 0.0
+
+  # IC 5: +x center bed strip, between the +/-z strips, right of +R_bed_gas_col.
+    ic_x_w(5)    = {{ R_bed_gas_col_m }}
+    ic_x_e(5)    = {{ x_max_m }}
+    ic_y_s(5)    = 0.0
+    ic_y_n(5)    = {{ H_static_m }}
+    ic_z_b(5)    = {{ "%.6e"|format(-R_bed_gas_col_m) }}
+    ic_z_t(5)    = {{ R_bed_gas_col_m }}
+    ic_ep_g(5)   = {{ ep_g_bed }}
+    ic_t_g(5)    = 293.15
+    ic_u_g(5)    = 0.0
+    ic_v_g(5)    = 0.0
+    ic_w_g(5)    = 0.0
+    ic_ep_s(5,1) = {{ eps_s_bed }}
+    ic_pic_const_statwt(5,1) = {{ ic_pic_const_statwt }}
+    ic_t_s(5,1)  = 293.15
+    ic_theta_m(5,1) = 0.0
+    ic_u_s(5,1)  = 0.0
+    ic_v_s(5,1)  = 0.0
+    ic_w_s(5,1)  = 0.0
+
+  # Note: the inlet stub region (y in [-L_stub, 0]) is covered by IC_1
+  # (whole-domain gas, v_g=0) -- Day-10 R2's explicit IC_3 for the stub
+  # was redundant with IC_1 and has been removed as part of Fix A.
+  # The central gas column (|x|,|z| <= R_bed_gas_col in the bed region)
+  # is also covered by IC_1; no separate IC needed per NETL's pattern.
 
 # Boundary conditions
   # BC 1: Cut-cell (STL) no-slip wall.  First CG_NSW BC with no region
