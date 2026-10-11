@@ -21,11 +21,15 @@
 #! (cartesian_grid/get_stl_data.f lines 678-701); BC 1 is the CG_NSW
 #! wall, so the file name is `geometry_0001.stl`.
 #!
-#! Mesh is UNIFORM 2 mm in x, y, z (99 000 cells total).  Per NETL's
-#! shipped tutorials/pic/spouted_bed_3d, uniform meshes avoid the
-#! classifier bug that fine-cell grading can trigger; the 2 cells across
-#! the 4 mm orifice is the same cell-to-radius ratio NETL uses for its
-#! 15 mm spout (acceptable trade-off vs the "4 cells across inlet" rule).
+#! Mesh is UNIFORM 1 mm in x, y, z under the Day-10 R4 refinement (was
+#! 2 mm under R1-R3, 792 000 cells vs 99 000).  4 cells now span the 4 mm
+#! orifice diameter, matching NETL's demonstrated 3.75 cells-across ratio
+#! on its 15 mm spout at dx = 4 mm.  The earlier 2 mm mesh under-resolved
+#! the orifice: smoke diagnostics (notes/smoke_validate_r3.py) showed
+#! orifice v_y mean = 12.2 m/s against the 30 m/s target (16% of expected
+#! dynamic pressure, insufficient to penetrate the bed).  See the R4
+#! section of notes/day10_summary.md for the refinement rationale and the
+#! retired R2 Option-4 stub-widening workaround.
 #!
 #! Every keyword below has been confirmed against init_namelist.f,
 #! cartesian_grid_init_namelist.f, and the installed MFiX 26.1.2 keyword
@@ -40,6 +44,16 @@
   run_type    = 'new'
   tstop       = {{ tstop_s }}
   dt          = {{ dt_s }}
+  # DMP (MPI) decomposition.  nodesi * nodesj * nodesk MUST equal the MPI
+  # rank count (mpirun -np N).  Defaults to 1x1x1 (serial).  Local MPI
+  # smokes override via `src/run_V_3d_day10.py --nodes NI,NJ,NK`.  AWS
+  # Batch runs through `docker/entrypoint.sh`, which strips these lines
+  # and injects a matching decomposition based on the container's NP env
+  # var -- so these keywords are set here only for local use and never
+  # survive to the cluster deck.
+  nodesi = {{ nodes_i }}
+  nodesj = {{ nodes_j }}
+  nodesk = {{ nodes_k }}
   dt_min      = 1.000000e-07
   dt_max      = {{ dt_max_s }}
   dt_fac      = 0.9
@@ -252,12 +266,13 @@
   # pattern: the MI spans the FULL box bottom face; the STL stub cylinder
   # (radius R_stub) masks all cells outside the stub-tube footprint as
   # BLOCKED, so only the ~pi R_stub^2 area actually sees inflow.  Day-10
-  # R2 Option 4: R_stub > R_i (default 2 x R_i); bc_v_g is scaled DOWN
-  # by (R_i/R_stub)^2 so steady-state mass flux through the physical
-  # orifice (radius R_i, at y = 0 above the stub) gives the paper's jet
-  # velocity.  Gas-only inlet (bc_ep_s(3,1)=0.0);
-  # bc_pic_mi_const_statwt is set but no parcels actually enter via
-  # this BC.
+  # R4 refinement: R_stub = R_i (straight 4 mm diameter stub pipe, no
+  # widening) and bc_v_g = U_in_m_s directly -- the R2 Option-4
+  # scaling and 1-cell stub->orifice taper were retired because the
+  # 1 mm uniform mesh now resolves R_i = 2 mm with 2 cells across the
+  # radius (F_AT seeds the stub as fluid without the widening hack).
+  # Gas-only inlet (bc_ep_s(3,1)=0.0); bc_pic_mi_const_statwt is set
+  # but no parcels actually enter via this BC.
     bc_type(3) = 'MI'
     bc_x_w(3)  = {{ bc_mi_x_w_m }}
     bc_x_e(3)  = {{ bc_mi_x_e_m }}

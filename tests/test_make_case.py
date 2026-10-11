@@ -265,9 +265,10 @@ def test_V_3d_cartesian_grid_and_stl(tmp_path):
 
 
 def test_V_3d_uniform_mesh_sum(tmp_path):
-    """Day-10 R1: UNIFORM 2 mm Cartesian mesh.  x,z box spans ±(R_c + 5 mm
-    margin) = ±30 mm so sum_x = sum_z = 60 mm > D_c = 50 mm.  y box spans
-    [-L_stub, H_dom] so sum_y = L_stub + H_dom = 220 mm.
+    """Day-10 R4: UNIFORM 1 mm Cartesian mesh (was 2 mm under Day-10 R1).  x,z
+    box spans ±(R_c + 5 mm margin) = ±30 mm so sum_x = sum_z = 60 mm > D_c
+    = 50 mm.  y box spans [-L_stub, H_dom] so sum_y = L_stub + H_dom =
+    220 mm.
     """
     _, params = _render_V3(tmp_path)
     # Symmetric x,z box, encloses vessel.
@@ -283,27 +284,27 @@ def test_V_3d_uniform_mesh_sum(tmp_path):
     assert params["imax"] == len(params["dx_m_list"])
     assert params["jmax"] == len(params["dy_m_list"])
     assert params["kmax"] == len(params["dz_m_list"])
-    # Uniform mesh: every cell is dx_uniform_m (R1 = 2 mm).
+    # Uniform mesh: every cell is dx_uniform_m (Day-10 R4 = 1 mm).
     dx_u = params["dx_uniform_m"]
-    assert dx_u == pytest.approx(2.0e-3)
+    assert dx_u == pytest.approx(1.0e-3)
     assert all(d == pytest.approx(dx_u) for d in params["dx_m_list"])
     assert all(d == pytest.approx(dx_u) for d in params["dy_m_list"])
     assert all(d == pytest.approx(dx_u) for d in params["dz_m_list"])
-    # Day-10 R1 cell counts.
-    assert params["imax"] == 30
-    assert params["jmax"] == 110
-    assert params["kmax"] == 30
+    # Day-10 R4 cell counts (box 60 x 220 x 60 mm at dx = 1 mm).
+    assert params["imax"] == 60
+    assert params["jmax"] == 220
+    assert params["kmax"] == 60
 
 
 def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
-    """Day-10 R1 (NETL-clone trade-off):
-      - cell size <= 10 * d_p = 5 mm in the particle zone (met at 2 mm);
-      - "4 cells across the 4 mm inlet" is impractical on a uniform mesh at
-        feasible cell counts.  NETL's shipped pic/spouted_bed_3d tutorial
-        uses ~4 cells across a 15 mm spout (a 2x cell-to-radius ratio);
-        R1 accepts 2 cells across the 4 mm orifice on a uniform 2 mm mesh
-        (same cell-to-radius ratio).  This mirrors the recipe that avoids
-        the F_AT cut-cell classifier bug (see notes/day10_summary.md R1).
+    """Day-10 R4 (2026-10-11):
+      - cell size <= 10 * d_p = 5 mm in the particle zone (met at 1 mm);
+      - 4 cells span the 4 mm orifice diameter on the uniform 1 mm mesh,
+        matching NETL's shipped pic/spouted_bed_3d tutorial resolution ratio
+        (D_i / dx = 15 / 4 = 3.75 cells).  The Day-10 R1 2 mm mesh (= 2 cells
+        across D_i) could not represent the 30 m/s jet in finite-volume
+        cut-cells; smoke validation showed orifice v_y mean = 12.2 m/s
+        against the 30 m/s target (notes/day10_summary.md R4).
     """
     _, params = _render_V3(tmp_path)
     d_p = params["d_p_m"]
@@ -312,7 +313,7 @@ def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
     assert max(params["dx_m_list"]) <= 10.0 * d_p + 1e-12
     assert max(params["dz_m_list"]) <= 10.0 * d_p + 1e-12
     # Count orifice cells across x: cells with centre in [-R_i, R_i].  On
-    # the uniform 2 mm mesh with R_i = 2 mm, 2 cells span the diameter.
+    # the uniform 1 mm mesh with R_i = 2 mm, 4 cells span the diameter.
     R_i = params["R_i_m"]
     xs = []
     x = params["x_min_m"]
@@ -320,7 +321,7 @@ def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
         xs.append(x + 0.5 * d)
         x += d
     n_orifice_x = sum(1 for xc in xs if abs(xc) <= R_i)
-    assert n_orifice_x >= 2        # R1 NETL-pattern lower bound
+    assert n_orifice_x >= 4        # Day-10 R4 NETL-ratio lower bound
     # Same across z.
     zs = []
     z = params["z_min_m"]
@@ -328,12 +329,12 @@ def test_V_3d_orifice_and_particle_zone_cells(tmp_path):
         zs.append(z + 0.5 * d)
         z += d
     n_orifice_z = sum(1 for zc in zs if abs(zc) <= R_i)
-    assert n_orifice_z >= 2
-    # R1 near-axis cell size is exactly dx_uniform_m = 2 mm.
+    assert n_orifice_z >= 4
+    # Day-10 R4 near-axis cell size is exactly dx_uniform_m = 1 mm.
     near_axis_dx = min(params["dx_m_list"])
     near_axis_dz = min(params["dz_m_list"])
-    assert near_axis_dx == pytest.approx(2.0e-3)
-    assert near_axis_dz == pytest.approx(2.0e-3)
+    assert near_axis_dx == pytest.approx(1.0e-3)
+    assert near_axis_dz == pytest.approx(1.0e-3)
 
 
 def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
@@ -349,11 +350,10 @@ def test_V_3d_bc_mi_and_po_and_cgnsw(tmp_path):
     assert re.search(r"bc_type\(2\)\s*=\s*'PO'", text)
     m = re.search(r"bc_y_s\(2\)\s*=\s*([-+eE.0-9]+)", text)
     assert m is not None and float(m.group(1)) == pytest.approx(params["H_dom_m"])
-    # BC_3 MI at the box bottom (y = -L_stub), FULL BOX BOTTOM FACE.  Day-10
-    # R2 Option 4: bc_v_g is scaled DOWN by (R_i / R_stub)**2 so the orifice
-    # jet velocity at y = 0 (above the stub, where the cross-section narrows
-    # to pi*R_i^2) matches U_in_m_s; the physical device velocity is still
-    # params["U_in_m_s"].
+    # BC_3 MI at the box bottom (y = -L_stub), FULL BOX BOTTOM FACE.  Day-10 R4
+    # (straight-stub refinement): R_stub = R_i so the MI face velocity
+    # bc_v_g_mi equals the paper's physical orifice velocity U_in_m_s
+    # directly -- no mass-flux scaling.
     assert re.search(r"bc_type\(3\)\s*=\s*'MI'", text)
     m2 = re.search(r"bc_v_g\(3\)\s*=\s*([-+eE.0-9]+)", text)
     assert m2 is not None and float(m2.group(1)) == pytest.approx(
@@ -543,18 +543,24 @@ def test_V_3d_dx_rendered_in_template(tmp_path):
         assert float(m.group(1)) == pytest.approx(d, rel=1e-5)
 
 
-def test_V_3d_option2_taper_params(tmp_path):
-    """Day-10 R2 Option 2: taper_length_m decouples the stub->orifice
-    transition from the hard shelf.  Default 2 mm = 1 cell on the uniform
-    2 mm mesh (narrows r from R_stub to R_i over one axial cell).
+def test_V_3d_straight_stub_params(tmp_path):
+    """Day-10 R4 (2026-10-11): straight-stub geometry.
+
+    R_stub == R_i (no stub widening) and taper_length_m == 0 (no taper
+    needed with equal radii).  bc_v_g_mi equals the paper's physical jet
+    velocity U_in_m_s directly, without the R2 Option-4 (R_i/R_stub)^2
+    scaling that depended on 4x acceleration across a 1-cell taper the
+    SIMPLE pressure correction could not deliver.  Enabled by the dx = 1 mm
+    mesh refinement, which resolves R_i = 2 mm with 2 cells across the
+    radius -- enough for F_AT to seed the stub as fluid.  See
+    notes/day10_summary.md R4.
     """
     _, params = _render_V3(tmp_path)
-    assert params["taper_length_m"] == pytest.approx(2.0e-3)
-    # Option-4 still active: stub radius wider than the orifice.
-    assert params["R_stub_m"] > params["R_i_m"]
-    # Taper fits inside the stub region.
-    assert params["taper_length_m"] <= params["L_stub_m"]
-    # Mass-flux identity still holds (bc_v_g * R_stub^2 == U_in * R_i^2).
+    assert params["taper_length_m"] == pytest.approx(0.0)
+    assert params["R_stub_m"] == pytest.approx(params["R_i_m"])
+    assert params["bc_v_g_mi_m_s"] == pytest.approx(params["U_in_m_s"])
+    assert params["stub_to_orifice_area_ratio"] == pytest.approx(1.0)
+    # Mass-flux identity still holds trivially (R_stub == R_i).
     assert params["bc_v_g_mi_m_s"] * params["R_stub_m"] ** 2 == pytest.approx(
         params["U_in_m_s"] * params["R_i_m"] ** 2
     )
@@ -606,7 +612,7 @@ def _render_V3_dem(tmp_path, U=30.0, tstop=5.5, name="V_3d_dem",
 def test_V_3d_dem_shares_geometry_with_pic(tmp_path):
     """DEM variant must reuse the Day-10 R1 PIC mesh/geometry verbatim.
 
-    Same uniform 2 mm Cartesian box, same per-cell dx/dy/dz lists, same
+    Same uniform 1 mm Cartesian box (Day-10 R4), same per-cell dx/dy/dz lists, same
     H_static (inventory-derived), same L_stub, same orifice.
     """
     _, dem = _render_V3_dem(tmp_path)
@@ -625,6 +631,71 @@ def test_V_3d_dem_shares_geometry_with_pic(tmp_path):
     assert dem["dx_m_list"] == pic["dx_m_list"]
     assert dem["dy_m_list"] == pic["dy_m_list"]
     assert dem["dz_m_list"] == pic["dz_m_list"]
+
+
+# ---------- Day-10 R4: DMP (MPI) decomposition parameterization ----------
+
+def test_V_3d_nodes_default_serial(tmp_path):
+    """Default nodes=(1,1,1) means serial MFiX; template renders those values."""
+    text, params = _render_V3(tmp_path)
+    assert params["nodes_i"] == 1
+    assert params["nodes_j"] == 1
+    assert params["nodes_k"] == 1
+    assert params["nranks"] == 1
+    assert re.search(r"nodesi\s*=\s*1\b", text)
+    assert re.search(r"nodesj\s*=\s*1\b", text)
+    assert re.search(r"nodesk\s*=\s*1\b", text)
+
+
+def test_V_3d_nodes_axial_five(tmp_path):
+    """Day-10 R4 local-smoke default: 5 ranks on the long y-axis.
+
+    jmax = 220 at dx = 1 mm; 220 % 5 == 0 so (1, 5, 1) divides cleanly
+    (44 cells per rank in y).  5 ranks on 10 cores leaves 5 cores for
+    interactive use (satisfies the leave-cores-free rule).  6 ranks is
+    not axial-decomposable at this mesh (220 % 6 != 0); the alternative
+    (3, 2, 1) adds halo surface for marginal gain.
+    """
+    params = build_V_3d_params(nodes=(1, 5, 1))
+    out = tmp_path / "V_3d.mfx"
+    render_case(V3D_TEMPLATE, params, out)
+    text = out.read_text()
+    assert params["nodes_i"] == 1
+    assert params["nodes_j"] == 5
+    assert params["nodes_k"] == 1
+    assert params["nranks"] == 5
+    assert re.search(r"nodesj\s*=\s*5\b", text)
+
+
+def test_V_3d_nodes_three_two_one(tmp_path):
+    """Alternative 6-rank decomposition when axial-only is required.
+
+    (3, 2, 1): imax/3 = 20, jmax/2 = 110, kmax = 60.  More halo surface
+    than (1, 5, 1) but gives the 6th rank.
+    """
+    params = build_V_3d_params(nodes=(3, 2, 1))
+    assert params["nranks"] == 6
+
+
+def test_V_3d_nodes_rejects_non_divisor():
+    """Day-10 R4 safety: build fails fast if nodes do not divide the mesh."""
+    # jmax = 220; 220 % 7 != 0 so (1,7,1) must raise.
+    with pytest.raises(ValueError, match="does not divide mesh"):
+        build_V_3d_params(nodes=(1, 7, 1))
+    # Non-positive component must raise too.
+    with pytest.raises(ValueError, match="positive integers"):
+        build_V_3d_params(nodes=(0, 1, 1))
+
+
+def test_V_3d_dem_nodes_pass_through(tmp_path):
+    """DEM variant inherits the nodes kwarg from its PIC base."""
+    params = build_V_3d_dem_params(nodes=(1, 4, 1), cgp_factor=10.0)
+    out = tmp_path / "V_3d_dem.mfx"
+    render_case(V3D_DEM_TEMPLATE, params, out)
+    text = out.read_text()
+    assert params["nodes_j"] == 4
+    assert params["nranks"] == 4
+    assert re.search(r"nodesj\s*=\s*4\b", text)
 
 
 def test_V_3d_dem_default_cgp_solids_model(tmp_path):

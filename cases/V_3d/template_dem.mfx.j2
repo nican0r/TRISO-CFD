@@ -5,8 +5,10 @@
 #! CGP mode selected when solids_model='CGP' with cgp_stat_wt(1) = {{ cgp_stat_wt }}).
 #!
 #! Day-11-12 build: reuses the Day-10 R1 NETL-clone pattern verbatim
-#! (uniform 2 mm Cartesian mesh, full-face MI at box bottom carved by the
-#! stub-cylinder STL, no cad_propagate_order / set_corner_cells).  Swaps
+#! (now uniform 1 mm Cartesian mesh under the Day-10 R4 refinement -- was
+#! 2 mm; see the R4 section of notes/day10_summary.md -- full-face MI at
+#! box bottom carved by the stub-cylinder STL, no cad_propagate_order /
+#! set_corner_cells).  Swaps
 #! solids_model(1) from 'PIC' to '{{ solids_model }}' and the Harris-Crighton
 #! continuum stress block for the DEM spring-dashpot contact block
 #! (kn, kn_w, kt_fac, kt_w_fac, mew, mew_w, des_en_input, des_en_wall_input,
@@ -27,6 +29,16 @@
   run_type    = 'new'
   tstop       = {{ tstop_s }}
   dt          = {{ dt_s }}
+  # DMP (MPI) decomposition.  nodesi * nodesj * nodesk MUST equal the MPI
+  # rank count (mpirun -np N).  Defaults to 1x1x1 (serial).  Local MPI
+  # smokes override via `src/run_V_3d_day11.py --nodes NI,NJ,NK`.  AWS
+  # Batch runs through `docker/entrypoint.sh`, which strips these lines
+  # and injects a matching decomposition based on the container's NP env
+  # var -- so these keywords are set here only for local use and never
+  # survive to the cluster deck.
+  nodesi = {{ nodes_i }}
+  nodesj = {{ nodes_j }}
+  nodesk = {{ nodes_k }}
   dt_min      = 1.000000e-07
   dt_max      = {{ dt_max_s }}
   dt_fac      = 0.9
@@ -58,7 +70,7 @@
   max_nit      = {{ max_nit }}
   norm_g       = 0.0
 
-### Geometry (cartesian 3D, uniform 2 mm mesh)
+### Geometry (cartesian 3D, uniform 1 mm mesh -- Day-10 R4 refinement)
   coordinates = 'CARTESIAN'
   imax        = {{ imax }}
   jmax        = {{ jmax }}
@@ -147,6 +159,8 @@
     ic_w_s(2,1)  = 0.0
     ic_des_lattice(2,1) = 'HEXA'
     ic_des_abort_on_failed_seeding(2,1) = .False.
+    ic_des_tight_boundary_spacing(2,1) = .True.
+    ic_des_spacing(2,1) = 0.05
 
   # IC 3: -z bed strip, full x extent below -R_bed_gas_col.
     ic_x_w(3)    = {{ x_min_m }}
@@ -168,6 +182,8 @@
     ic_w_s(3,1)  = 0.0
     ic_des_lattice(3,1) = 'HEXA'
     ic_des_abort_on_failed_seeding(3,1) = .False.
+    ic_des_tight_boundary_spacing(3,1) = .True.
+    ic_des_spacing(3,1) = 0.05
 
   # IC 4: -x center bed strip, between the +/-z strips, left of -R_bed_gas_col.
     ic_x_w(4)    = {{ x_min_m }}
@@ -189,6 +205,8 @@
     ic_w_s(4,1)  = 0.0
     ic_des_lattice(4,1) = 'HEXA'
     ic_des_abort_on_failed_seeding(4,1) = .False.
+    ic_des_tight_boundary_spacing(4,1) = .True.
+    ic_des_spacing(4,1) = 0.05
 
   # IC 5: +x center bed strip, between the +/-z strips, right of +R_bed_gas_col.
     ic_x_w(5)    = {{ R_bed_gas_col_m }}
@@ -210,6 +228,8 @@
     ic_w_s(5,1)  = 0.0
     ic_des_lattice(5,1) = 'HEXA'
     ic_des_abort_on_failed_seeding(5,1) = .False.
+    ic_des_tight_boundary_spacing(5,1) = .True.
+    ic_des_spacing(5,1) = 0.05
 
   # Inlet stub region (y in [-L_stub, 0]) is covered by IC_1 (gas,
   # v_g=0) -- Day-10 R2's explicit IC_3 was redundant and has been
@@ -235,9 +255,11 @@
 
   # BC 3: Mass-inflow at the box bottom (y = -L_stub), full face; STL
   # stub cylinder (radius R_stub) carves the inflow to the stub-tube
-  # cross-section.  Day-10 R2 Option 4: R_stub > R_i (default 2 x R_i)
-  # and bc_v_g is scaled DOWN by (R_i/R_stub)^2 so the orifice jet
-  # velocity at y = 0 (physical orifice radius R_i) matches U_in_m_s.
+  # cross-section.  Day-10 R4 refinement: R_stub = R_i (straight 4 mm pipe,
+  # no widening) and bc_v_g = U_in_m_s directly -- no (R_i/R_stub)^2
+  # scaling, because the 1 mm mesh resolves R_i = 2 mm with 2 cells
+  # across the radius (F_AT fluid-classed) without the R2 Option-4
+  # widening hack.
     bc_type(3) = 'MI'
     bc_x_w(3)  = {{ bc_mi_x_w_m }}
     bc_x_e(3)  = {{ bc_mi_x_e_m }}

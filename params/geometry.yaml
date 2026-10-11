@@ -110,20 +110,32 @@ spouted_bed_V_3d:
                               # Day-10 R1 driver uses build_spouted_bed_stl_
                               # implicit which ignores it)
                               # source: assumed (unused in R1)
-  dx_uniform_m: 2.0e-3        # uniform Cartesian cell size (dx = dy = dz) [m]
-                              # 2 mm; matches NETL's tutorial cell size for a
-                              # 5 cm vessel.  2 cells span the 4 mm orifice —
-                              # fewer than the Day-10 "4 cells" ambition, but
-                              # mirrors NETL's shipped tutorial trade-off (NETL
-                              # spans ~4 cells across a 15 mm spout, i.e. a 2x
-                              # cell-to-radius ratio; we accept the same).
-                              # source: implementation-steps/day-10.md R1
-  dx_sample_m: 1.0e-3         # SDF sampling grid for marching cubes [m]
-                              # 1 mm = 0.5 x dx_uniform.  Rule of thumb:
-                              # dx_sample <= 0.5 x solver cell size so every
+  dx_uniform_m: 1.0e-3        # uniform Cartesian cell size (dx = dy = dz) [m]
+                              # Day-10 R4 (2026-10-11): 1 mm (was 2 mm under
+                              # R1-R3).  4 cells span the 4 mm orifice diameter,
+                              # matching NETL's demonstrated spouted_bed_pic_3d
+                              # ratio of 3.75 cells across its 15 mm orifice at
+                              # dx = 4 mm.  The prior 2 mm mesh (= 2 cells across
+                              # D_i) could not represent the 30 m/s jet in
+                              # finite volumes: smoke diagnostics showed orifice
+                              # v_y mean = 12.2 m/s against a 30 m/s target
+                              # (= 16% of expected dynamic pressure),
+                              # insufficient to penetrate the dense bed. See
+                              # notes/day10_summary.md "R4" section and
+                              # notes/day10_pathology_review.md.
+                              # Cell count: box 60 x 220 x 60 mm at dx = 1 mm
+                              # gives 60 x 220 x 60 = 792 000 cells (8x the R3
+                              # 2 mm mesh); timestep tightens ~2x via CFL, so
+                              # total compute ~16x -- tractable on AWS Batch.
+                              # source: notes/day10_summary.md R4; NETL
+                              # tutorials/pic/spouted_bed_3d resolution ratio.
+  dx_sample_m: 5.0e-4         # SDF sampling grid for marching cubes [m]
+                              # Day-10 R4: 0.5 mm (was 1 mm), preserving the
+                              # dx_sample = 0.5 * dx_uniform rule so every
                               # solver-cell edge intersects at least one STL
-                              # facet.  Expected facet count ~20-50 k (NETL
-                              # ships 22 028 at a similar sampling density).
+                              # facet.  Facet count scales ~4x with resolution;
+                              # expect ~80-200 k facets (NETL ships 22 028 at
+                              # 2x coarser sampling).
                               # source: assumed; mirrors NETL tutorial density.
   L_stub_m: 2.0e-2            # inlet stub-cylinder length [m] (20 mm = 10 x R_i)
                               # Long enough to let the inlet profile develop
@@ -136,60 +148,44 @@ spouted_bed_V_3d:
                               # face and the STL carves it down to the stub
                               # cross-section.
                               # source: implementation-steps/day-10.md R1
-  taper_length_m: 2.0e-3      # linear-taper length from R_stub down to R_i [m]
-                              # Day-10 R2 Option 2 (2026-10-09): the Option-4
-                              # smoke passed Phase-3 locally (ratio v_adj/
-                              # bc_v_g_mi = 0.998) but the AWS Batch 32-vCPU
-                              # run (job d10-pic-r2-option4-32vcpu, cancelled
-                              # 2026-10-09) hit catastrophic velocity-limit
-                              # warnings at a stub-interior cell (Vg peaks
-                              # +865 / -1064 m/s vs bc_v_g_mi=7.5 m/s) and the
-                              # solver stalled in dt-bisection -- zero visible
-                              # timestep lines after 59 min wall.  Root cause:
-                              # the SDF had a hard shelf at y=0 where the wall
-                              # jumped instantaneously from r=R_stub (4 mm) to
-                              # r=R_i (2 mm), a 75% area contraction over zero
-                              # axial distance.  The SIMPLE pressure correction
-                              # cannot handle this discontinuity on a 2 mm cut-
-                              # cell mesh.  Replacing the shelf with a 1-cell
-                              # linear taper (R narrows from R_stub to R_i over
-                              # taper_length_m) produces a continuous
-                              # converging-diverging nozzle shape through the
-                              # orifice and eliminates the shock.  Set to 0
-                              # to recover the hard-shelf (R1/R2 Option-4)
-                              # behaviour exactly.
-                              # source: notes/day10_summary.md Option-2 taper
-                              # analysis (shelf-induced velocity shock on AWS;
-                              # run_log row d10-pic-r2-option4-32vcpu cancelled
-                              # 2026-10-09).
-  R_stub_m: 4.0e-3            # inlet-stub cylinder RADIUS [m] (= 2 x R_i, 2 mm orifice)
-                              # Day-10 R2 (Option 4, 2026-10-09): decouple the
-                              # stub-tube radius from the physical orifice radius
-                              # (R_i = 2 mm set in bed_V.D_i_m / 2).  Rationale:
-                              # the R1 attempt set R_stub = R_i so the stub was
-                              # 1 cell wide on dx = 2 mm; MFiX's F_AT classifier
-                              # then blocked every cell in the stub and the 30
-                              # m/s MI never entered the vessel (see
-                              # notes/day10_summary.md + cases/V_3d/day10/aws_out
-                              # diagnostics -- centerline v_g peaked at 0.07
-                              # m/s over 5.5 s).  NETL's shipped reference
-                              # (templates/tutorials/pic/spouted_bed_3d) uses
-                              # R_stub = 1.5 x R_i (11.25 mm stub / 7.5 mm
-                              # orifice), i.e. a wider stub pipe below the
-                              # orifice -- physically plausible for a feed line
-                              # and gives multiple fluid cells across the MI
-                              # face.  We set R_stub = 2 x R_i = 4 mm so
-                              # R_stub/dx = 2 (same ratio NETL uses between
-                              # stub and dx), while keeping R_i = 2 mm as the
-                              # paper's physical orifice.  Mass-flux
-                              # conservation: bc_v_g at the stub face is
-                              # scaled DOWN by (R_i/R_stub)^2 = 0.25 so steady-
-                              # state orifice velocity still equals the paper's
-                              # 30 m/s (bc_v_g_stub = 7.5 m/s -> accelerates
-                              # 4x through the orifice contraction at y = 0).
-                              # source: notes/day10_summary.md Option-4
-                              # analysis; NETL spouted_bed_pic_3d GUI geometry
-                              # (cylinder2 radius = spout_rad * 1.5).
+  taper_length_m: 0.0         # linear-taper length from R_stub down to R_i [m]
+                              # Day-10 R4 (2026-10-11): 0 (was 2 mm under R2).
+                              # With R_stub = R_i (no stub widening, see below)
+                              # there is no stub-to-orifice area contraction to
+                              # taper -- the stub is a straight 4 mm diameter
+                              # pipe from the MI face up to the cone apex. The
+                              # earlier taper existed to smooth a 4x area jump
+                              # (R_stub = 4 mm -> R_i = 2 mm) that the SIMPLE
+                              # pressure correction could not resolve on a 2 mm
+                              # cut-cell mesh.  Removing the mismatch makes the
+                              # taper unnecessary.
+                              # source: notes/day10_summary.md R4.
+  R_stub_m: 2.0e-3            # inlet-stub cylinder RADIUS [m] (= R_i, 4 mm straight pipe)
+                              # Day-10 R4 (2026-10-11): 2 mm = R_i
+                              # (was 4 mm = 2 x R_i under R2 Option 4).
+                              # Rationale: the R2 Option-4 scheme set R_stub =
+                              # 2 x R_i and scaled bc_v_g DOWN by (R_i/R_stub)^2
+                              # = 0.25 so the orifice velocity would reach the
+                              # paper's 30 m/s via 4x acceleration across the
+                              # stub-to-orifice taper.  On dx = 2 mm this did
+                              # NOT work: the acceleration had to happen across
+                              # one cell (= taper length) and SIMPLE could not
+                              # drive the pressure gradient required.  Smoke
+                              # diagnostics (notes/smoke_validate_r3.py,
+                              # Day-10 R3 AWS Batch results) showed orifice v_y
+                              # mean = 12.2 m/s against the 30 m/s target.
+                              # Dropping to dx = 1 mm (dx_uniform_m above) makes
+                              # the R2 fix unnecessary and counter-productive:
+                              # at dx = 1 mm, R_i = 2 mm = 2 cells across the
+                              # radius = 4 cells across the diameter, matching
+                              # NETL's demonstrated resolution ratio for a
+                              # fluid-classified stub (F_AT seeds fluid cells
+                              # safely).  bc_v_g_mi = U_in_m_s applies directly
+                              # (no scaling); the jet enters the vessel at the
+                              # paper's physical operating-point velocity.
+                              # source: notes/day10_summary.md R4; NETL
+                              # tutorials/pic/spouted_bed_3d (D_i / dx = 3.75
+                              # cells = demonstrated floor for stable spouting).
 
 # Day 10 PIC closure block for Case V (used when solids_model='PIC').
 # Values sourced from NETL's tutorials/pic/spouted_bed_3d/spouted_bed_pic_3d.mfx

@@ -321,6 +321,7 @@ def build_V_3d_params(
     drag_type: str = "SYAM_OBRIEN",
     stl_filename: str = "geometry_0001.stl",
     gas_case: str = "air_25C",
+    nodes: tuple[int, int, int] = (1, 1, 1),
 ) -> dict:
     """Assemble the Case V 3D (STL cut-cell, MP-PIC) template params.
 
@@ -488,6 +489,24 @@ def build_V_3d_params(
     cone_apex_y_m = -R_i_m / tan_t
     cone_top_y_m = (R_c_m - R_i_m) / tan_t
 
+    # DMP decomposition validation (Day-10 R4 MPI support).  nodes[i]*nodes[j]
+    # *nodes[k] = total MPI rank count that mpirun must receive; each
+    # component must divide its cell-count axis cleanly so MFiX's domain
+    # decomposition does not fault during preprocessing.  AWS Batch overrides
+    # these at container launch via docker/entrypoint.sh (idempotent sed),
+    # so this is only enforced for the local-render path.
+    ni, nj, nk = (int(nodes[0]), int(nodes[1]), int(nodes[2]))
+    if ni < 1 or nj < 1 or nk < 1:
+        raise ValueError(
+            f"nodes must be positive integers; got ({ni}, {nj}, {nk})"
+        )
+    if imax % ni != 0 or jmax % nj != 0 or kmax % nk != 0:
+        raise ValueError(
+            f"nodes=({ni},{nj},{nk}) does not divide mesh "
+            f"(imax={imax}, jmax={jmax}, kmax={kmax}); each axis must divide "
+            f"cleanly or MFiX's DMP decomposition will fault at preprocessing."
+        )
+
     params = {
         "description": description or f"V_3d UTK/ORNL U_in={U_in_m_s:.2f} m/s",
         "run_name": run_name,
@@ -498,6 +517,10 @@ def build_V_3d_params(
         "imax": int(imax),
         "jmax": int(jmax),
         "kmax": int(kmax),
+        "nodes_i": ni,
+        "nodes_j": nj,
+        "nodes_k": nk,
+        "nranks": ni * nj * nk,
         "x_min_m": x_min_m,
         "x_max_m": x_max_m,
         "y_min_m": y_min_m,
@@ -555,12 +578,16 @@ def build_V_3d_params(
         "eps_s_bed": eps_s_bed,
         "ep_star": ep_star,
         "U_in_m_s": float(U_in_m_s),
-        # Day-10 R2 Option 4: the MI sits at y = -L_stub on the stub face
-        # (radius R_stub); mass conservation says the orifice jet velocity
-        # at y = 0 (where the cross-section narrows to pi*R_i^2) equals
-        # bc_v_g * (R_stub/R_i)^2.  To make the physical orifice velocity
-        # match U_in_m_s (= 30 m/s per S1), scale bc_v_g DOWN by the inverse
-        # area ratio.  When R_stub == R_i (R1 default) this is a no-op.
+        # Day-10 R4 (2026-10-11): straight-stub geometry (R_stub = R_i), so the
+        # MI face and the orifice have the same cross-section and bc_v_g_mi
+        # equals the paper's physical jet velocity U_in_m_s directly -- no
+        # mass-flux rescaling.  The (R_i/R_stub)^2 scaling that lived here
+        # under Day-10 R2 Option 4 relied on 4x acceleration through a 1-cell
+        # taper that the SIMPLE pressure correction could not deliver on a
+        # 2 mm cut-cell mesh (notes/day10_summary.md R4).  The refined 1 mm
+        # mesh (geometry.yaml spouted_bed_V_3d.dx_uniform_m) resolves R_i = 2
+        # mm with 2 cells across the radius -- enough for F_AT to class the
+        # stub as fluid without the Option-4 widening.
         "bc_v_g_mi_m_s": float(U_in_m_s) * (R_i_m / R_stub_m) ** 2,
         "stub_to_orifice_area_ratio": (R_stub_m / R_i_m) ** 2,
         "vtk_dt_s": 0.05,
@@ -601,6 +628,7 @@ def build_V_3d_dem_params(
     drag_type: str = "SYAM_OBRIEN",
     stl_filename: str = "geometry_0001.stl",
     cgp_factor: float = 10.0,
+    nodes: tuple[int, int, int] = (1, 1, 1),
 ) -> dict:
     """Assemble the Case V 3D (STL cut-cell, CFD-DEM) template params.
 
@@ -645,6 +673,7 @@ def build_V_3d_dem_params(
         description=description or f"V_3d_dem UTK/ORNL U_in={U_in_m_s:.2f} m/s",
         drag_type=drag_type,
         stl_filename=stl_filename,
+        nodes=nodes,
     )
 
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")

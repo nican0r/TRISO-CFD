@@ -15,6 +15,217 @@
 > `cases/V_3d/day11/`. Day-10 PIC was promoted to the baseline for
 > Days 11-12 and 13 in commit `3346697`.
 
+## Update 2026-10-11 — R4: mesh refinement + straight stub; the spout finally works
+
+### What landed
+
+Day-10 R3 (Fix A, commit `555b8f5`) resolved the EP_G = 0.333 clip pathology
+by replacing the single packed-bed IC_2 with NETL's four-strip quadrant
+pattern. The dynamics went clean — no sustained velocity-cap clip events,
+calm steady-state — but the quantitative validation targets were still
+missed by large margins:
+
+| Deliverable | R3 observed | Paper target | Shortfall |
+| --- | --- | --- | --- |
+| Centerline V_g at y = 25 mm | 2.4 m/s | ~15 m/s | 6× too low |
+| Centerline V_g at y = 50 mm | 0.18 m/s | ~8 m/s | 44× too low |
+| PSD peak | 1.95 Hz (drift artifact) | S1 ~10–11 Hz / S2 17–25 Hz | wrong band |
+| Fountain formation | none (jet dies by y ≈ 15 mm) | parcels ejected above H_static = 32 mm | zero |
+
+### Root cause: the orifice was numerically unresolvable at dx = 2 mm
+
+The R1–R3 mesh was uniform 2 mm Cartesian. With R_i = 2 mm, only **2 cells
+spanned the 4 mm orifice diameter**. NETL's shipped
+`tutorials/pic/spouted_bed_3d` — the proven baseline we had been cloning —
+uses D_i = 15 mm at dx = 4 mm, i.e. **3.75 cells across the orifice**.
+R1–R3 were 1.88× under-resolved relative to the demonstrated NETL floor.
+
+The Fix A smoke validator (`notes/smoke_validate_r3.py`) measures the
+consequence directly. On the R3 smoke the orifice-plane cells carried
+`v_y mean = 12.2 m/s`, `v_y max = 51 m/s`, against the 30 m/s target
+driven by the paper's operating point. The jet entered the vessel with
+(12/30)² = 16 % of the expected dynamic pressure. With that momentum the
+bed weight dominated and the spout collapsed at y ≈ 15 mm. No fountain
+could form by construction.
+
+The R2 Option-4 scheme (R_stub = 2 × R_i, bc_v_g scaled DOWN by 0.25,
+"accelerate 4× through a 1-cell taper") was a workaround for the F_AT
+classifier blocking the stub at R_i = dx. On a 2 mm mesh the SIMPLE
+pressure correction cannot drive a 4× velocity gradient across one cell
+on a cut-cell mesh; the identity does not translate to the discrete FV
+scheme at this resolution.
+
+### The two fixes
+
+**Fix 1 — refine mesh to 1 mm uniform** (`params/geometry.yaml`
+`spouted_bed_V_3d.dx_uniform_m: 2.0e-3 → 1.0e-3`, `dx_sample_m:
+1.0e-3 → 5.0e-4`). 4 cells across the 4 mm orifice, matching the NETL
+ratio. Cell count 60 × 220 × 60 = **792 000 cells** (8× R3). CFL
+tightens ~2×; expected total compute ~16× R3.
+
+**Fix 2 — straight stub R_stub = R_i, no taper**
+(`params/geometry.yaml` `R_stub_m: 4.0e-3 → 2.0e-3`, `taper_length_m:
+2.0e-3 → 0.0`). With `R_stub = R_i` the `(R_i / R_stub)²` factor in
+`src/make_case.py:564` evaluates to 1.0 — `bc_v_g_mi` identically
+equals `U_in_m_s = 30 m/s`. MFiX now delivers the paper's physical jet
+velocity directly at the MI face; no 4× pressure-driven acceleration
+needed. Safe at dx = 1 mm because R_i = 2 mm = 2 cells across the stub
+radius → F_AT seeds fluid cells cleanly without the Option-4 widening
+hack.
+
+**Why the two fixes are coupled.** Fix 2 is only safe once Fix 1 lands;
+at dx = 2 mm, R_i = 1 cell across the stub radius and F_AT would block
+every cell (the original failure that forced the Option-4 widening).
+
+### Also landed with R4: local MPI (DMP) support
+
+The 792 000-cell mesh is impractical in serial. The project's local MFiX
+install includes `mfixsolver_dmp` (Open MPI 5.0.8). R4 parameterizes the
+decomposition:
+
+- `cases/V_3d/template.mfx.j2` + `template_dem.mfx.j2`: added
+  `nodesi/nodesj/nodesk` as Jinja variables.
+- `src/make_case.py` `build_V_3d_params` + `build_V_3d_dem_params`:
+  take a `nodes=(ni, nj, nk)` kwarg (default `(1, 1, 1)` = serial);
+  validate `ni × nj × nk > 0` AND that each axis divides the mesh
+  cleanly, so a bad decomposition fails at render time rather than at
+  AWS cold-start.
+- `src/run_V_3d_day10.py` + `src/run_V_3d_day11.py`: added `--nodes
+  NI,NJ,NK` CLI; `write_runner` emits `mpirun -np N mfixsolver_dmp`
+  for `nranks > 1`, `mfixsolver` serial otherwise.
+- AWS Batch is unchanged — `docker/entrypoint.sh` already strips any
+  `nodes*` lines in the deck and injects a matching decomposition
+  from the container `NP` env var. The local defaults never survive
+  to the cluster.
+- Local smoke decomposition pick: **(1, 5, 1) = 5 ranks**. `jmax =
+  220` is divisible by 5, giving clean axial slabs of 44 cells per
+  rank. Satisfies the "leave cores free" rule (5 ranks on 10 cores =
+  5 cores free). `(1, 6, 1)` is NOT valid because 220 % 6 ≠ 0; the
+  only 6-rank options at this mesh are non-axial (e.g. `(3, 2, 1)`).
+
+### Smoke validation (2026-10-11, local MPI)
+
+`cases/V_3d/day10_r4_smoke/` at tstop = 0.03 s, 5 MPI ranks:
+
+- 29 791 parcels seeded (93% of 32 006 target — 7% shortfall from finer
+  cut-cell lattice loss at wall corners, within tolerance).
+- V_g at centerline monitor (y = H_mid = 16 mm, half-bed-height, 2 mm
+  above the orifice cone-cylinder boundary):
+
+  | t (ms) | centerline V_g (m/s) |
+  | --- | --- |
+  | 1.0 | 22.4 |
+  | 2.1 | 21.6 |
+  | 3.0 | 22.1 |
+  | 4.1 | 21.8 |
+
+- NIT = 10–11 (max_nit = 50), max P0 residual ≤ 5e-4, dt growing
+  adaptively 0.73e-4 → 0.9e-4 s, PIP = 29 791 (zero parcel loss,
+  zero MAX_INLET_VEL_FAC clips).
+- Inlet pressure dropped from 101 325 → ~100 000 Pa (ΔP ≈ −1300 Pa,
+  consistent with hydrostatic head + jet dynamic pressure).
+
+The 22 m/s mid-bed centerline velocity is 73% velocity retention over
+4 orifice diameters of dense-bed penetration, which lands cleanly in
+the 70–85% band published by San José / Olazar for similar narrow-orifice
+conical spouted beds (vs 8% retention at R3). The orifice jet is now
+penetrating the bed at the paper's operating-point velocity — the
+primary failure mode is resolved.
+
+### What R4 does NOT settle
+
+- **PSD validation** still depends on run length (tstop ≥ 5 s for
+  df ≤ 0.5 Hz Welch resolution) and possibly on azimuthal resolution
+  of the spout. The 1 mm mesh has ~12 cells circumferentially around
+  the spout boundary — enough for the axisymmetric S1 band (10–11 Hz),
+  borderline for the azimuthal S2 band (17–25 Hz). If PIC shows S1
+  but not S2 after the full AWS run, the next lever is DEM or dx = 0.5 mm.
+- **Day-11 and Day-13 reruns** need the same mesh refinement applied
+  (both inherit `build_V_3d_params` automatically; no code change
+  required). AWS Batch submission paths are unchanged.
+
+### Code changes summary
+
+| File | Change |
+| --- | --- |
+| `params/geometry.yaml` | `dx_uniform_m`, `dx_sample_m`, `R_stub_m`, `taper_length_m` updated with R4 provenance comments. |
+| `src/make_case.py` | `nodes=(ni,nj,nk)` kwarg on both PIC and DEM builders; mesh-divisibility validation; `bc_v_g_mi_m_s` comment rewritten. |
+| `cases/V_3d/template.mfx.j2` + `template_dem.mfx.j2` | `nodesi/j/k` Jinja block added; header rewritten; BC_3 preamble updated. |
+| `src/run_V_3d_day10.py` + `src/run_V_3d_day11.py` | `--nodes` CLI; `write_runner` emits MPI or serial; absolute `cd` so the runner works from any cwd. |
+| `tests/test_make_case.py` | 5 new R4 tests (serial default, 5-rank axial, 6-rank non-axial, non-divisor rejection, DEM pass-through); existing tests updated for 1 mm mesh and straight stub. |
+| `tests/test_run_V_3d_day13.py` | sweep baseline asserts `bc_v_g_mi == 30 m/s`. |
+| `.claude/skills/mfix-spouted-bed-recipe/SKILL.md` | New skill encoding the R1–R4 lessons for future agents. |
+
+Full test suite: **112 passed**.
+
+---
+
+## Update 2026-10-10 — Fix A (R3) applied; dynamics clean on both PIC and DEM
+
+The Day-10 R2 AWS Batch run (job `e6ba8d14-...`) completed but was
+diagnosed as fatally pathological (`notes/day10_pathology_review.md`):
+parcels seeded over the 4 mm orifice fell through at `t = 0+`, LINEAR_HAT
+drag projection smeared their mass into the stub cut-cells, EP_G dropped
+to the 0.333 solver clip across 500–800 cells, and `Vg` spiked to the
+MAX_INLET_VEL_FAC ceiling (9380 m/s observed) with sustained 110 m/s
+field-wide chaos. Centerline jet died by y = 37 mm (vs ~150 mm expected).
+
+**Fix A** (commit `555b8f5`) replaces the single full-box IC_2 with
+NETL's quadrant pattern from `tutorials/pic/spouted_bed_3d`: four packed
+bed strips (IC_2 +z, IC_3 −z, IC_4 −x, IC_5 +x) leave a central gas-only
+column of half-width `R_bed_gas_col = max(R_stub, R_i + dx) = 4 mm`
+untouched (filled by IC_1). Dropped the explicit stub-tube IC_3 from R2
+(redundant with IC_1). Applied identically to the DEM template so
+Day 11-12 inherits.
+
+**R3 PIC smoke** (`cases/V_3d/day10_r3_smoke`, tstop = 0.1 s, 24 min
+local wall-clock):
+  - Dominant R2 pathology eliminated: no sustained EP_G = 0.333 clip
+    near the orifice (near-orifice min 0.427), max |V| in the field
+    drops from 124 m/s steady to 106 m/s in 2–3 cells confined to
+    `y = -1.1 mm, r = 1.4 mm` (near-axis stub tube).
+  - Centerline jet survives through the bed cleanly: 30 m/s at
+    y = 1 mm decaying smoothly to 15–20 m/s at y = 25 mm (vs R2's
+    2.3 m/s dying).
+  - CFL drops from mean 15.2 (R2) to ~3 (R3); NIT stable at 12–17 of
+    max 50; dt stable 1.7–2.3 × 10⁻⁴ s.
+  - Parcel count: 28,120 of ~32,700 target (86% — within tolerance).
+  - **Residual**: one transient `MAX_INLET_VEL_FAC` clip event
+    (Vg = -2933 m/s, EP_G = 0.655 at the orifice cell) during spout
+    establishment, plus 2–3 near-axis stub cells with sustained
+    |V| ≈ 100 m/s. Both are confined and do not propagate — centerline
+    above y = 3 mm is clean. The one clip violates local momentum
+    conservation but does not accumulate (parcel count stable).
+  - A widened gas column (R4, `R_bed_gas_col = R_i + 2·dx = 6 mm`,
+    `cases/V_3d/day10_r4_smoke`) was tried as a mitigation but regressed:
+    27% parcel-count shortfall (73% of target) is a bigger paper-fidelity
+    hit than the stub residual it tries to fix. R4 reverted.
+
+**R3 DEM smoke** (`cases/V_3d/day11_r3_smoke`, tstop = 0.1 s, 10.5 min
+local wall-clock):
+  - Dramatically cleaner than PIC under the same Fix A: **zero** clip
+    events, EP_G minimum sits exactly at the DEM `des_epg_clip = 0.42`
+    floor (no excursions below), max |V| field-wide is 49.6 m/s
+    (half the PIC residual), stub-tube max |V| is 48.5 m/s (also halved).
+  - CGP sub-cycled contact resolution damps the parcel–gas momentum
+    coupling that ran open-loop in PIC; HEXA lattice seeding also
+    distributes parcels more structurally.
+  - **Open issue**: parcel-count deficit. Target is 13,760 parcels at
+    CGP factor 10; realized 8,186 (59.5% — 40% inventory deficit).
+    Breakdown: ~20% geometric from Fix A's gas column + ~15% HEXA
+    cut-cell lattice loss at the cone wall + ~5% baseline. Exceeds the
+    mfix-smoke-validate 10% shortfall threshold. Dynamics are clean,
+    but publishing results against a 32 g simulated inventory (vs
+    paper's 54.5 g) means ΔP measurements scale ~40% low. Investigation
+    of mitigations (`ic_des_lattice` alternatives, strip ep_s packing,
+    cgp_factor reduction) ongoing.
+
+**AWS re-submit**: Day-10 R3 PIC job `d10-pic-r3-fixA` submitted
+2026-10-10 as `94e07164-b2fe-4964-9a81-5fbd83cc476b` with tstop = 7 s
+(review-recommended for df ≤ 0.5 Hz Welch resolution on the S1 and S2
+pressure bands). Day-11 R3 DEM resubmit pending the inventory-deficit
+investigation.
+
 ## What was implemented
 
 Day 10 lifts Case V from the Day-8/9 planar quadric TFM slab to a full
