@@ -23,6 +23,8 @@ Validation case (Case V): the ORNL/UTK cold mockup spouted bed used in the DOE A
 
 Design case (Case D): the same geometry run with (i) argon at ambient, (ii) argon at coating temperature (~1300–1600 °C), (iii) Ar/H₂ 50/50 mol at coating temperature, with the same 500 µm ZrO₂ surrogate; plus a UO₂ real-kernel sensitivity at 10 800 kg/m³. Also parametric: flow rate across U/U_ms ≈ 1.1–1.9, drag model, and particle-particle restitution coefficient (c_e is assumed in Case V, so Day 13 sweeps it).
 
+Benchmark case (Case C26): the ORNL benchtop spout-fluidized bed of Conry et al. 2026 (Nucl. Eng. Des. 456:115009), modelled as the paper did: MFiX CFD-CGDEM, 2.1 mm mesh, gas point source for the 2.38 mm nozzle, argon at 298 K, 60 g YSZ (measured PSD) or stainless steel, TGS drag. Its 12-run Table 2 matrix is in `params/sweep_C26.yaml`. Validation target: side-view PIV velocity maps (Table 3 CC/SSI/MSE) and wall velocity. Design and deviations from the spouted-bed recipe: `notes/c26_conry2026_case.md`; steps: `implementation-steps/case-c26.md`.
+
 ## 1.4 Final deliverables (end of Day 14)
 
 - A git repo with reproducible .mfx cases, run scripts, and post-processing scripts

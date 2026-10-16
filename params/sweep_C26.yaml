@@ -1,0 +1,42 @@
+# Case C26 simulation matrix -- Conry et al. (2026) Table 2 (C26 p.4-5).
+# Read by src/run_C26_3d.py.  Every case shares the bed_C26 geometry,
+# spouted_bed_C26_3d mesh, spouted_bed_C26_3d_dem closures, ar_25C gas and a
+# 60 g charge.  Only the columns of Table 2 vary.
+# See notes/c26_conry2026_case.md.
+
+base:
+  gas_case: ar_25C            # source: C26 p.4 (100% Ar, 298 K)
+  tstop_s: 3.0                # simulated end time [s]
+                              # C26 2.2.2: "a minimum flow time of 3.0 s".
+                              # Cases with W > 1 were also run to 60 s in C26
+                              # for future comparisons; not needed for Table 3.
+                              # source: C26 p.3 (2.2.2).
+  base_case: c01              # CLAUDE.md rule 11: smoke and validate this
+                              # case before running the rest.
+
+# Table 2 columns: feedstock, flow rate [slpm], statistical weight W [-],
+# particle-wall friction factor [-].
+#   c01-c03: baseline YSZ vs PIV (Fig. 3-4, Table 3).
+#   c04-c06: wall-friction test of the electrostatics hypothesis.
+#   c07-c09: statistical-weight (coarse-graining) sensitivity.
+#   c10-c12: stainless-steel feedstock, pure DEM.
+cases:
+  - {id: c01, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.1}
+  - {id: c02, feedstock: case_C26_ysz, flow_slpm: 12, stat_wt: 10, mew_w: 0.1}
+  - {id: c03, feedstock: case_C26_ysz, flow_slpm: 14, stat_wt: 10, mew_w: 0.1}
+  - {id: c04, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.3}
+  - {id: c05, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.5}
+  - {id: c06, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.7}
+  - {id: c07, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 5,  mew_w: 0.1}
+  - {id: c08, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 3,  mew_w: 0.1}
+  - {id: c09, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 1,  mew_w: 0.1}
+  - {id: c10, feedstock: case_C26_ss,  flow_slpm: 22, stat_wt: 1,  mew_w: 0.1}
+  - {id: c11, feedstock: case_C26_ss,  flow_slpm: 26, stat_wt: 1,  mew_w: 0.1}
+  - {id: c12, feedstock: case_C26_ss,  flow_slpm: 30, stat_wt: 1,  mew_w: 0.1}
+
+# PIV benchmark targets for c01-c03 (time-averaged spout-region velocity
+# magnitude maps, experiment vs simulation).  source: C26 Table 3 (p.5).
+piv_targets_table3:
+  c01: {CC: 0.6817, SSI: 0.6086, MSE_m2_s2: 0.0068}
+  c02: {CC: 0.8170, SSI: 0.7687, MSE_m2_s2: 0.0042}
+  c03: {CC: 0.8286, SSI: 0.7657, MSE_m2_s2: 0.0049}

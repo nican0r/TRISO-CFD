@@ -31,3 +31,27 @@ spouted_bed_V_3d_numerics:
   dt_max_s: 1.0e-3       # MFiX DT_MAX ceiling for the adaptive step [s]
                          # source: assumed; carried over from R1-R4 decks
                          #         (see Rule-9 note above)
+
+# Case C26 (Conry et al. 2026) time-step controls.  dt_max is derived PER
+# CASE as cfl_target * dx / U_nozzle (spouted-bed recipe Rule 9), not copied
+# from the V_3d decks.  See notes/c26_conry2026_case.md.
+spouted_bed_C26_3d_numerics:
+  cfl_target: 0.5        # CFL bound at the nozzle exit velocity [-]
+                         # source: spouted-bed recipe Rule 9.
+  dt_init_fraction: 1.0  # initial DT as a fraction of dt_max [-]
+                         # source: assumed.
+  dt_min_s: 1.0e-7       # MFiX DT_MIN [s]
+                         # source: spouted-bed recipe Rule 9.
+  max_nit: 50            # MFiX MAX_NIT [-]
+                         # source: assumed; same as the V_3d decks.
+  monitor_dt_s: 1.0e-3   # monitor sampling interval [s]
+                         # source: assumed; same as the V_3d decks (1 kHz).
+  vtk_dt_background_s: 0.05   # cell-field VTK interval over the whole run [s]
+                              # source: assumed.
+  vtk_dt_particles_s: 0.05    # particle VTK interval over the whole run [s]
+                              # source: assumed.
+  piv_frame_dt_s: 0.002       # particle VTK interval in the PIV window [s]
+                              # source: C26 p.3 (2.2.2, "300 frames ...
+                              #         sampled every 0.002 s").
+  piv_n_frames: 300           # frames in the PIV window [-] (0.6 s)
+                              # source: C26 p.3 (2.2.2).

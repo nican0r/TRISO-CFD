@@ -599,3 +599,106 @@ startup_V_3d:
                                # no spurious velocity-limit trips.
                                # source: assumed; physical bounds from
                                #   correlations.terminal_velocity and S2 U_ms.
+
+# =======================================================================
+# Case C26: Conry et al. (2026) ORNL benchtop spout-fluidized bed.
+#   Conry, Dal Forno Chuahy, Oyedeji, Finney, Heldt, Lopez-Honorato,
+#   Nucl. Eng. Des. 456 (2026) 115009 -- cited as "C26".
+#   Rig also described in Conry et al., Chem. Eng. Sci. 306 (2025) 121197
+#   -- cited as "C25".
+# Separate from bed_V on purpose (different rig).  Design rationale and
+# every deviation from the spouted-bed recipe: notes/c26_conry2026_case.md.
+# =======================================================================
+bed_C26:
+  D_c_m: 0.0504            # column inside diameter used by the model [m]
+                           # = 24 cells x 2.1 mm.  C26 2.2.1: dx = 2.1 mm
+                           # "as an integer fraction of the reactor
+                           # diameter", 24 cells across it.  Text (2.1) says
+                           # 50 mm; C25 Fig. 1 says 50.8 mm (2 in.).
+                           # source: C26 p.3 (2.2.1).
+  D_nozzle_m: 2.38125e-3   # single-orifice nozzle diameter [m] (3/32 in.)
+                           # source: C26 p.3 (2.1, "2.38 mm (3/32 in.)").
+  D_throat_m: 2.38125e-3   # cone bottom (throat) diameter [m]
+                           # NOT REPORTED in C25/C26.  Assumed equal to the
+                           # nozzle: the cone narrows to the nozzle and is
+                           # closed by a flat cap at y = 0; gas enters only
+                           # through the point source.
+                           # source: assumed (notes/c26_conry2026_case.md).
+  cone_angle_deg: 60       # included cone angle [deg] (half-angle 30 deg)
+                           # source: C26 p.3 (2.1, "60 deg glass cone").
+                           # NOTE: C25/C26 Fig. 1 "~25 mm" static bed height
+                           # is only consistent with ~90 deg for 60 g YSZ;
+                           # 60 deg gives ~35 mm.  Both logged per manifest.
+
+spouted_bed_C26_3d:
+  n_cells_across_D: 24     # cells across D_c [-]; dx = D_c / 24 = 2.1 mm
+                           # source: C26 p.3 (2.2.1).
+  n_cells_vertical: 100    # cells from the cone bottom (y = 0) to the
+                           # outlet [-]; H_dom = 100 dx = 0.210 m
+                           # source: C26 p.3 (2.2.1).
+  n_margin_cells_xz: 1     # whole cells of clearance outside D_c on each
+                           # side in x and z [-].  The box adds a further
+                           # half cell each side so the cell count is ODD
+                           # (24 + 2*1 + 1 = 27) and the vessel axis sits at
+                           # a cell centre (single-cell point source).
+                           # source: assumed (notes/c26_conry2026_case.md).
+  n_margin_cells_below: 4  # blocked cell rows below the y = 0 cone cap [-].
+                           # Keeps the cap off the box face (cf. recipe
+                           # Rule 19) and makes jmax = 104 = 8 x 13 for DMP.
+                           # source: assumed.
+  dx_sample_fraction: 0.25 # STL SDF sampling step as a fraction of dx [-]
+                           # = 0.525 mm.  Finer than the V_3d 0.5 x dx rule
+                           # so the 1.19 mm throat radius spans > 2 samples.
+                           # source: assumed.
+  top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
+                           # source: spouted-bed recipe Rule 19.
+  ps_row_offset_cells: 0   # point-source cell row above the cap [-]
+                           # (0 = first fluid row, y in [0, dx]).  C26 2.2.1:
+                           # point source "centered with the reactor and
+                           # placed at the bottom of the cone".  Fallback 1
+                           # if the apex cut cell is blocked in the smoke.
+                           # source: C26 p.3 (2.2.1); fallback assumed.
+
+spouted_bed_C26_3d_dem:
+  # DEM/CGP contact closure, C26 Table 1 (identical for YSZ and steel).
+  kn: 1000.0               # normal spring constant, p-p [N/m]
+                           # source: C26 Table 1 ("Spring constant").
+  kn_w: 1000.0             # normal spring constant, p-wall [N/m]
+                           # source: C26 Table 1 (single value; assumed to
+                           # apply to the wall as well).
+  kt_fac: 0.285            # tangential/normal spring factor, p-p [-]
+                           # source: C26 Table 1.
+  kt_w_fac: 0.285          # tangential/normal spring factor, p-wall [-]
+                           # source: C26 Table 1 (assumed same at wall).
+  des_etat_fac: 0.5        # tangential/normal damping factor, p-p [-]
+                           # source: C26 Table 1.
+  des_etat_w_fac: 0.5      # tangential/normal damping factor, p-wall [-]
+                           # source: C26 Table 1 (assumed same at wall).
+  mew: 0.1                 # interparticle friction factor [-]
+                           # source: C26 Table 1.
+  mew_w_base: 0.1          # particle-wall friction factor, baseline [-]
+                           # (swept 0.1/0.3/0.5/0.7 in params/sweep_C26.yaml)
+                           # source: C26 Table 1, Table 2.
+  des_en_input_pp: 0.5     # interparticle restitution coefficient [-]
+                           # source: C26 Table 1.
+  des_en_input_pw: 0.5     # particle-wall restitution coefficient [-]
+                           # source: C26 Table 1.
+  drag_type: 'TGS'         # Tenneti, Garg & Subramaniam (2011) drag.
+                           # Valid 26.1.2 DRAG_TYPE (init_namelist.f valid
+                           # list; des/drag_gp_des.f:221).
+                           # source: C26 p.3 (2.2.1).
+  des_interp_scheme: 'LINEAR_HAT'
+                           # not reported in C26.
+                           # source: assumed; spouted-bed recipe Rule 13.
+  des_epg_clip: 0.42       # minimum gas fraction for drag evaluation [-]
+                           # not reported in C26.
+                           # source: assumed; same as spouted_bed_V_3d_dem.
+  eps_s_ic: 0.30           # loose solids fraction of the seeded bed [-]
+                           # C26 2.2.2: particles "initialized at the bottom
+                           # of the reactor"; the bed settles under gravity.
+                           # Loose, not packed (R5 IC review).
+                           # source: assumed (notes/day10_r5_ic_review.md).
+  eps_s_packed: 0.57       # packed solids fraction used ONLY to derive the
+                           # static bed height H_static for monitor placement
+                           # and the ~25 mm bed-height cross-check [-].
+                           # source: assumed; same value as case_V.eps_s_bed.

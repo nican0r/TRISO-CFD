@@ -40,3 +40,21 @@ cases:
     composition:
       AR: 0.5
       H2: 0.5
+  ar_25C:
+    label: "Ar, 25 C"
+    T_K: 298.15
+    # Case C26 (Conry et al. 2026): "a 298 K reactor and gas temperature,
+    # and a fluidizing gas of 100% argon".
+    # source: C26 p.4 (2.2.2).
+    composition:
+      AR: 1.0
+
+# Reference state for converting the Case C26 mass-flow-controller readings
+# (slpm) to mass flow.  Alicat's default "standard" is 25 C, 14.696 psia; the
+# C25/C26 rig uses an Alicat MFC (C25 2.2).
+# source: assumed (Alicat default STP; not stated in C25/C26).
+slpm_reference_C26:
+  T_K: 298.15
+  p_Pa: 101325
+  composition:
+    AR: 1.0

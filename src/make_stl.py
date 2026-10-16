@@ -526,6 +526,134 @@ def build_spouted_bed_stl_implicit(
     return out_path
 
 
+def build_cone_column_stl_implicit(
+    R_c_m: float,
+    R_t_m: float,
+    cone_half_angle_deg: float,
+    H_dom_m: float,
+    dx_sample_m: float,
+    out_path: Path,
+    top_extend_m: float = 0.0,
+) -> Path:
+    """Closed-bottom cone + column STL for gas-point-source decks (Case C26).
+
+    Same implicit-SDF + marching-cubes method as
+    :func:`build_spouted_bed_stl_implicit`, but with **no inlet stub**.  The
+    cone narrows from R_c down to a throat of radius R_t at y = 0, where a
+    flat cap closes the vessel.  Gas enters through an MFiX point source
+    (``ps_*`` keywords) inside the vessel, not through a boundary, so there is
+    no opening to cut a mass inflow through.  See notes/c26_conry2026_case.md.
+
+    All inputs SI:
+
+    R_c_m               : column (cylindrical section) inside radius [m]
+    R_t_m               : cone throat radius at the closed bottom (y = 0) [m]
+    cone_half_angle_deg : cone half-angle from the vertical axis [deg]
+    H_dom_m             : vessel top / pressure-outflow plane [m]
+    dx_sample_m         : SDF sampling step [m]
+    out_path            : destination ASCII .stl
+    top_extend_m        : push the top cap this far above y = H_dom so the PO
+                          plane cuts side-wall facets (spouted-bed recipe
+                          Rule 19).
+
+    Primitives (axisymmetric about the y-axis, negative inside):
+      - cone   : r <= R_t + y tan(theta), y in [0, h_cone + seam]
+      - column : r <= R_c,                y in [h_cone, H_dom + top_extend]
+    with h_cone = (R_c - R_t) / tan(theta).  The cone's TOP cap overlaps the
+    column by ``seam = dx_sample`` (the Day-10 R5 fix): with a shared plane the
+    union SDF is exactly zero across the disc whenever a sampling plane lands
+    on it, and marching cubes emits a spurious internal membrane.  The cone's
+    BOTTOM cap at y = 0 is a real wall and is kept.
+
+    Normals point INWARD (MFiX OUT_STL_VALUE = 1.0 internal-flow convention),
+    chosen by the same majority-vote probe as the V_3d builder.
+    """
+    out_path = Path(out_path)
+    tan_h = math.tan(math.radians(cone_half_angle_deg))
+    if not (0.0 < cone_half_angle_deg < 90.0):
+        raise ValueError("cone_half_angle_deg must be in (0, 90) deg")
+    if R_t_m <= 0.0:
+        raise ValueError(f"R_t_m ({R_t_m}) must be > 0")
+    if R_t_m >= R_c_m:
+        raise ValueError(f"R_t_m ({R_t_m}) must be < R_c_m ({R_c_m})")
+    h_cone_m = (R_c_m - R_t_m) / tan_h
+    if h_cone_m >= H_dom_m:
+        raise ValueError(
+            f"cone top ({h_cone_m:.4g} m) must lie below H_dom ({H_dom_m} m)"
+        )
+    if dx_sample_m <= 0.0:
+        raise ValueError("dx_sample_m must be positive")
+    if dx_sample_m >= R_t_m:
+        raise ValueError(
+            f"dx_sample_m ({dx_sample_m}) must be < R_t_m ({R_t_m}) or the "
+            "throat is not resolved by the sampling grid"
+        )
+    if top_extend_m < 0.0:
+        raise ValueError("top_extend_m must be >= 0")
+
+    import pyvista as pv
+
+    seam_m = dx_sample_m
+    y_top_m = H_dom_m + top_extend_m
+
+    def sdf_fn(rr: np.ndarray, yy: np.ndarray) -> np.ndarray:
+        r_cone = np.minimum(R_t_m + yy * tan_h, R_c_m)
+        s_cone = np.maximum.reduce(
+            [rr - r_cone, 0.0 - yy, yy - (h_cone_m + seam_m)]
+        )
+        s_col = np.maximum.reduce([rr - R_c_m, h_cone_m - yy, yy - y_top_m])
+        return np.minimum(s_cone, s_col)
+
+    margin = 2.0 * dx_sample_m
+    x0, x1 = -R_c_m - margin, R_c_m + margin
+    y0, y1 = -margin, y_top_m + margin
+    nx = int(math.ceil((x1 - x0) / dx_sample_m)) + 1
+    ny = int(math.ceil((y1 - y0) / dx_sample_m)) + 1
+    xs = x0 + dx_sample_m * np.arange(nx)
+    ys = y0 + dx_sample_m * np.arange(ny)
+    zs = xs.copy()
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
+    sdf = sdf_fn(np.sqrt(X * X + Z * Z), Y).astype(np.float32)
+
+    grid = pv.ImageData(
+        dimensions=(nx, ny, nx),
+        spacing=(dx_sample_m, dx_sample_m, dx_sample_m),
+        origin=(x0, y0, x0),
+    )
+    grid.point_data["sdf"] = sdf.flatten(order="F")
+    surface = grid.contour(isosurfaces=[0.0], scalars="sdf").triangulate()
+    faces = surface.regular_faces
+    pts = np.asarray(surface.points)
+    if faces is None or len(faces) == 0:
+        raise RuntimeError("marching cubes produced no triangles; check SDF")
+
+    # Drop degenerate slivers (see build_spouted_bed_stl_implicit).
+    e1 = pts[faces[:, 1]] - pts[faces[:, 0]]
+    e2 = pts[faces[:, 2]] - pts[faces[:, 0]]
+    tri_n = np.cross(e1, e2)
+    norms = np.linalg.norm(tri_n, axis=1)
+    keep = norms >= _CROSS_TOL_M2
+    faces, tri_n, norms = faces[keep], tri_n[keep], norms[keep]
+    if faces.shape[0] == 0:
+        raise RuntimeError("all marching-cubes faces were degenerate")
+
+    # Majority vote: flip winding unless most normals already point INTO the
+    # fluid (probe at centroid + eps * n lands where sdf < 0).
+    centroids = (pts[faces[:, 0]] + pts[faces[:, 1]] + pts[faces[:, 2]]) / 3.0
+    probe = centroids + 0.25 * dx_sample_m * (tri_n / norms[:, None])
+    inside_frac = float(
+        np.mean(sdf_fn(np.hypot(probe[:, 0], probe[:, 2]), probe[:, 1]) < 0.0)
+    )
+    flip = inside_frac < 0.5
+
+    triangles: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    for f in faces:
+        a, b, c = pts[f[0]], pts[f[1]], pts[f[2]]
+        triangles.append((a, c, b) if flip else (a, b, c))
+    _write_ascii_stl(triangles, "cone_column_C26_implicit", out_path)
+    return out_path
+
+
 def _cli() -> None:
     import argparse
 

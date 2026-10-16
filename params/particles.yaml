@@ -143,3 +143,38 @@ fb_sweep:
                           # source: implementation-steps/day-6-7.md
   dt_init_s: 1.0e-3       # initial MFiX time step [s]
                           # source: Day-5 tutorial precedent
+
+# Case C26 feedstocks (Conry et al. 2026, Nucl. Eng. Des. 456:115009, "C26").
+# Both use a 60 g charge.  PSD statistics are circle-equivalent diameters
+# measured with a Malvern Morphologi 4 (C26 2.2.2, Fig. 2).  MFiX IC PSD
+# keywords take REAL particle sizes; CGP scales them internally.
+case_C26_ysz:
+  label: "YSZ 400 um nominal (TOSOH)"
+  rho_p_kg_per_m3: 6000       # particle density [kg/m^3]
+                              # source: C26 Table 1.
+  d_p_mean_m: 411.6e-6        # mean CE diameter [m]
+                              # source: C26 p.4 (2.2.2).
+  d_p_var_m2: 149.1e-12       # PSD variance [m^2] (149.1 um^2)
+                              # -> sigma = 12.21 um.
+                              # source: C26 p.4 (2.2.2).
+  psd_type: 'NORMAL'          # MFiX IC_PSD_TYPE.
+                              # source: assumed (C26 gives mean/variance only).
+  psd_n_sigma: 3.0            # truncation of the normal PSD at mean +/- n sigma [-]
+                              # source: assumed (MFiX's own BC default is
+                              #         mean + 3 sigma, check_bc_dem.f:249).
+  inventory_g: 60.0           # charge mass [g]
+                              # source: C26 p.4 (2.2.2) and Fig. 1 caption.
+
+case_C26_ss:
+  label: "Stainless steel spheres"
+  rho_p_kg_per_m3: 8460       # particle density [kg/m^3]
+                              # source: C26 Table 1.
+  d_p_mean_m: 784.9e-6        # mean CE diameter [m]
+                              # source: C26 p.4 (2.2.2).
+  d_p_var_m2: 2.51e-12        # PSD variance [m^2] (2.51 um^2) -> sigma = 1.58 um.
+                              # source: C26 p.4 (2.2.2).
+  psd_type: 'NORMAL'          # source: assumed (see case_C26_ysz).
+  psd_n_sigma: 3.0            # source: assumed (see case_C26_ysz).
+  inventory_g: 60.0           # charge mass [g]
+                              # source: C26 p.4 (2.2.2, "All cases had a 60 g
+                              #         particle load").
