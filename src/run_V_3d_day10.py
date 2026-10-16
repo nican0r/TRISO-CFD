@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from src.cfl_check import dt_for_cfl
@@ -73,6 +74,24 @@ def write_runner(run_dir: Path, mfx_name: str, nranks: int) -> Path:
     return script
 
 
+def _restart_files(src_dir: Path) -> list[Path]:
+    """Files a RESTART_1 run needs from a finished run dir.
+
+    open_files.f opens the .RES and every .SPx with STATUS='OLD', so all
+    must exist.  The VTK frame index and .pvd files let frame numbering
+    continue; monitor CSVs are carried so their series stay continuous.
+    """
+    stem = RUN_NAME.upper()
+    required = [src_dir / f"{stem}.RES", src_dir / f"{stem}_DES.RES"]
+    missing = [f.name for f in required if not f.is_file()]
+    if missing:
+        raise SystemExit(f"--restart-from {src_dir}: missing {missing}")
+    files = required + sorted(src_dir.glob(f"{stem}.SP?"))
+    files += [f for f in (src_dir / "VTU_FRAME_INDEX.TXT",) if f.is_file()]
+    files += sorted(src_dir.glob("*.pvd")) + sorted(src_dir.glob("V_3D_*.csv"))
+    return files
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--template", type=Path, default=DEFAULT_TEMPLATE)
@@ -85,6 +104,21 @@ def main() -> None:
                          "NI*NJ*NK must equal the mpirun -np count AND divide "
                          "the mesh (imax/jmax/kmax).  AWS Batch overrides this "
                          "at container launch via docker/entrypoint.sh."))
+    p.add_argument("--vtk-dt", type=float, default=None,
+                   help=("override the VTK frame interval [s] (output cadence "
+                         "only).  Smokes use ~0.01 s so frames bracket the "
+                         "t ~ 30-40 ms bed-lift/collapse window."))
+    p.add_argument("--dt-max", type=float, default=None,
+                   help=("override DT_MAX [s] for this run only (default: "
+                         "params/numerics.yaml spouted_bed_V_3d_numerics."
+                         "dt_max_s).  Used for the R5c CFL-cap smoke."))
+    p.add_argument("--restart-from", type=Path, default=None,
+                   help=("render RUN_TYPE='restart_1' and copy the restart "
+                         "state (.RES, _DES.RES, .SP*, VTK frame index, "
+                         ".pvd, monitor CSVs) from this finished run dir. "
+                         "The mesh/STL must be unchanged; --tstop is the "
+                         "absolute end time.  MFiX clamps the restored DT "
+                         "to DT_MAX (main.f), so --dt-max takes effect."))
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -93,6 +127,15 @@ def main() -> None:
         description="Day 10 V_3d (ORNL/UTK Case V, 3D STL cut-cell)",
         nodes=args.nodes,
     )
+    if args.vtk_dt is not None:
+        params["vtk_dt_s"] = float(args.vtk_dt)
+    if args.dt_max is not None:
+        params["dt_max_s"] = float(args.dt_max)
+        params["dt_s"] = min(params["dt_s"], params["dt_max_s"])
+    restart_files: list[Path] = []
+    if args.restart_from is not None:
+        params["run_type"] = "restart_1"
+        restart_files = _restart_files(args.restart_from)
     args.run_dir.mkdir(parents=True, exist_ok=True)
     mfx_path = args.run_dir / f"{RUN_NAME}.mfx"
     stl_path = args.run_dir / params["stl_filename"]
@@ -152,6 +195,10 @@ def main() -> None:
         "approx_total_steps_explicit": n_steps_approx,
         "mfx": mfx_path.name,
         "stl": stl_path.name,
+        "dt_max_s": params["dt_max_s"],
+        "run_type": params.get("run_type", "new"),
+        "restart_from": (str(args.restart_from)
+                         if args.restart_from is not None else None),
     }
     print(json.dumps(manifest, indent=2))
     if args.dry_run:
@@ -208,6 +255,9 @@ def main() -> None:
     manifest["facet_count"] = facet_count
 
     render_case(args.template, params, mfx_path)
+    for src in restart_files:
+        shutil.copy2(src, args.run_dir / src.name)
+        print(f"copied restart file: {src.name}")
     (args.run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     script = write_runner(args.run_dir, mfx_path.name, params["nranks"])
     print(f"wrote: {stl_path}")

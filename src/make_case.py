@@ -107,12 +107,16 @@ def _bed_height_from_inventory(
     eps_s_bed: float,
     R_i_m: float,
     cone_half_angle_deg: float,
+    R_c_m: float | None = None,
 ) -> float:
     """Static bed height [m] for a conical bed, derived from inventory.
 
     The vessel inner profile (above the orifice plane at y=0) is a cone
-    r(y) = R_i + y*tan(theta) up to the cone top; this helper assumes the
-    bed sits entirely in the cone (confirmed by hand-calc in day-8.md).
+    r(y) = R_i + y*tan(theta) up to the cone top; with R_c_m=None this helper
+    assumes the bed sits entirely in the cone (confirmed by hand-calc in
+    day-8.md).  When R_c_m is given, the profile continues as a cylinder of
+    radius R_c above the cone top (y = (R_c - R_i)/tan(theta)); used for the
+    loose PIC IC bed that extends above the cone (Day-10 R5).
 
     Bed volume in a frustum from y=0 (r=R_i) to y=h (r=r_h):
         V_frustum(h) = (pi*h/3) * (R_i^2 + R_i*r_h + r_h^2)
@@ -124,9 +128,16 @@ def _bed_height_from_inventory(
     tan_t = math.tan(math.radians(cone_half_angle_deg))
     v_target = mass_kg / (rho_p_kg_m3 * eps_s_bed)
 
-    def v_at(h: float) -> float:
+    h_cone = None if R_c_m is None else (R_c_m - R_i_m) / tan_t
+
+    def v_frustum(h: float) -> float:
         r_h = R_i_m + h * tan_t
         return (math.pi * h / 3.0) * (R_i_m * R_i_m + R_i_m * r_h + r_h * r_h)
+
+    def v_at(h: float) -> float:
+        if h_cone is None or h <= h_cone:
+            return v_frustum(h)
+        return v_frustum(h_cone) + math.pi * R_c_m * R_c_m * (h - h_cone)
 
     lo, hi = 0.0, 1.0
     if v_at(hi) < v_target:
@@ -376,6 +387,7 @@ def build_V_3d_params(
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
+    numerics = _load_yaml(PARAMS_DIR / "numerics.yaml")["spouted_bed_V_3d_numerics"]
 
     bed = geometry["bed_V"]
     v3d = geometry["spouted_bed_V_3d"]
@@ -466,6 +478,19 @@ def build_V_3d_params(
         R_i_m=R_i_m,
         cone_half_angle_deg=cone_half_angle_deg,
     )
+    # Day-10 R5: PIC bed quadrants are seeded LOOSE (eps_s_ic_pic, NETL
+    # tutorial value) up to the inventory-conserving height H_ic_m, then
+    # settle onto the jet.  H_static_m (packed, eps_s_bed) is kept for the
+    # monitors and derived scalars.
+    eps_s_ic = float(pic["eps_s_ic_pic"])
+    H_ic_m = _bed_height_from_inventory(
+        mass_kg=inventory_kg,
+        rho_p_kg_m3=rho_p_kg_m3,
+        eps_s_bed=eps_s_ic,
+        R_i_m=R_i_m,
+        cone_half_angle_deg=cone_half_angle_deg,
+        R_c_m=R_c_m,
+    )
 
     x_min_m = -x_half_m
     x_max_m = x_half_m
@@ -511,8 +536,8 @@ def build_V_3d_params(
         "description": description or f"V_3d UTK/ORNL U_in={U_in_m_s:.2f} m/s",
         "run_name": run_name,
         "tstop_s": float(tstop_s),
-        "dt_s": 1.0e-4,
-        "dt_max_s": 1.0e-3,
+        "dt_s": float(numerics["dt_s"]),
+        "dt_max_s": float(numerics["dt_max_s"]),
         "max_nit": 50,
         "imax": int(imax),
         "jmax": int(jmax),
@@ -576,6 +601,9 @@ def build_V_3d_params(
         "dy_min_m": float(dx_min_m),
         "ep_g_bed": 1.0 - eps_s_bed,
         "eps_s_bed": eps_s_bed,
+        "H_ic_m": H_ic_m,
+        "eps_s_ic": eps_s_ic,
+        "ep_g_ic": 1.0 - eps_s_ic,
         "ep_star": ep_star,
         "U_in_m_s": float(U_in_m_s),
         # Day-10 R4 (2026-10-11): straight-stub geometry (R_stub = R_i), so the
@@ -615,8 +643,32 @@ def build_V_3d_params(
         "dy_m_list": dy_m_list,
         "dz_m_list": dz_m_list,
         "stl_filename": str(stl_filename),
+        # Day-10 R5c: IC layout switch (see geometry.yaml
+        # spouted_bed_V_3d_pic.ic_central_gas_column).
+        "ic_central_gas_column": bool(pic["ic_central_gas_column"]),
     }
     params.update(_common_fluid_solid_params(gas_case))
+
+    # Day-10 R5c settle-then-ramp MI start-up (geometry.yaml startup_V_3d).
+    # v0 is tied to the single-particle terminal velocity of the case's
+    # particles in the case's gas so parcels cannot fall through the
+    # gas-only stub while the bed settles over the orifice.
+    from src.correlations import terminal_velocity
+
+    startup = geometry["startup_V_3d"]
+    u_t = terminal_velocity(
+        params["d_p_m"], params["rho_p_kg_m3"],
+        params["rho_g_kg_m3"], params["mu_g_pa_s"],
+    )
+    t0 = float(startup["settle_time_s"])
+    params.update({
+        "ramp_enabled": bool(startup["ramp_enabled"]),
+        "u_t_m_s": float(u_t),
+        "bc_v_g_ramp_t0_s": t0,
+        "bc_v_g_ramp_t1_s": t0 + float(startup["ramp_duration_s"]),
+        "bc_v_g_ramp_v0_m_s": float(startup["v0_over_ut"]) * float(u_t),
+        "bc_v_g_ramp_v1_m_s": params["bc_v_g_mi_m_s"],
+    })
     return params
 
 

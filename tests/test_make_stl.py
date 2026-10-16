@@ -240,6 +240,51 @@ def test_implicit_no_degenerate_facets(implicit_stl_path):
     )
 
 
+def _facet_centroids_normals(text: str) -> tuple[np.ndarray, np.ndarray]:
+    verts = _parse_vertices(text).reshape(-1, 3, 3)
+    e1 = verts[:, 1] - verts[:, 0]
+    e2 = verts[:, 2] - verts[:, 0]
+    n = np.cross(e1, e2)
+    n /= np.linalg.norm(n, axis=1)[:, None]
+    return verts.mean(axis=1), n
+
+
+def test_implicit_no_membrane_at_orifice_plane(implicit_stl_path):
+    """No horizontal facet may span the orifice bore at the stub/cone seam.
+
+    Regression guard for the Day-10 R5 finding (notes/day10_r5_orifice_clog.md):
+    the stub and cone SDF primitives were both capped at exactly y = 0, the
+    sampling grid lands on y = 0.0, and the union SDF was identically zero over
+    the orifice disc, so marching cubes emitted a membrane (144 facets,
+    r = 0.24-1.84 mm in the R4 production STL).  MFiX treated it as a wall and
+    the inlet gas squeezed through a thin ring gap.
+    """
+    c, n = _facet_centroids_normals(implicit_stl_path.read_text())
+    r = np.hypot(c[:, 0], c[:, 2])
+    dx_test = 0.001
+    interior = (c[:, 1] > -_PROD_L_STUB_M + 2 * dx_test) & (c[:, 1] < 0.20 - 2 * dx_test)
+    horizontal = np.abs(n[:, 1]) > 0.7
+    bad = interior & horizontal & (r < 0.002 - dx_test)
+    assert bad.sum() == 0, (
+        f"{bad.sum()} horizontal facets inside the orifice bore "
+        f"(y = {np.round(c[bad, 1] * 1e3, 2)} mm): spurious STL membrane"
+    )
+
+
+def test_implicit_no_membrane_at_cone_top(implicit_stl_path):
+    """Same seam guard at the cone/freeboard junction (y = h_cone)."""
+    c, n = _facet_centroids_normals(implicit_stl_path.read_text())
+    r = np.hypot(c[:, 0], c[:, 2])
+    dx_test = 0.001
+    interior = (c[:, 1] > -_PROD_L_STUB_M + 2 * dx_test) & (c[:, 1] < 0.20 - 2 * dx_test)
+    horizontal = np.abs(n[:, 1]) > 0.7
+    bad = interior & horizontal & (r < 0.025 - 2 * dx_test)
+    assert bad.sum() == 0, (
+        f"{bad.sum()} horizontal facets inside the vessel "
+        f"(y = {np.round(c[bad, 1] * 1e3, 2)} mm): spurious STL membrane"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Day-10 R2 Option 2: tapered-stub STL
 # ---------------------------------------------------------------------------

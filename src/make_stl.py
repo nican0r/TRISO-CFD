@@ -407,10 +407,19 @@ def build_spouted_bed_stl_implicit(
         [R - r_bound_stub, -L_stub_m - Y, Y - 0.0]
     )
 
-    # Cone frustum: r_bound = R_i + y * tan(theta); y in [0, h_cone].
-    r_cone_bound = R_i_m + Y * tan_h
+    # Cone frustum: r_bound = R_i + y * tan(theta), clamped to R_c.
+    # Day-10 R5: the cone's caps OVERLAP its neighbours by seam_m instead of
+    # sharing the planes y = 0 and y = h_cone.  With shared caps, the union
+    # SDF is exactly 0 across the whole orifice disc whenever a sampling-grid
+    # plane lands on y = 0 (it does: ys = -L_stub - 2*dx + k*dx), and marching
+    # cubes emitted a membrane there that MFiX treated as a wall (R4 STL: 144
+    # facets across r = 0.24-1.84 mm; see notes/day10_r5_orifice_clog.md).
+    # Below y = 0 the cone radius is < R_i <= R_stub and above h_cone it is
+    # clamped to R_c, so the overlap moves no wall.
+    seam_m = dx_sample_m
+    r_cone_bound = np.minimum(R_i_m + Y * tan_h, R_c_m)
     sdf_cone = np.maximum.reduce(
-        [R - r_cone_bound, 0.0 - Y, Y - h_cone_m]
+        [R - r_cone_bound, -seam_m - Y, Y - (h_cone_m + seam_m)]
     )
 
     # Freeboard cylinder: radius R_c, y in [h_cone, H_dom + top_extend].
@@ -490,8 +499,8 @@ def build_spouted_bed_stl_implicit(
         else:
             rb_stub = R_stub_m
         s_stub = np.maximum.reduce([rp - rb_stub, -L_stub_m - yp, yp - 0.0])
-        rc = R_i_m + yp * tan_h
-        s_cone = np.maximum.reduce([rp - rc, 0.0 - yp, yp - h_cone_m])
+        rc = np.minimum(R_i_m + yp * tan_h, R_c_m)
+        s_cone = np.maximum.reduce([rp - rc, -seam_m - yp, yp - (h_cone_m + seam_m)])
         s_free = np.maximum.reduce([rp - R_c_m, h_cone_m - yp, yp - y_top_m])
         return np.minimum.reduce([s_stub, s_cone, s_free])
     sdf_at_probe = _sdf_point(r_probe, yp)

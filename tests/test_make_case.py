@@ -245,6 +245,30 @@ def _render_V3(tmp_path, U=30.0, tstop=5.5, name="V_3d"):
     return out.read_text(), params
 
 
+def test_V_3d_dt_controls_from_numerics_yaml(tmp_path):
+    """dt / dt_max come from params/numerics.yaml (CLAUDE.md rule 2), not
+    hard-coded literals in make_case.py."""
+    import yaml
+    num = yaml.safe_load((REPO_ROOT / "params" / "numerics.yaml").read_text())
+    num = num["spouted_bed_V_3d_numerics"]
+    text, params = _render_V3(tmp_path)
+    assert params["dt_s"] == pytest.approx(float(num["dt_s"]))
+    assert params["dt_max_s"] == pytest.approx(float(num["dt_max_s"]))
+    m = re.search(r"^\s*dt_max\s*=\s*(\S+)", text, re.MULTILINE)
+    assert m and float(m.group(1)) == pytest.approx(float(num["dt_max_s"]))
+
+
+def test_V_3d_run_type_default_and_restart(tmp_path):
+    """RUN_TYPE defaults to 'new'; the Day-10 driver's --restart-from sets
+    params['run_type'] = 'restart_1' (MFiX open_files.f RESTART_1)."""
+    text, params = _render_V3(tmp_path)
+    assert re.search(r"run_type\s*=\s*'new'", text)
+    params["run_type"] = "restart_1"
+    out = tmp_path / "restart.mfx"
+    render_case(V3D_TEMPLATE, params, out)
+    assert re.search(r"run_type\s*=\s*'restart_1'", out.read_text())
+
+
 def test_V_3d_cartesian_grid_and_stl(tmp_path):
     """Day-10 template uses STL cut-cell (surface of revolution via
     src/make_stl.py, written to geometry_0001.stl).  The STL is
@@ -470,7 +494,14 @@ def test_V_3d_bed_ic_matches_case_V(tmp_path):
     pathology documented in notes/day10_pathology_review.md.  The
     inlet-stub IC_3 of R2 is dropped (redundant with IC_1).
     """
-    text, params = _render_V3(tmp_path)
+    # Day-10 R5c: the quadrant layout is now opt-in
+    # (geometry.yaml spouted_bed_V_3d_pic.ic_central_gas_column); render that
+    # branch explicitly so it stays covered.
+    params = build_V_3d_params(U_in_m_s=30.0, tstop_s=5.5, run_name="V_3d")
+    params["ic_central_gas_column"] = True
+    out = tmp_path / "V_3d_quad.mfx"
+    render_case(V3D_TEMPLATE, params, out)
+    text = out.read_text()
     assert params["eps_s_bed"] == pytest.approx(0.57)
     assert params["H_static_m"] == pytest.approx(0.0322, abs=5e-4)
     R_col = params["R_bed_gas_col_m"]
@@ -478,8 +509,12 @@ def test_V_3d_bed_ic_matches_case_V(tmp_path):
     # one-cell margin around the orifice.
     assert R_col >= params["R_stub_m"] - 1e-12
     assert R_col >= params["R_i_m"] + params["dx_uniform_m"] - 1e-12
-    # Each bed strip IC_2..IC_5 covers 0 <= y <= H_static with ep_s=0.57
-    # and the PIC statwt.
+    # Day-10 R5: each bed strip IC_2..IC_5 is seeded at eps_s_ic
+    # (params/geometry.yaml spouted_bed_V_3d_pic.eps_s_ic_pic) over
+    # 0 <= y <= H_ic, the inventory-conserving height, with the PIC statwt.
+    # A looser IC (eps_s_ic < eps_s_bed) can only raise the bed top.
+    assert 0.0 < params["eps_s_ic"] <= params["eps_s_bed"] + 1e-12
+    assert params["H_ic_m"] >= params["H_static_m"] - 1e-9
     for ic in (2, 3, 4, 5):
         m_ys = re.search(rf"ic_y_s\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
         m_yn = re.search(rf"ic_y_n\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
@@ -487,8 +522,10 @@ def test_V_3d_bed_ic_matches_case_V(tmp_path):
         m_sw = re.search(rf"ic_pic_const_statwt\({ic},1\)\s*=\s*([-+eE.0-9]+)", text)
         assert m_ys is not None, f"IC_{ic} y_s missing"
         assert float(m_ys.group(1)) == pytest.approx(0.0, abs=1e-12)
-        assert float(m_yn.group(1)) == pytest.approx(params["H_static_m"])
-        assert float(m_eps.group(1)) == pytest.approx(0.57)
+        assert float(m_yn.group(1)) == pytest.approx(params["H_ic_m"])
+        assert float(m_eps.group(1)) == pytest.approx(params["eps_s_ic"])
+        m_epg = re.search(rf"ic_ep_g\({ic}\)\s*=\s*([-+eE.0-9]+)", text)
+        assert float(m_epg.group(1)) == pytest.approx(1.0 - params["eps_s_ic"])
         assert float(m_sw.group(1)) == pytest.approx(params["ic_pic_const_statwt"])
     # IC_2 is the +z strip (z_b = +R_col, full x extent).
     m_zb2 = re.search(r"ic_z_b\(2\)\s*=\s*([-+eE.0-9]+)", text)
@@ -526,6 +563,86 @@ def test_V_3d_bed_ic_matches_case_V(tmp_path):
         assert not (x_inside and z_inside), (
             f"IC_{ic} seeds parcels inside the central gas column"
         )
+
+
+def _num(text, key):
+    m = re.search(rf"^\s*{re.escape(key)}\s*=\s*([-+eE.0-9]+)", text, re.MULTILINE)
+    assert m is not None, f"{key} not rendered"
+    return float(m.group(1))
+
+
+def test_V_3d_default_ic_single_full_cross_section(tmp_path):
+    """Day-10 R5c default: one loose IC over the whole cross-section,
+    0 <= y <= H_ic, no central gas column, no IC 3+."""
+    text, p = _render_V3(tmp_path)
+    assert p["ic_central_gas_column"] is False
+    assert _num(text, "ic_x_w(2)") == pytest.approx(p["x_min_m"])
+    assert _num(text, "ic_x_e(2)") == pytest.approx(p["x_max_m"])
+    assert _num(text, "ic_z_b(2)") == pytest.approx(p["z_min_m"])
+    assert _num(text, "ic_z_t(2)") == pytest.approx(p["z_max_m"])
+    assert _num(text, "ic_y_s(2)") == pytest.approx(0.0, abs=1e-12)
+    assert _num(text, "ic_y_n(2)") == pytest.approx(p["H_ic_m"])
+    assert _num(text, "ic_ep_s(2,1)") == pytest.approx(p["eps_s_ic"])
+    assert _num(text, "ic_ep_g(2)") == pytest.approx(1.0 - p["eps_s_ic"])
+    assert re.search(r"^\s*ic_x_w\(3\)", text, re.MULTILINE) is None
+
+
+def test_V_3d_mi_ramp_keywords(tmp_path):
+    """Day-10 R5c settle-then-ramp: BC_V_g_ramp_t0/t1/v0/v1 on the MI
+    (BC 3) from params/geometry.yaml startup_V_3d; v0 = v0_over_ut x u_t."""
+    import yaml
+    from src.correlations import terminal_velocity
+
+    geo = yaml.safe_load((REPO_ROOT / "params" / "geometry.yaml").read_text())
+    st = geo["startup_V_3d"]
+    text, p = _render_V3(tmp_path)
+    u_t = terminal_velocity(p["d_p_m"], p["rho_p_kg_m3"], p["rho_g_kg_m3"], p["mu_g_pa_s"])
+    assert _num(text, "bc_v_g_ramp_t0(3)") == pytest.approx(st["settle_time_s"])
+    assert _num(text, "bc_v_g_ramp_t1(3)") == pytest.approx(
+        st["settle_time_s"] + st["ramp_duration_s"])
+    assert _num(text, "bc_v_g_ramp_v0(3)") == pytest.approx(st["v0_over_ut"] * u_t)
+    assert _num(text, "bc_v_g_ramp_v1(3)") == pytest.approx(p["bc_v_g_mi_m_s"])
+    # Physical bounds behind the v0 choice: above u_t (no parcel falls into
+    # the gas-only stub) and below S2's 12 L/min minimum-spouting jet
+    # (15.9 m/s through the 4 mm orifice).
+    v0 = _num(text, "bc_v_g_ramp_v0(3)")
+    assert u_t < v0 < 12.0e-3 / 60.0 / (math.pi * p["R_i_m"] ** 2)
+    # MFiX's inlet velocity limit while holding is 100 * v0 (utilities_mod.f
+    # MAX_VEL_INLET); it must clear the operating jet so nothing trips.
+    assert 100.0 * v0 > p["bc_v_g_mi_m_s"]
+
+
+def test_V_3d_ramp_can_be_disabled(tmp_path):
+    p = build_V_3d_params(U_in_m_s=30.0, tstop_s=5.5, run_name="V_3d")
+    p["ramp_enabled"] = False
+    out = tmp_path / "noramp.mfx"
+    render_case(V3D_TEMPLATE, p, out)
+    assert re.search(r"^\s*bc_v_g_ramp_t0", out.read_text(), re.MULTILINE) is None
+
+
+def test_V_3d_loose_ic_conserves_inventory(tmp_path):
+    """Day-10 R5: the loose PIC IC (eps_s_ic up to H_ic, cone + cylinder
+    above the cone top) holds the same solids volume as the packed bed
+    (eps_s_bed up to H_static, cone only), i.e. the case_V 54.5 g."""
+    _, p = _render_V3(tmp_path)
+    tan_t = math.tan(math.radians(p["cone_half_angle_deg"]))
+    R_i, R_c = p["R_i_m"], p["R_c_m"]
+    h_cone = (R_c - R_i) / tan_t
+
+    def v_frustum(h):
+        r = R_i + h * tan_t
+        return math.pi * h / 3.0 * (R_i * R_i + R_i * r + r * r)
+
+    def v_vessel(h):
+        if h <= h_cone:
+            return v_frustum(h)
+        return v_frustum(h_cone) + math.pi * R_c * R_c * (h - h_cone)
+
+    v_ic = v_vessel(p["H_ic_m"]) * p["eps_s_ic"]
+    v_packed = v_frustum(p["H_static_m"]) * p["eps_s_bed"]
+    assert v_ic == pytest.approx(v_packed, rel=1e-6)
+    # Hand check: 0.2 * V(48.35 mm) * 6050 kg/m^3 = 54.5 g.
+    assert v_ic * 6050.0 == pytest.approx(54.5e-3, rel=1e-4)
 
 
 def test_V_3d_dx_rendered_in_template(tmp_path):

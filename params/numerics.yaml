@@ -16,3 +16,18 @@ spout_cfl_example:
   cfl_target: 0.5        # CFL upper bound for the sanity check [-]
                          # source: day-3.md ("CFL < 0.5"); standard explicit-
                          #         solver stability margin.
+
+# Day-10 V_3d (3D cut-cell PIC) solver time-step controls.  Moved out of
+# src/make_case.py (where they were hard-coded) on 2026-10-16 per CLAUDE.md
+# rule 2; values unchanged from the R1-R4 decks so the R5 STL-membrane fix
+# can be smoke-tested in isolation (notes/day10_r5_orifice_clog.md).
+# NOTE: dt_max_s = 1e-3 exceeds the spouted-bed recipe Rule 9 bound
+# (0.5 * dx / U_in = 1.7e-5 s at dx = 1 mm, U_in = 30 m/s); R4 reached
+# dt = 2.9e-4 s (CFL ~ 9) before its t = 30 ms collapse.  Revisit with the
+# R5 smoke dt/NIT data before any cloud run.
+spouted_bed_V_3d_numerics:
+  dt_s: 1.0e-4           # initial MFiX time step DT [s]
+                         # source: assumed; carried over from R1-R4 decks
+  dt_max_s: 1.0e-3       # MFiX DT_MAX ceiling for the adaptive step [s]
+                         # source: assumed; carried over from R1-R4 decks
+                         #         (see Rule-9 note above)
