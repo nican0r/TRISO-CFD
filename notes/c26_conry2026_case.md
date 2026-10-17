@@ -97,11 +97,14 @@ are not emitted.
 
 μ = 0.1 (not 0.3), e_n = 0.5 (not 0.9), k_t/k_n = 0.285 (C26 rounding of 2/7).
 
-### Recipe Rule 9 (dt_max ≤ 0.5·dx/U_in) → applied per case
+### Recipe Rule 9 (dt_max ≤ 0.5·dx/U_in) → paper step, capped by Rule 9
 
-dt_max = 0.5 · dx / U_nozzle, from `params/numerics.yaml`: 2.0e-5 s at
-14 slpm and 9.3e-6 s for stainless steel at 30 slpm. This deliberately does not
-copy the V_3d decks' 1e-3 s ceiling, which R5 flagged as a Rule-9 violation.
+dt_max = min(1.0e-5 s, 0.5 · dx / U_nozzle), from `params/numerics.yaml`.
+C26 p.9 (§3.2.1): "a single time step was 0.01 ms". That is the binding value
+for the YSZ cases. Rule 9 binds only for stainless steel at 30 slpm
+(9.4e-6 s). This deliberately does not copy the V_3d decks' 1e-3 s ceiling,
+which R5 flagged as a Rule-9 violation. (Changed 2026-10-17. The first c01
+smoke used the Rule-9 value alone, 2.8e-5 s.)
 
 ### Unchanged from the recipe
 
@@ -167,6 +170,32 @@ Checked 2026-10-16 against the installed source at
   grepped against every `*init_namelist*.f` in the installed source; none
   are missing. `tests/test_make_case_c26.py::test_deck_keywords_are_verified`
   keeps the deck within the V_3d-template set plus the list above.
+
+## First c01 smoke and full-text review (2026-10-17)
+
+- **Point-source placement bug.** The first smoke (AWS, 0.3 s, run_log
+  2026-10-16) gave the PS as a zero-width point at the axis-cell centre.
+  `get_ps.f`/`calc_cell.f` round each coordinate to a face, and a cell centre
+  is the tie. The source landed in the (−,−) corner sliver cut cell
+  (PS volume 3.27e-10 m³). It drove a 150–170 m/s wall-hugging jet that lost
+  most of its momentum within ~10 mm. The axis cell (7.0e-9 m³, 76 % fluid)
+  got ~3 m/s. Fix: the PS region is now the axis cell's faces.
+- **Full text (experimental-computational-modeling-approach.pdf)**:
+  - dt = 0.01 ms (p.9).
+  - ≥ 3.0 s startup before averaging (p.3).
+  - 10 slpm is "near minimum spouting", with ~10 spouting events per 0.5 s.
+  - A single point source "centered with the reactor and placed at the
+    bottom of the cone", fed by one MFC via a T-junction (Fig. 1b), so no
+    auxiliary fluidizing gas.
+  - The simulated cone closes to a point (Fig. 8e–f).
+  - PSD variance 149.1 µm² (σ = 12.2 µm) confirmed.
+  - Fig. 1b's "~25 mm (1 in.)" is a schematic annotation (C25 Fig. 1 draws
+    the same bracket for 15 g SiC). The first smoke settled at 34.5 mm,
+    matching the 60° estimate.
+  - Fig. 8e's simulated cone looks wider than 60° by eye. Measure it from a
+    high-resolution extraction before changing geometry; the text says 60°.
+- Monitor 3 is now a type-101 particle mass/count sum (the type-11
+  `monitor_ep_s` monitor was dropped for DEM, Warning 4455).
 
 ## Open items (not done here)
 

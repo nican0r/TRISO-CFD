@@ -36,6 +36,9 @@ spouted_bed_V_3d_numerics:
 # CASE as cfl_target * dx / U_nozzle (spouted-bed recipe Rule 9), not copied
 # from the V_3d decks.  See notes/c26_conry2026_case.md.
 spouted_bed_C26_3d_numerics:
+  dt_max_paper_s: 1.0e-5 # C26 time step [s]; dt_max = min(this, Rule 9 bound)
+                         # source: C26 p.9 (3.2.1, next to Table 5: "a single
+                         #         time step was 0.01 ms").
   cfl_target: 0.5        # CFL bound at the nozzle exit velocity [-]
                          # source: spouted-bed recipe Rule 9.
   dt_init_fraction: 1.0  # initial DT as a fraction of dt_max [-]

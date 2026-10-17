@@ -1,0 +1,41 @@
+[
+  {
+    "id": "c01",
+    "run_dir": "cases/C26_3d/c01",
+    "feedstock": "case_C26_ysz",
+    "flow_slpm": 10.0,
+    "solids_model": "CGP",
+    "cgp_stat_wt": 10.0,
+    "mew_w": 0.1,
+    "U_nozzle_m_s": 37.42388605895083,
+    "dt_max_s": 1e-05,
+    "n_parcels_est": 27316.819705308986,
+    "tstop_s": 3.0
+  },
+  {
+    "id": "c02",
+    "run_dir": "cases/C26_3d/c02",
+    "feedstock": "case_C26_ysz",
+    "flow_slpm": 12.0,
+    "solids_model": "CGP",
+    "cgp_stat_wt": 10.0,
+    "mew_w": 0.1,
+    "U_nozzle_m_s": 44.90866327074099,
+    "dt_max_s": 1e-05,
+    "n_parcels_est": 27316.819705308986,
+    "tstop_s": 3.0
+  },
+  {
+    "id": "c03",
+    "run_dir": "cases/C26_3d/c03",
+    "feedstock": "case_C26_ysz",
+    "flow_slpm": 14.0,
+    "solids_model": "CGP",
+    "cgp_stat_wt": 10.0,
+    "mew_w": 0.1,
+    "U_nozzle_m_s": 52.39344048253115,
+    "dt_max_s": 1e-05,
+    "n_parcels_est": 27316.819705308986,
+    "tstop_s": 3.0
+  }
+]

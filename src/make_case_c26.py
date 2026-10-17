@@ -182,8 +182,9 @@ def build_C26_3d_params(
     U_sup = Q_actual / (math.pi * R_c_m ** 2)
     U_ps_cell = Q_actual / (dx_m * dx_m)   # mean velocity over the PS cell face
 
-    # ---- time step (recipe Rule 9, per case) -----------------------------
-    dt_max_s = float(numerics["cfl_target"]) * dx_m / U_nozzle
+    # ---- time step: the paper's step, capped by recipe Rule 9 per case ----
+    dt_max_paper_s = float(numerics["dt_max_paper_s"])
+    dt_max_s = min(dt_max_paper_s, float(numerics["cfl_target"]) * dx_m / U_nozzle)
     dt_s = float(numerics["dt_init_fraction"]) * dt_max_s
 
     # ---- particles -------------------------------------------------------
@@ -237,6 +238,7 @@ def build_C26_3d_params(
         "tstop_s": tstop_s,
         "dt_s": dt_s,
         "dt_max_s": dt_max_s,
+        "dt_max_paper_s": dt_max_paper_s,
         "dt_min_s": float(numerics["dt_min_s"]),
         "max_nit": int(numerics["max_nit"]),
         "nodes_i": ni, "nodes_j": nj, "nodes_k": nk, "nranks": ni * nj * nk,

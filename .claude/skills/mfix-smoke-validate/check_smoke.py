@@ -9,13 +9,14 @@ dt collapse after the bed's first lift-and-collapse at t ~ 30-40 ms):
   S1  dt collapse        last-third median dt vs healthy-baseline median dt
   S2  dt stationarity    last-third vs middle-third median dt
   S3  throat v ratio     mean v_g / bc_v_g in [lo, hi], stub-top and exit layers
-  S4  throat voidage     mean EP_G > --orifice-epg-min, stub-top and exit layers
+  S4  throat voidage     mean EP_G > --orifice-epg-min, exit layer
   S5  stub parcels       parcels below the orifice plane == 0 in the metric window
-                         (S5b FLAG if any entered only during start-up)
+                         (S5b FLAG if any entered only during start-up;
+                         --skip-stub-parcels for inlets without a stub)
   S6  dP sign/magnitude  mean(P_inlet - P_top) > 0 and within band x W/A
   S7  dP noise           std(dP) <= --dp-std-max-fac x W/A        (FLAG only)
   S8  pressure spectrum  fraction of dP power above 100 Hz        (FLAG only)
-  S9  run-dir hygiene    no VTK frames on disk that the .pvd does not list
+  S9  run-dir hygiene    no VTK frames on disk that no .pvd in the dir lists
 
 VTK files are parsed with numpy (raw appended, big-endian, UInt64 headers) --
 pyvista/VTK hangs in dlopen on the project laptop, so it is not imported.
@@ -164,6 +165,10 @@ def main():
                     help='FLAG if std(dP) exceeds this multiple of W/A (SKILL.md §3.7; R4 was 11x)')
     ap.add_argument('--hf-cut', type=float, default=100.0,
                     help='FLAG if >50%% of dP power lies above this frequency [Hz] (SKILL.md §4)')
+    ap.add_argument('--skip-stub-parcels', action='store_true',
+                    help='skip S5/S5b for inlets with no stub pipe, where y < --orifice-y is '
+                         'the bed itself (C26 point source at a closed cone apex: parcels in '
+                         'the apex cut cells are not a clog; implementation-steps/case-c26.md)')
     a = ap.parse_args()
 
     rd = a.run_dir
@@ -219,7 +224,10 @@ def main():
     # ---------------- VTK frames ----------------
     bg = [(tt, rd / f) for tt, f in read_pvd(rd / 'BACKGROUND.pvd')]
     pa = [(tt, rd / f) for tt, f in read_pvd(rd / 'PARTICLES.pvd')]
-    listed = {p.name for _, p in bg + pa}
+    # Every collection in the dir counts as listing its frames: the glob below
+    # also matches extra particle regions (e.g. C26's PARTICLES_PIV_*.vtp,
+    # listed in PARTICLES_PIV.pvd), which are not stale.
+    listed = {f for pvd in rd.glob('*.pvd') for _, f in read_pvd(pvd)}
     on_disk = {p.name for p in list(rd.glob('BACKGROUND_*.vtu')) + list(rd.glob('PARTICLES_*.vtp'))}
     stale = sorted(on_disk - listed)
     report('S9', 'run-dir hygiene', 'PASS' if not stale else 'FLAG',
@@ -249,18 +257,24 @@ def main():
             st = 'FAIL' if k == 'exit' else 'FLAG'
             report('S3', f'v ratio ({k})', st, f'no cells in layer at t >= {a.t_response} s '
                    '(stub not inside VTK region?)')
-            report('S4', f'voidage ({k})', st, 'no cells')
+            if k == 'exit':
+                report('S4', f'voidage ({k})', st, 'no cells')
             continue
         rmean = float(np.mean(vr[k]))
         ok = a.v_ratio_lo <= rmean <= a.v_ratio_hi
         report('S3', f'v ratio ({k})', 'PASS' if ok else 'FAIL',
                f'mean v_g/bc_v_g = {rmean:.2f} over {len(vr[k])} frames (range {min(vr[k]):.2f}-{max(vr[k]):.2f}; '
                f'band [{a.v_ratio_lo}, {a.v_ratio_hi}]; >hi = clogged/choked throat, <lo = blocked BC)')
+        if k == 'stub-top':
+            continue   # S4 stub-top removed 2026-10-17 (SKILL.md §3.6)
         emean = float(np.mean(ep[k]))
         report('S4', f'voidage ({k})', 'PASS' if emean > a.orifice_epg_min else 'FAIL',
                f'mean EP_G = {emean:.3f} (range {min(ep[k]):.3f}-{max(ep[k]):.3f}; min {a.orifice_epg_min})')
 
     below = []
+    if a.skip_stub_parcels:
+        print('  [SKIP] S5 stub parcels         --skip-stub-parcels: no stub pipe below the inlet')
+        pa = []
     for tt, f in pa:
         p = read_vtk_xml(f)
         below.append((tt, int((p['coordinates'][:, 1] < a.orifice_y).sum())))
@@ -269,7 +283,9 @@ def main():
     win = [n for tt, n in below if tt >= a.t_response]
     pre = [n for tt, n in below if tt < a.t_response]
     per_frame = ", ".join(f"{tt:.2f}s:{n}" for tt, n in below)
-    if not below:
+    if a.skip_stub_parcels:
+        pass
+    elif not below:
         report('S5', 'stub parcels', 'FAIL', 'no PARTICLES frames listed in PARTICLES.pvd')
     elif not win:
         report('S5', 'stub parcels', 'FAIL', f'no PARTICLES frames at t >= {a.t_response} s')

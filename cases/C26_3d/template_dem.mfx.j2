@@ -29,8 +29,8 @@
   nodesj = {{ nodes_j }}
   nodesk = {{ nodes_k }}
   dt_min      = {{ "%.6e"|format(dt_min_s) }}
-  # dt_max = 0.5 * dx / U_nozzle (spouted-bed recipe Rule 9) with
-  # dx = {{ "%.4e"|format(dx_m) }} m and U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s.
+  # dt_max = min(C26 time step {{ "%.1e"|format(dt_max_paper_s) }} s, 0.5 * dx / U_nozzle (recipe
+  # Rule 9)) with dx = {{ "%.4e"|format(dx_m) }} m and U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s.
   dt_max      = {{ "%.6e"|format(dt_max_s) }}
   dt_fac      = 0.9
   res_dt      = 0.01
@@ -179,12 +179,15 @@
 # is the nozzle exit velocity Q / (pi D_n^2 / 4).
 #   flow = {{ flow_slpm }} slpm Ar -> m_dot = {{ "%.6e"|format(ps_massflow_g_kg_s) }} kg/s,
 #   U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s (D_n = {{ "%.5e"|format(2 * R_nozzle_m) }} m).
-    ps_x_w(1)        = {{ "%.6e"|format(ps_x_m) }}
-    ps_x_e(1)        = {{ "%.6e"|format(ps_x_m) }}
-    ps_y_s(1)        = {{ "%.6e"|format(ps_y_m) }}
-    ps_y_n(1)        = {{ "%.6e"|format(ps_y_m) }}
-    ps_z_b(1)        = {{ "%.6e"|format(ps_z_m) }}
-    ps_z_t(1)        = {{ "%.6e"|format(ps_z_m) }}
+# The region is the axis cell's faces, not a zero-width point: get_ps.f /
+# calc_cell.f round a point at a cell centre to a face, which put the c01
+# smoke's source in a corner sliver cut cell (run_log 2026-10-16).
+    ps_x_w(1)        = {{ "%.6e"|format(ps_cell_x_w_m) }}
+    ps_x_e(1)        = {{ "%.6e"|format(ps_cell_x_e_m) }}
+    ps_y_s(1)        = {{ "%.6e"|format(ps_cell_y_s_m) }}
+    ps_y_n(1)        = {{ "%.6e"|format(ps_cell_y_n_m) }}
+    ps_z_b(1)        = {{ "%.6e"|format(ps_cell_z_b_m) }}
+    ps_z_t(1)        = {{ "%.6e"|format(ps_cell_z_t_m) }}
     ps_massflow_g(1) = {{ "%.6e"|format(ps_massflow_g_kg_s) }}
     ps_u_g(1)        = 0.0
     ps_v_g(1)        = {{ "%.6e"|format(ps_v_g_m_s) }}
@@ -215,17 +218,20 @@
     monitor_dt(2)   = {{ monitor_dt_s }}
     monitor_p_g(2)  = .True.
 
-  # Monitor 3: domain-integrated solids volume fraction (inventory check).
-    monitor_type(3) = 11
-    monitor_name(3) = '{{ run_name }}_solids_inventory'
-    monitor_x_w(3)  = {{ "%.6e"|format(x_min_m) }}
-    monitor_x_e(3)  = {{ "%.6e"|format(x_max_m) }}
-    monitor_y_s(3)  = 0.0
-    monitor_y_n(3)  = {{ "%.6e"|format(H_dom_m) }}
-    monitor_z_b(3)  = {{ "%.6e"|format(z_min_m) }}
-    monitor_z_t(3)  = {{ "%.6e"|format(z_max_m) }}
-    monitor_dt(3)   = {{ monitor_dt_s }}
-    monitor_ep_s(3,1) = .True.
+  # Monitor 3: particle mass and count summed over the domain (inventory
+  # check).  A type-11 monitor_ep_s monitor is dropped for DEM (Warning
+  # 4455); type 101 + monitor_pmass follows tutorials/dem/hopper_3d.
+    monitor_type(3)   = 101
+    monitor_name(3)   = '{{ run_name }}_solids_inventory'
+    monitor_x_w(3)    = {{ "%.6e"|format(x_min_m) }}
+    monitor_x_e(3)    = {{ "%.6e"|format(x_max_m) }}
+    monitor_y_s(3)    = {{ "%.6e"|format(y_min_m) }}
+    monitor_y_n(3)    = {{ "%.6e"|format(H_dom_m) }}
+    monitor_z_b(3)    = {{ "%.6e"|format(z_min_m) }}
+    monitor_z_t(3)    = {{ "%.6e"|format(z_max_m) }}
+    monitor_dt(3)     = {{ monitor_dt_s }}
+    monitor_pmass(3)  = .True.
+    monitor_pcount(3) = .True.
 
   # Monitor 4: centerline gas velocity at mid static-bed height.
     monitor_type(4) = 4

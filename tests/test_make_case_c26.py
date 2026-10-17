@@ -26,6 +26,9 @@ C26_NEW_KEYWORDS = {
     "ic_psd_type", "ic_psd_mean_dp", "ic_psd_stdev",
     "ic_psd_min_dp", "ic_psd_max_dp",
     "vtk_t_start", "vtk_t_end",
+    # 2026-10-17: particle inventory monitor (init_namelist.f 4715/4722;
+    # check_output_control.f 888-892; tutorials/dem/hopper_3d).
+    "monitor_pmass", "monitor_pcount",
 }
 
 # Ideal-gas Ar at 25 C, 1 atm: rho = p M / (R T).
@@ -149,10 +152,14 @@ def test_nodes_must_divide_mesh():
 
 # ---------------- time step ----------------
 
-def test_dt_max_is_recipe_rule9(p01):
-    assert p01["dt_max_s"] == pytest.approx(0.5 * p01["dx_m"] / p01["U_nozzle_m_s"])
+def test_dt_max_is_paper_step_capped_by_rule9(p01):
+    # C26 p.9: 0.01 ms; recipe Rule 9: 0.5 dx / U_nozzle (2.8e-5 s at c01).
+    assert p01["dt_max_paper_s"] == pytest.approx(1.0e-5)
+    assert p01["dt_max_s"] == pytest.approx(1.0e-5)
     assert p01["dt_s"] <= p01["dt_max_s"]
+    # SS at 30 slpm: Rule 9 (9.4e-6 s) is tighter than the paper step.
     p12 = build_C26_3d_params(_case("c12"))
+    assert p12["dt_max_s"] == pytest.approx(0.5 * p12["dx_m"] / p12["U_nozzle_m_s"])
     assert p12["dt_max_s"] < p01["dt_max_s"]
 
 
@@ -248,6 +255,26 @@ def test_deck_mesh_lines(tmp_path):
     assert len(re.findall(r"^\s*dx\(\d+\)", text, flags=re.M)) == p["imax"]
     assert len(re.findall(r"^\s*dy\(\d+\)", text, flags=re.M)) == p["jmax"]
     assert len(re.findall(r"^\s*dz\(\d+\)", text, flags=re.M)) == p["kmax"]
+
+
+def test_deck_point_source_is_one_axis_cell_box(tmp_path, p01):
+    """A zero-width PS at a cell centre rounds to a face and lands in a
+    corner cut cell (c01 smoke, 2026-10-16).  The region must be the axis
+    cell's faces: width dx in x and z, centred on 0, one row in y."""
+    text, _ = _render(tmp_path, "c01")
+    v = {k: float(x) for k, x in re.findall(
+        r"^\s*(ps_[xyz]_[wesnbt])\(1\)\s*=\s*(\S+)", text, flags=re.M)}
+    dx = p01["dx_m"]
+    assert v["ps_x_e"] - v["ps_x_w"] == pytest.approx(dx)
+    assert v["ps_z_t"] - v["ps_z_b"] == pytest.approx(dx)
+    assert v["ps_y_n"] - v["ps_y_s"] == pytest.approx(dx)
+    assert v["ps_x_w"] + v["ps_x_e"] == pytest.approx(0.0, abs=1e-12)
+    assert v["ps_z_b"] + v["ps_z_t"] == pytest.approx(0.0, abs=1e-12)
+    # every bound is a grid line
+    for key, origin in (("ps_x_w", p01["x_min_m"]), ("ps_y_s", p01["y_min_m"]),
+                        ("ps_z_b", p01["z_min_m"])):
+        n = (v[key] - origin) / dx
+        assert n == pytest.approx(round(n), abs=1e-6)
 
 
 def test_deck_keywords_are_verified(tmp_path):

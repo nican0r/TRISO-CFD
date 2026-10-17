@@ -198,7 +198,7 @@ For solids: in a spouted / fluidized / mixed bed with no net particle outflow, `
 Particles must not lodge in the inlet pipe or the orifice throat. Use frames at `t ≥ t_response` (`check_smoke.py` S4, S5):
 
 - [ ] **Parcels below the orifice plane = 0** in every PARTICLES frame at `t ≥ t_response` (count `y < y_orifice`). **FAIL if > 0.** R4: 0 at t = 0, then **52–84** from t = 0.05 s on. Parcels that enter only during start-up and are cleared before the window are reported as **S5b FLAG** and must be explained (R5c: peak 257 at t = 0.11 s while the inlet was held at 7.8 m/s for settling, 0 from t = 0.19 s).
-- [ ] **Mean EP_G > 0.9** in both the stub-top and exit layers (§3.1). **FAIL otherwise.** R4: stub-top 0.44 (min 0.333, i.e. packed), exit 0.76.
+- [ ] **Mean EP_G > 0.9** in the exit layer (§3.1). **FAIL otherwise.** R4: exit 0.76. (A stub-top EP_G check was removed on 2026-10-17. In C26's point-source inlet, that layer is the source cell at the closed cone apex, where 0.88 is not a clog. A Case V stub clog is still caught by the stub-top v ratio, §3.1: R4 4.28, and by stub parcels, S5: R4 52–84.)
 
 A clogged throat lowers the jet momentum flux into the bed, adds a large pressure noise source, and collapses dt (§2.2). It is a geometry/IC/BC problem, not a resolution problem, and running longer will not fix it.
 
@@ -259,7 +259,7 @@ Phase 3 (physical sanity):
   - BC v ratio, stub-top layer:   <value>    (PASS in [0.5, 2]; >2 = clog, ≈0 = blocked)
   - BC v ratio, exit layer:       <value>    (PASS in [0.5, 2])
   - parcels below orifice plane:  <max count> (PASS only if 0)
-  - throat EP_G stub-top / exit:  <v> / <v>  (PASS > 0.9 each)
+  - throat EP_G exit:             <v>        (PASS > 0.9)
   - ΔP mean (inlet − top):        <Pa> = <x> W/A  (FAIL if ≤ 0 or ∉ [0.2, 3] W/A)
   - ΔP std:                       <Pa> = <x> W/A  (FLAG > 3 W/A)
   - fluid cells in BC footprint:  <count>    (expected ≈ <A_bc/dx²>)

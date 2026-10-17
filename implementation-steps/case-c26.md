@@ -24,17 +24,52 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 2. **Base-case smoke (CLAUDE.md rule 11, 13).**
    `.venv/bin/python -m src.run_C26_3d --case c01 --tstop 0.3 --run-dir-suffix _smoke`,
    run `cases/C26_3d/c01_smoke/run.sh`, validate with the
-   `mfix-smoke-validate` skill. Case-specific checks:
-   - run.log "Point source setup information" shows a non-zero PS volume
-     (no `PS_VOLUME == ZERO` abort); the apex cell is fluid.
-   - Seeded parcels ≈ manifest `n_parcels_est` (shortfall ≤ 10 %, recipe Rule 8).
+   `mfix-smoke-validate` skill. The 0.3 s smoke tests **inlet health and
+   numerics only**. C26 needs ≥ 3.0 s to pass the startup transient (p.3,
+   §2.2.2), so a spout is judged in step 3, not here. Case-specific checks:
+   - run.log "Point source setup information" shows the **axis cell's** fluid
+     volume (≈ 7.0e-9 m³ for row 0; 9.26e-9 m³ for a full cell). A volume of
+     ~3.3e-10 m³ means the source landed in a corner sliver cut cell (first
+     c01 smoke, 2026-10-16).
+   - Inlet jet on the axis (BACKGROUND frames, t ≥ 0.1 s): the fastest
+     first-row gas cell is the axis cell, with v_g within 0.5–2× U_nozzle
+     (37.4 m/s); no off-axis cell above 2× U_nozzle.
+   - Axial spout channel (all PIV frames, t = 0.1 s to tstop; slab
+     y = 25.2 ± 1.05 mm):
+     - (i) time-mean upward solids mass flux through r < 3.15 mm ≥ 5 ṁ_g;
+     - (ii) the centroid radius of the upward solids mass flux is ≤ 1.05 mm
+       (half a cell).
+     Both are time means, so the result does not depend on the pulse phase.
+     Thresholds were written before evaluation (2026-10-17). First smoke
+     (misplaced source): 19 ṁ_g, 5.8 mm → fails (ii). r2: 39 ṁ_g, 0.08 mm.
+     Supporting check (threshold chosen after seeing both runs): the time-mean
+     of the centerline v_g monitor at mid-bed is ≥ 5 m/s. Uniform cone flow
+     would give ~0.9 m/s interstitial; the runs gave 0.5 vs 13.9 m/s.
+     This replaces an earlier "axis gas momentum flux at 10 mm ≥ 0.5 ṁ·U"
+     test, which is unsound for a jet into a bed: the bed weight is ~58 ṁU,
+     and in r2 the gas hands ~0.65 ṁU to spout particles by 11.5 mm.
+   - Seeded parcels ≈ manifest `n_parcels_est` (shortfall ≤ 10 %, recipe Rule 8);
+     Monitor 3 (particle mass/count) stays at the seeded value.
    - Settled bed height after the initial collapse: report it next to
-     H_static = 34.8 mm (60° cone) and the paper's ~25 mm annotation.
-   - A spout forms at 10 slpm (fountain above the bed by the end of the smoke);
-     no dt collapse; CFL < 2; NIT < 30.
-   If the apex cell is blocked, set `ps_row_offset_cells: 1` first.
-   Do not widen the inlet (recipe Rule 3 history).
+     H_static = 34.8 mm (60° cone) and the C26 Fig. 1b "~25 mm" schematic
+     annotation.
+   - No dt collapse; CFL < 2; NIT < 30.
+   The `check_smoke.py` stub checks (S3–S5) assume Case V's stub pipe. For
+   C26, run it with `--skip-stub-parcels` and use the inlet-jet checks above
+   instead. Do not widen the inlet
+   (recipe Rule 3 history).
 3. **Baseline runs c01–c03** (tstop 3 s). Log each in `results/run_log.csv`.
+   Spout check, over the last 0.6 s (C26's PIV window): at 10 slpm C26 calls
+   the regime "near minimum spouting" with "approximately 10 spouting events
+   every 0.5 s" (§3.1, §2.2.2), so expect a pulsed spout, not a steady one.
+   - Fountain parcels above the bed surface in most PIV frames.
+   - Pulsation of order 10–20 Hz in ΔP.
+   - Vertical particle velocity across the bed at 10 slpm peaking near
+     0.5 m/s on the axis and ~0 at the walls (C26 Fig. 7, model).
+   - Mean downward wall velocity of order 1e-3 m/s (C26 Fig. 6d: experiment
+     0.93e-3, their model 3.3e-3).
+   Set the Batch timeout generously: C26 needed 167 h for 3 s at W = 10
+   (Table 5); budget from the smoke's s/step.
 4. **Synthetic PIV post-processor** (`src/post/piv_c26.py`, not written yet):
    project `Particles_PIV` frames onto the camera plane, render them, run the
    same windowed cross-correlation as PIVlab (~4 mm windows, C26 Fig. 1c),
