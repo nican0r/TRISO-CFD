@@ -197,13 +197,71 @@ Checked 2026-10-16 against the installed source at
 - Monitor 3 is now a type-101 particle mass/count sum (the type-11
   `monitor_ep_s` monitor was dropped for DEM, Warning 4455).
 
+## Run cost: DMP partition and STL facet density (2026-10-17)
+
+The second smoke (`c01_smoke_r2`, 3×1×3 = 9 ranks on 16 vCPU) ran at
+0.52 s/step. CGDEM took 0.40 s of that and the fluid solve 0.09 s, which puts
+the 3 s baseline at ~44 h. Two ways to cut that were tested. All runs are in
+`results/run_log.csv`.
+
+1. **Non-uniform DMP (`gridmap.dat`) on more ranks: slower, not adopted.**
+   - Support was added: `--gridmap-i/-j/-k` in `src/run_C26_3d.py`, and
+     `write_gridmap` plus the `gridmap=` argument in `src/make_case_c26.py`.
+     The run directory gets MFiX's `gridmap.dat` (`dmp_modules/gridmap_mod.f`),
+     and nodes are taken from the gridmap lengths.
+   - Check run `c01_gridmap_check`: 0.03 s, i = k = [9,3,3,3,9], 25 ranks,
+     32 vCPU.
+   - Physics matched r2: inlet pressure within 10 Pa, centerline v_g within
+     2 %, identical bed heights. So MFiX handles uneven i/k slabs despite its
+     "j-direction only" source comment.
+   - CGDEM got *slower*: 0.52 s/step against 0.40 s in r2. The busiest rank's
+     parcel count fell 8× without any gain, so particle load per rank is not
+     the bottleneck.
+   - The support is kept for later use. The baseline uses uniform 3×1×3.
+2. **Coarser STL: 3.5× faster DEM, adopted.**
+   - `dx_sample_fraction` (`params/geometry.yaml`) changed from 0.25 to 0.5.
+     The marching-cubes sampling step goes from 0.525 to 1.05 mm, and the
+     STL from 311,640 to 77,088 facets.
+   - The STL does **not** set the fluid mesh: 27×104×27 at dx = 2.1 mm, dt
+     and CFL are unchanged. It only sets how the wall cuts cells, and the
+     facets parcels collide with. DEM wall contact is checked against the
+     facets binned in each cell, so cut cells went from ~32 facets each to ~8.
+   - Timing pair `c01_stl_q_timing` vs `c01_stl_h_timing`: local, 4 ranks,
+     0.01 s, decks identical apart from the STL.
+     - CGDEM 0.140 → 0.040 s/step; fluid 0.100 → 0.090 s/step.
+     - Standard/cut/fluid/blocked cell counts identical
+       (34615/8949/43564/32252).
+     - PS volume identical (7.013e-9 m³).
+     - Seeded 27,782 vs 27,787 parcels. The gap is fixed from step 1, so it
+       comes from seeding, not loss.
+   - Validation smoke `c01_smoke_r3`: local, 0.3 s, same deck as r2 except
+     the STL. `check_smoke.py` gave GO with 0 FAIL / 0 FLAG. Every step-2
+     criterion matched r2 over t = 0.1–0.3 s:
+
+     | metric (t = 0.1–0.3 s) | r2 (dx/4) | r3 (dx/2) |
+     |---|---|---|
+     | upward solids flux r < 3.15 mm, y = 25.2 mm (≥ 5 ṁ_g) | 38.8 ṁ_g | 40.9 ṁ_g |
+     | flux centroid (≤ 1.05 mm) | 0.08 mm | 0.05 mm |
+     | fastest row-0 cell | axis, 1.12–1.24 U | axis, 1.15–1.25 U |
+     | centerline v_g, y = 17–19 mm | 13.0–14.7 m/s | 11.9–15.3 m/s |
+     | ΔP / W/A, PSD peak | 1.79, 15 Hz | 1.69, 14.9 Hz |
+     | solids inventory | constant | constant |
+
+   - Still to check: wall roughness. At dx/2 a facet edge is ~1 mm against
+     0.41 mm particles. Compare the wall-velocity target (Fig. 6d, ~1e-3 m/s)
+     against a dx/4 run if c01's wall velocity comes out off.
+   - `--stl-sample-fraction` in `src/run_C26_3d.py` overrides the yaml value
+     for such tests.
+   - c01–c03 were regenerated with the new STL (3×1×3, 3 s).
+   - The dx/4 c01 baseline (job f476de9a…) was cancelled after 1.4 h and
+     resubmitted as `c26-c01-baseline-stl05`
+     (57ca0039-97ea-4722-8932-2bf48430a8c0). It should take ~19 h if the
+     local speedup carries over to AWS.
+
 ## Open items (not done here)
 
-- Local smoke on case c01 (rule 11 base case; rule 13), validated with the
-  `mfix-smoke-validate` skill. Watch for: point-source cell classified as
-  fluid (MFiX prints "Point source setup information … Volume"; a
-  `PS_VOLUME == ZERO` abort means the apex cell was blocked), settled bed
-  height vs ~25/35 mm, a spout forming at 10 slpm.
+- Confirm the AWS per-step time of the dx/2 baseline against the ~0.2
+  s/step estimate, from the `.TXT` once results sync at job end.
 - Synthetic-PIV post-processor and digitized C26 Fig. 4 / wall-velocity data.
 - If the apex cut cell misbehaves, the fallback is to move the point source up
   one row (`ps_row_offset_cells: 1`). It should not be a widened inlet

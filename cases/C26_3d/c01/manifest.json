@@ -15,6 +15,7 @@
   "nodes_j": 1,
   "nodes_k": 3,
   "nranks": 9,
+  "gridmap": null,
   "imax": 27,
   "jmax": 104,
   "kmax": 27,
@@ -33,7 +34,7 @@
   "R_nozzle_m": 0.001190625,
   "cone_half_angle_deg": 30.0,
   "h_cone_m": 0.041585457357974025,
-  "dx_sample_m": 0.000525,
+  "dx_sample_m": 0.00105,
   "top_extend_m": 0.005,
   "ps_x_m": 0.0,
   "ps_y_m": 0.00105,
@@ -111,5 +112,5 @@
     "MSE_m2_s2": 0.0068
   },
   "notes": "notes/c26_conry2026_case.md",
-  "facet_count": 311640
+  "facet_count": 77088
 }

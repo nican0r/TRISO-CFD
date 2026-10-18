@@ -17,6 +17,8 @@ Examples:
   .venv/bin/python -m src.run_C26_3d --case c01 --tstop 0.3 --run-dir-suffix _smoke
   .venv/bin/python -m src.run_C26_3d --case all
   .venv/bin/python -m src.run_C26_3d --case c01 --dry-run
+  # non-uniform partition: narrow slabs over the cone, where the parcels are
+  .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9
 """
 
 from __future__ import annotations
@@ -27,7 +29,7 @@ import shutil
 from pathlib import Path
 
 from src.make_case import REPO_ROOT, render_case
-from src.make_case_c26 import build_C26_3d_params, load_sweep
+from src.make_case_c26 import build_C26_3d_params, load_sweep, write_gridmap
 from src.make_stl import build_cone_column_stl_implicit
 from src.run_V_3d_day10 import _parse_nodes, write_runner
 
@@ -36,6 +38,16 @@ OUT_ROOT = REPO_ROOT / "cases" / "C26_3d"
 
 # Keys too bulky or redundant for the manifest.
 _MANIFEST_SKIP = {"dx_m_list", "dy_m_list", "dz_m_list"}
+
+
+def _parse_sizes(spec: str) -> list[int]:
+    try:
+        sizes = [int(s) for s in spec.split(",") if s.strip()]
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"gridmap sizes must be ints: {e}")
+    if not sizes or min(sizes) < 1:
+        raise argparse.ArgumentTypeError(f"gridmap sizes must be >= 1; got {spec!r}")
+    return sizes
 
 
 def _select(cases: list[dict], spec: str) -> list[dict]:
@@ -72,6 +84,14 @@ def main() -> None:
                    help="override simulated end time [s] (default: sweep base.tstop_s)")
     p.add_argument("--nodes", type=_parse_nodes, default=(1, 1, 1), metavar="NI,NJ,NK",
                    help="DMP decomposition; must divide imax/jmax/kmax (27/104/27)")
+    for axis in "ijk":
+        p.add_argument(f"--gridmap-{axis}", type=_parse_sizes, default=None, metavar="N,N,...",
+                       help=f"non-uniform DMP partition: cells per rank along {axis} "
+                            "(writes gridmap.dat; overrides --nodes; an omitted axis is "
+                            "one rank)")
+    p.add_argument("--stl-sample-fraction", type=float, default=None, metavar="F",
+                   help="STL SDF sampling step as a fraction of dx (default: "
+                        "geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
     p.add_argument("--out-root", type=Path, default=OUT_ROOT)
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
@@ -83,6 +103,9 @@ def main() -> None:
 
     sweep = load_sweep()
     selected = _select(sweep["cases"], args.case)
+    gridmap = None
+    if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
+        gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
     index = []
     stl_cache: Path | None = None
     facet_count = None
@@ -91,7 +114,8 @@ def main() -> None:
         name_suffix = args.run_dir_suffix
         params = build_C26_3d_params(
             case, tstop_s=args.tstop, run_name=f"C26_{case['id']}{name_suffix}",
-            nodes=args.nodes,
+            nodes=args.nodes, gridmap=gridmap,
+            dx_sample_fraction=args.stl_sample_fraction,
         )
         run_dir = args.out_root / f"{case['id']}{name_suffix}"
         mfx_path = run_dir / f"{params['run_name']}.mfx"
@@ -120,6 +144,12 @@ def main() -> None:
                 shutil.copy2(stl_cache, stl_path)
             manifest["facet_count"] = facet_count
         render_case(TEMPLATE, params, mfx_path)
+        gridmap_path = run_dir / "gridmap.dat"
+        if params["gridmap"] is not None:
+            write_gridmap(run_dir, params["gridmap"])
+        elif gridmap_path.exists():
+            # MFiX reads any gridmap.dat in the run dir; never leave a stale one.
+            gridmap_path.unlink()
         (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         write_runner(run_dir, mfx_path.name, params["nranks"])
         index.append({

@@ -646,10 +646,14 @@ spouted_bed_C26_3d:
                            # Keeps the cap off the box face (cf. recipe
                            # Rule 19) and makes jmax = 104 = 8 x 13 for DMP.
                            # source: assumed.
-  dx_sample_fraction: 0.25 # STL SDF sampling step as a fraction of dx [-]
-                           # = 0.525 mm.  Finer than the V_3d 0.5 x dx rule
-                           # so the 1.19 mm throat radius spans > 2 samples.
-                           # source: assumed.
+  dx_sample_fraction: 0.5  # STL SDF sampling step as a fraction of dx [-]
+                           # = 1.05 mm, 77 088 facets (V_3d 0.5 x dx rule).
+                           # Was 0.25 (311 640 facets): DEM wall contact
+                           # dominated cost.  0.5 gives identical cut-cell
+                           # classification and PS volume, CGDEM 3.5x faster,
+                           # same step-2 inlet/spout results to 0.3 s.
+                           # source: assumed; verified by c01_stl_{q,h}_timing
+                           # and c01_smoke_r3 (results/run_log.csv 2026-10-17).
   top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
                            # source: spouted-bed recipe Rule 19.
   ps_row_offset_cells: 0   # point-source cell row above the cap [-]

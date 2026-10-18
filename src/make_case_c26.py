@@ -23,7 +23,8 @@ params/*.yaml (CLAUDE.md rule 2).
 from __future__ import annotations
 
 import math
-from typing import Mapping
+from pathlib import Path
+from typing import Mapping, Sequence
 
 from src.make_case import (
     PARAMS_DIR,
@@ -58,6 +59,29 @@ def _mean_cube_normal(mu: float, sigma: float) -> float:
     return mu ** 3 + 3.0 * mu * sigma ** 2
 
 
+# Smallest per-rank slab in a gridmap.dat partition [cells].  A uniform
+# 9-way split of the 27-cell box already gives 3-cell slabs; MFiX keeps 2
+# ghost layers per side, so thinner slabs would be mostly ghost cells.
+GRIDMAP_MIN_CELLS = 3
+
+
+def write_gridmap(run_dir: Path, gridmap: Mapping[str, Sequence[int]]) -> Path:
+    """Write MFiX's gridmap.dat (dmp_modules/gridmap_mod.f, PARTITION).
+
+    Format, read list-directed on PE_IO: ``NODESI NODESJ NODESK``, then one
+    ``<rank index> <cell count>`` line per rank along i, then j, then k.
+    MFiX sizes its partition arrays from the deck's nodesi/j/k, so the deck
+    must carry the same rank counts (the builder sets them from the gridmap).
+    """
+    sizes = [list(gridmap[a]) for a in "ijk"]
+    lines = [" ".join(str(len(s)) for s in sizes)]
+    for s in sizes:
+        lines += [f"{n} {c}" for n, c in enumerate(s)]
+    path = Path(run_dir) / "gridmap.dat"
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
 def _gas_props(T_K: float, p_Pa: float, composition: Mapping[str, float]):
     from src.gasprops import gas_props
 
@@ -71,6 +95,8 @@ def build_C26_3d_params(
     description: str = "",
     stl_filename: str = "geometry_0001.stl",
     nodes: tuple[int, int, int] = (1, 1, 1),
+    gridmap: tuple[Sequence[int], Sequence[int], Sequence[int]] | None = None,
+    dx_sample_fraction: float | None = None,
 ) -> dict:
     """Assemble the template params for one row of params/sweep_C26.yaml.
 
@@ -81,6 +107,15 @@ def build_C26_3d_params(
     tstop_s  : simulated end time [s]; default sweep ``base.tstop_s``.
     run_name : MFiX run_name; default ``C26_<id>``.
     nodes    : DMP decomposition (NI, NJ, NK); each must divide its axis.
+    gridmap  : optional non-uniform DMP partition, as cell counts per rank
+               along i, j and k (e.g. ([9,3,3,3,9], [104], [9,3,3,3,9])).
+               Overrides ``nodes`` (which must then match its lengths or be
+               left at the default). Written to gridmap.dat by
+               :func:`write_gridmap`.
+    dx_sample_fraction : STL SDF sampling step as a fraction of dx; default
+               geometry.yaml ``dx_sample_fraction``.  Changes only the STL
+               facet density (and so the cut-cell intersections), never the
+               fluid mesh.
 
     Geometry (bed_C26, spouted_bed_C26_3d):
       - vessel: cone from a closed throat (r = R_t, y = 0) to the column
@@ -152,10 +187,28 @@ def build_C26_3d_params(
     if imax % 2 != 1:
         raise AssertionError("box must have an odd cell count across x/z")
 
+    if gridmap is not None:
+        if len(gridmap) != 3:
+            raise ValueError("gridmap needs cell counts for i, j and k")
+        # An empty axis means one rank spanning it.
+        gridmap = tuple([int(n) for n in sizes] if sizes else [n_cells]
+                        for sizes, n_cells in zip(gridmap, (imax, jmax, kmax)))
+        lengths = tuple(len(sizes) for sizes in gridmap)
+        if tuple(nodes) not in ((1, 1, 1), lengths):
+            raise ValueError(f"nodes={tuple(nodes)} conflicts with gridmap ranks {lengths}")
+        for axis, sizes, n_cells in zip("ijk", gridmap, (imax, jmax, kmax)):
+            if sum(sizes) != n_cells:
+                raise ValueError(
+                    f"gridmap {axis} sizes {sizes} sum to {sum(sizes)}, not {n_cells}")
+            if min(sizes) < GRIDMAP_MIN_CELLS:
+                raise ValueError(
+                    f"gridmap {axis} sizes {sizes}: each rank needs >= "
+                    f"{GRIDMAP_MIN_CELLS} cells")
+        nodes = lengths
     ni, nj, nk = (int(nodes[0]), int(nodes[1]), int(nodes[2]))
     if min(ni, nj, nk) < 1:
         raise ValueError(f"nodes must be positive integers; got {nodes}")
-    if imax % ni or jmax % nj or kmax % nk:
+    if gridmap is None and (imax % ni or jmax % nj or kmax % nk):
         raise ValueError(
             f"nodes=({ni},{nj},{nk}) does not divide mesh "
             f"(imax={imax}, jmax={jmax}, kmax={kmax})"
@@ -242,6 +295,8 @@ def build_C26_3d_params(
         "dt_min_s": float(numerics["dt_min_s"]),
         "max_nit": int(numerics["max_nit"]),
         "nodes_i": ni, "nodes_j": nj, "nodes_k": nk, "nranks": ni * nj * nk,
+        "gridmap": None if gridmap is None else {
+            "i": gridmap[0], "j": gridmap[1], "k": gridmap[2]},
         # mesh
         "imax": imax, "jmax": jmax, "kmax": kmax,
         "n_cells_total": imax * jmax * kmax,
@@ -255,7 +310,8 @@ def build_C26_3d_params(
         "D_c_m": D_c_m, "R_c_m": R_c_m, "R_t_m": R_t_m, "R_nozzle_m": R_n_m,
         "cone_half_angle_deg": cone_half_angle_deg,
         "h_cone_m": h_cone_m,
-        "dx_sample_m": float(mesh["dx_sample_fraction"]) * dx_m,
+        "dx_sample_m": float(mesh["dx_sample_fraction"] if dx_sample_fraction is None
+                             else dx_sample_fraction) * dx_m,
         "top_extend_m": float(mesh["top_extend_m"]),
         # point source
         "ps_x_m": 0.0, "ps_y_m": ps_y_m, "ps_z_m": 0.0,

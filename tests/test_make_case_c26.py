@@ -12,6 +12,7 @@ from src.make_case_c26 import (
     build_C26_3d_params,
     load_sweep,
     slpm_to_mass_flow,
+    write_gridmap,
 )
 
 C26_TEMPLATE = REPO_ROOT / "cases" / "C26_3d" / "template_dem.mfx.j2"
@@ -152,6 +153,14 @@ def test_nodes_must_divide_mesh():
 
 # ---------------- time step ----------------
 
+def test_stl_sample_fraction_override_changes_only_the_stl(p01):
+    assert p01["dx_sample_m"] == pytest.approx(0.5 * p01["dx_m"])   # geometry.yaml
+    p = build_C26_3d_params(_case("c01"), dx_sample_fraction=0.25)
+    assert p["dx_sample_m"] == pytest.approx(0.25 * p01["dx_m"])
+    for k in ("imax", "jmax", "kmax", "dx_m", "dt_max_s", "ps_cell_y_n_m"):
+        assert p[k] == p01[k]
+
+
 def test_dt_max_is_paper_step_capped_by_rule9(p01):
     # C26 p.9: 0.01 ms; recipe Rule 9: 0.5 dx / U_nozzle (2.8e-5 s at c01).
     assert p01["dt_max_paper_s"] == pytest.approx(1.0e-5)
@@ -285,3 +294,45 @@ def test_deck_keywords_are_verified(tmp_path):
         text, _ = _render(tmp_path, cid)
         unknown = _keywords(text) - allowed
         assert not unknown, f"{cid}: unverified keywords {sorted(unknown)}"
+
+
+# ---------------- non-uniform DMP partition (gridmap.dat) ----------------
+
+GRIDMAP_5x1x5 = ([9, 3, 3, 3, 9], [], [9, 3, 3, 3, 9])
+
+
+def test_gridmap_sets_nodes_and_skips_divisor_check():
+    p = build_C26_3d_params(_case("c01"), gridmap=GRIDMAP_5x1x5)
+    # 5 does not divide 27: allowed only because gridmap gives exact sizes.
+    assert (p["nodes_i"], p["nodes_j"], p["nodes_k"], p["nranks"]) == (5, 1, 5, 25)
+    assert p["gridmap"] == {"i": [9, 3, 3, 3, 9], "j": [104], "k": [9, 3, 3, 3, 9]}
+    assert build_C26_3d_params(_case("c01"))["gridmap"] is None
+
+
+def test_gridmap_validation():
+    with pytest.raises(ValueError, match="sum to"):
+        build_C26_3d_params(_case("c01"), gridmap=([9, 3, 3, 3, 8], [], [27]))
+    with pytest.raises(ValueError, match=">= 3 cells"):
+        build_C26_3d_params(_case("c01"), gridmap=([10, 2, 3, 3, 9], [], [27]))
+    with pytest.raises(ValueError, match="conflicts"):
+        build_C26_3d_params(_case("c01"), nodes=(3, 1, 3), gridmap=GRIDMAP_5x1x5)
+
+
+def test_gridmap_central_slab_holds_the_axis(p01):
+    # The narrow slabs must straddle the vessel axis (cell imax // 2).
+    sizes = GRIDMAP_5x1x5[0]
+    i_axis = p01["imax"] // 2
+    edges = [sum(sizes[:n]) for n in range(len(sizes) + 1)]
+    owner = next(n for n in range(len(sizes)) if edges[n] <= i_axis < edges[n + 1])
+    assert sizes[owner] == 3 and 0 < owner < len(sizes) - 1
+
+
+def test_write_gridmap_format(tmp_path):
+    """dmp_modules/gridmap_mod.f PARTITION: 'NI NJ NK', then '<rank> <cells>'
+    per rank along i, j, k (list-directed)."""
+    p = build_C26_3d_params(_case("c01"), gridmap=GRIDMAP_5x1x5)
+    lines = write_gridmap(tmp_path, p["gridmap"]).read_text().split("\n")
+    assert lines[0] == "5 1 5"
+    assert lines[1:6] == ["0 9", "1 3", "2 3", "3 3", "4 9"]
+    assert lines[6] == "0 104"
+    assert lines[7:12] == ["0 9", "1 3", "2 3", "3 3", "4 9"]
