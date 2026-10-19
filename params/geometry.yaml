@@ -656,6 +656,13 @@ spouted_bed_C26_3d:
                            # and c01_smoke_r3 (results/run_log.csv 2026-10-17).
   top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
                            # source: spouted-bed recipe Rule 19.
+  ps_momentum: true        # point source carries the nozzle momentum [-]:
+                           # true -> ps_v_g = U_nozzle (momentum m_dot*U);
+                           # false -> ps_v_g = 0, mass only (MFiX GUI default
+                           # for a mass-flow PS; C26 2.2.1 wording "when the
+                           # flow mass is added" suggests this).  C26 does not
+                           # state it.  A/B: c01_smoke_r4_massonly.
+                           # source: assumed.
   ps_row_offset_cells: 0   # point-source cell row above the cap [-]
                            # (0 = first fluid row, y in [0, dx]).  C26 2.2.1:
                            # point source "centered with the reactor and
@@ -697,6 +704,14 @@ spouted_bed_C26_3d_dem:
   des_epg_clip: 0.42       # minimum gas fraction for drag evaluation [-]
                            # not reported in C26.
                            # source: assumed; same as spouted_bed_V_3d_dem.
+  des_interp_width_cells: 1.0  # DES_INTERP_WIDTH for SQUARE_DPVM, in fluid
+                           # cells (1.0 -> 2.1 mm); written only when the
+                           # scheme is SQUARE_DPVM.  Must be <= 2 cells
+                           # (half-width <= min cell size,
+                           # des_init_namelist.f DES_INTERP_WIDTH).
+                           # not reported in C26; width = the paper's fluid
+                           # cell size (C26 2.2.1, p.3).
+                           # source: assumed (A/B c01_smoke_r5_dpvm_noclip).
   eps_s_ic: 0.30           # loose solids fraction of the seeded bed [-]
                            # C26 2.2.2: particles "initialized at the bottom
                            # of the reactor"; the bed settles under gravity.

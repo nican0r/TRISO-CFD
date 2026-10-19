@@ -10,6 +10,8 @@ dt collapse after the bed's first lift-and-collapse at t ~ 30-40 ms):
   S2  dt stationarity    last-third vs middle-third median dt
   S3  throat v ratio     mean v_g / bc_v_g in [lo, hi], stub-top and exit layers
   S4  throat voidage     mean EP_G > --orifice-epg-min, exit layer
+                         (--exit-voidage-info: report only, for a point source
+                         at a closed cone apex with no throat)
   S5  stub parcels       parcels below the orifice plane == 0 in the metric window
                          (S5b FLAG if any entered only during start-up;
                          --skip-stub-parcels for inlets without a stub)
@@ -169,6 +171,12 @@ def main():
                     help='skip S5/S5b for inlets with no stub pipe, where y < --orifice-y is '
                          'the bed itself (C26 point source at a closed cone apex: parcels in '
                          'the apex cut cells are not a clog; implementation-steps/case-c26.md)')
+    ap.add_argument('--exit-voidage-info', action='store_true',
+                    help='report S4 as INFO instead of grading it. For a point source at a '
+                         'closed cone apex (C26) there is no throat: the exit layer is the jet '
+                         'base, where annulus solids are entrained into the spout, so EP_G < 0.9 '
+                         'there is not a clog. S3 (v ratio) remains the clog guard '
+                         '(implementation-steps/case-c26.md)')
     a = ap.parse_args()
 
     rd = a.run_dir
@@ -268,7 +276,8 @@ def main():
         if k == 'stub-top':
             continue   # S4 stub-top removed 2026-10-17 (SKILL.md §3.6)
         emean = float(np.mean(ep[k]))
-        report('S4', f'voidage ({k})', 'PASS' if emean > a.orifice_epg_min else 'FAIL',
+        st = 'INFO' if a.exit_voidage_info else ('PASS' if emean > a.orifice_epg_min else 'FAIL')
+        report('S4', f'voidage ({k})', st,
                f'mean EP_G = {emean:.3f} (range {min(ep[k]):.3f}-{max(ep[k]):.3f}; min {a.orifice_epg_min})')
 
     below = []

@@ -59,8 +59,10 @@ only with a pathology-review-grade justification. Here are the justifications.
 - C26 avoids the problem the same way NETL's
   `tutorials/dem/loop_seal_pseudo_2d` does: a **gas point source**
   (`ps_*` keywords) "centered with the reactor and placed at the bottom of the
-  cone" (§2.2.1). The authors chose dx ≈ nozzle diameter so that "when the
-  flow mass is added to the domain, calculated velocities will be correct".
+  cone" (§2.2.1). The authors chose dx ≈ nozzle diameter because "the cell
+  size near the nozzle need to be similar to the nozzle size, otherwise when
+  the flow mass is added to the domain, calculated velocities will not be
+  correct" (§2.2.1, p.3).
 - In 26.1.2 the point source adds `ps_massflow_g` spread over the fluid volume
   of its cells (`set_ps.f`). It adds momentum `ps_massflow_g × |v| × v̂`, where
   |v| is the magnitude of (`ps_u_g`, `ps_v_g`, `ps_w_g`) (`source_v_g.f:984-987`,
@@ -258,10 +260,191 @@ the 3 s baseline at ~44 h. Two ways to cut that were tested. All runs are in
      (57ca0039-97ea-4722-8932-2bf48430a8c0). It should take ~19 h if the
      local speedup carries over to AWS.
 
+## c01 baseline result and step-3 spout checks (2026-10-19)
+
+**The run.** c01 reached t = 3.000 s in 22.3 h on 16 vCPU (job 57ca0039),
+which is 0.264 s/step:
+- CGDEM took 0.15–0.19 s/step, a 2.3× gain over the dx/4 STL on AWS (3.5×
+  locally). Fluid took 0.09 s/step.
+- dt stayed at 1e-5 s; 12 % of steps were briefly reduced, to as low as
+  6.6e-6 s.
+- No parcels were lost: 27,782 parcels and 60.95 g at t = 3 s.
+
+**Health check** (`check_smoke.py`, t = 0.1–3.0 s): GO.
+- ΔP = 1.66 W/A, std 0.7 W/A.
+- S4 exit-layer EP_G was 0.891, below 0.9. S4 is now report-only for C26
+  (`--exit-voidage-info`).
+  - The decision was made after seeing this value, and that is stated in
+    SKILL.md §3.6.
+  - In C26 the exit layer is the jet base at a closed apex, not a throat.
+  - The value showed no trend over 3 s: 0.879–0.898 per 0.5 s window.
+  - The exit v_g ratio was 0.97, so the inlet is not choked.
+
+**Step-3 criteria.** Thresholds were written before evaluation
+(2026-10-19). The window is the last 0.6 s, t = [2.4, 3.0] s, 300 PIV
+frames; the script is noted in run_log.
+
+| criterion | threshold | c01 | |
+|---|---|---|---|
+| A fountain: ≥ 20 parcels above H_static + 10 mm | ≥ 50 % of frames | 100 % (median 499) | PASS |
+| B ΔP PSD peak, t = 2.4–3.0 s / 0.5–3.0 s | 10–20 Hz | 18.3 / 18.4 Hz | PASS |
+| C1 Fig. 7 axis v_p (line probe, axis-centred 2.1 mm bin) at peak height | 0.26–1.06 m/s | 1.75 m/s at y = 10 mm (1.22 at 20, 0.82 at 30) | **FAIL** |
+| C2 outermost bin \|v_p\| | < 0.1 × axis | 0.007–0.020 m/s | PASS |
+| D wall v_p (downward +, parcels within d_cg of the wall, y < H_static) | 0.3e-3–10e-3 m/s | 1.11e-2 m/s (2·d_cg band: 1.10e-2) | **FAIL** |
+
+- B agrees with C26's "~10 spouting events every 0.5 s" (20 Hz).
+- **C1 binning.** The first evaluation put a bin edge on the axis by mistake.
+  It gave 0.97 m/s peak, which would have PASSED. Centring the bins on the
+  axis, as the mesh is, changed the result to FAIL. The corrected value
+  stands.
+- **D in context.** The value is 3.4× C26's model (3.31e-3) and 12× their
+  experiment (0.933e-3). It is close to their W = 1 model (13.9e-3,
+  Fig. 8c).
+- **Not the STL.** Over t = 0.1–0.3 s, the r2 (dx/4) and r3 (dx/2) smokes
+  give 1.61e-2 and 1.79e-2 m/s. Each run's own half-to-half spread is
+  larger than that gap.
+
+**Reading.** Both failures point the same way. Our bed circulates ~2–3×
+faster than C26's model: a faster spout core means faster annulus return
+flow at the wall. Candidate causes (not yet tested; nothing changed):
+1. **Point-source momentum.** Our source injects gas at `ps_v_g =
+   U_nozzle`, adding a momentum flux ṁU at the apex.
+   - C26 §2.2.1 justifies the 2.1 mm cell because, with a point source,
+     "when the flow mass is added to the domain, calculated velocities will
+     not be correct" unless the cell is nozzle-sized.
+   - That suggests a mass-only source (`ps_v_g = 0`), where the jet speed
+     comes from continuity through the nozzle-sized cell.
+   - Test: c01 with `ps_v_g = 0`, compared on C1/D.
+2. **Probe definitions.** C26 states neither the Fig. 7 probe height nor
+   how it averages, nor how its "line-averaged" wall velocity is formed. A
+   wider or Eulerian average would lower C1's peak. That would not explain
+   D.
+3. **MFiX 23.2 vs 26.1.2.** Changes in cut-cell wall contact are possible.
+   Not testable without the old version.
+
+### Point-source momentum A/B (c01_smoke_r4_massonly, 2026-10-19)
+
+- **Paper.** C26 never states a point-source velocity (subagent review of
+  the full PDF).
+- **MFiX defaults.** The GUI defaults ps_u_g/ps_v_g/ps_w_g to 0 for a
+  mass-flow PS (`mfixgui/pss.py:964-980`). The solver then zeroes undefined
+  components, which gives no momentum source
+  (`check_point_sources.f:277-281`, `source_v_g.f:964-987`).
+- **Reading.** So a GUI user following §2.2.1 gets a mass-only source. The
+  p.3 cell-size argument also reads most naturally that way: a 2.1 mm cell
+  face gives 37.8 m/s by continuity, against the nozzle's 37.4 m/s. Not
+  proven.
+- **PIV method ruled out for D.** C26 Fig. 8c gives PIV/parcel ratios of
+  0.83–1.49 (W = 10: 2.9 vs 3.2e-3 m/s). PIV-like variants of our wall
+  average (front sector, a Fig. 1c-like 4 mm ROI, a gridded front face) give
+  0.96–1.7e-2 m/s.
+- **A/B setup.** Identical to r3 except ps_v_g = 0. Rule (pre-registered):
+  - substantial if wall and peak axis v_p both fall ≥ 30 %;
+  - ruled out if both change < 15 %;
+  - otherwise inconclusive.
+
+| t = 0.1–0.3 s | r3 (ps_v_g = U_nozzle) | r4 (mass only) |
+|---|---|---|
+| peak axis v_p (y = 10 mm) | 1.56 m/s | 0.42 m/s (−73 %) |
+| wall v_p (downward) | 1.79e-2 m/s | 1.93e-2 m/s (+8 %) |
+| axis-cell v_g / U_nozzle | 1.15–1.25 | 0.45–0.53 |
+| axis gas momentum flux at y = 3 mm | ~0.8–1.1 ṁU | 0.03–0.08 ṁU |
+| centerline v_g mid-bed | 11.9–15.3 m/s | 2.5–3.3 m/s |
+| ΔP / W/A, PSD peak | 1.69, 14.9 Hz | 2.70, 10 Hz |
+
+- **Verdict: inconclusive** under the rule.
+- PS momentum sets the spout core. With mass only, the axis v_p is close to
+  C26 Fig. 7's ~0.53 m/s, and source gas leaves the apex cell partly
+  sideways.
+- PS momentum does not explain the 3× wall velocity.
+- r4 fails `check_smoke` S3 (v ratio 0.39/0.24) and the mid-bed v_g ≥ 5 m/s
+  supporting check. Those were written for a momentum source, so a
+  mass-only baseline would need its own inlet criteria before adoption.
+- `ps_momentum` stays `true`.
+- The 0.1–0.3 s window is early. c01's wall v_p fell from ~1.8e-2 (0.1–0.3 s)
+  to 1.1e-2 (2.4–3.0 s), so only a 3 s mass-only run can be scored against
+  Figs. 6–7.
+
+### Gas-fraction floor (`des_epg_clip`) and interpolation (2026-10-19)
+
+- **MFiX version.** A subagent compared wall contact in MFiX 23.2 and 26.1.2.
+  It used the 23.2 keyword docs, the 23.2–26.1 release notes, and a ~21.x copy
+  of the wall-contact routine. Every wall and contact keyword and default is
+  unchanged. The only relevant code change, per-particle wall damping in 25.1,
+  is about ±4 % at our 3 % size spread. Wall contact is unlikely to explain D.
+  The 23.2 source itself was not available, so this is not a direct diff.
+- **The floor is active in most of the bed.** `des_epg_clip = 0.42` is our
+  assumption (copied from Case V); MFiX's default is no floor. In c01 (13
+  BACKGROUND frames, t = 2.4–3.0 s) EP_G sits at 0.42 in 61 % of cells within
+  one cell of the wall and 63 % of annulus cells, but 2 % in the spout.
+- **No floor cannot run on this mesh.** Error 1100 (EP_G ≤ 0,
+  `des/calc_epg_des.f`) hits sliver cut cells (VOL 1.0–1.8 % of a full cell,
+  no parcel centred in them) that receive neighbouring parcel volume. One
+  parcel is 3.7e-10 m³, bigger than the cell.
+  - LINEAR_HAT, no floor: fails at t = 0.
+  - SQUARE_DPVM, `des_interp_width` = 2.1 mm (the C26 cell size; width
+    assumed, not reported), no floor: fails at t = 0.0048 s as the bed
+    settles. A 3 ms dry run had passed on the loose IC.
+  - These slivers sit just above MFiX's `TOL_SMALL_CELL` (default 0.01).
+  - So C26 either set a floor or had no such slivers. Asked in the author
+    email.
+- **Next A/B.** `c01_smoke_r6_clip030` lowers the floor to 0.30 with
+  LINEAR_HAT, one variable against r3. Criteria were pre-registered (wall v_p
+  change ≥ 30 % substantial, < 15 % no effect).
+- `--epg-clip` and `--interp-scheme` in `src/run_C26_3d.py` set these per run.
+  `des_interp_width_cells` (geometry.yaml) gives the DPVM width.
+
+## AWS run cost: open performance issues (2026-10-19)
+
+Per step, t = 3–10 ms, same deck (dx/2 STL):
+
+| run | ranks | fluid | CGDEM | total |
+|---|---|---|---|---|
+| laptop M4 (`c01_stl_h_timing`) | 4, i = k = [13,14] | 0.090 s | 0.040 s | 0.130 s |
+| AWS c7a, c01 baseline | 9, uniform 3×1×3 | 0.090 s | 0.120 s | 0.210 s |
+| AWS c7a, `c01_aws9_timing` | 9, i = k = [11,5,11] | 0.090 s | 0.110 s | 0.200 s |
+
+So AWS runs this case ~1.6–1.7× slower per step than the laptop, even with
+more ranks. Over a 3 s run that is 22.3 h on AWS (0.264 s/step) against ~13 h
+locally at r3's whole-run rate (0.155 s/step).
+
+- **Not the particle load per rank.** Uniform 3×1×3 puts 47 % of the parcels
+  (13,077 of 27,782) on the centre rank. The 11/5/11 split cut the busiest
+  rank's parcels 2.6× and gained only 1.05× (pre-registered threshold 1.15×),
+  so it was not adopted and the presets were removed. The earlier
+  `c01_gridmap_check` (8× fewer parcels on the busiest rank, 25 ranks) was
+  slower too.
+- **Suspected, not yet tested:**
+  1. **Per-rank overhead grows with rank count.** CGDEM went from 0.40 s
+     (9 ranks) to 0.52 s (25 ranks) with the dx/4 STL. Candidates are ghost
+     particle exchange each DEM substep (~5 per fluid step) and STL facet
+     work at subdomain boundaries. Test: AWS with the laptop's 4-rank split
+     (i = k = [13,14]) for 0.01 s. ≈ 0.13 s/step means fewer ranks is the
+     fix; ≈ 0.20 s/step means hardware or container.
+  2. **Per-core speed.** The fluid solve takes 0.09 s/step on both machines,
+     even though the busiest AWS rank has fewer cells (7,792 vs 12,056). That
+     implies ~1.5× slower cores on c7a than the M4 (inferred, not
+     benchmarked).
+  3. **Container MPI settings.** `docker/entrypoint.sh` runs mpirun with
+     `--bind-to none`, which overrides the image's core binding, and sets the
+     shared-memory/TCP transport (`btl self,vader,tcp`). Worth checking only
+     if test 1 points to hardware or container.
+- **Cost.** 16 vCPU are requested for 9 ranks, so 7 sit idle.
+- **Until resolved:** C26 smokes run locally (4 ranks). Long runs go to AWS
+  only when the laptop can't be spared, accepting ~1.7× the wall time.
+
 ## Open items (not done here)
 
-- Confirm the AWS per-step time of the dx/2 baseline against the ~0.2
-  s/step estimate, from the `.TXT` once results sync at job end.
+- Point-source momentum and wall velocity: asked the C26 authors for the
+  .mfx/STL, the PS velocity, the apex geometry and probe definitions
+  (2026-10-19). Options pending their reply:
+  - a 3 s mass-only c01 (~22 h);
+  - looking for the wall-velocity cause elsewhere (MFiX 23.2 vs 26.1.2
+    cut-cell wall contact, apex geometry).
+
+- AWS per-step cost: the dx/2 baseline ran at 0.264 s/step overall (0.210
+  over t = 3–10 ms). See "AWS run cost: open performance issues" for the
+  untested causes and the 4-rank AWS test.
 - Synthetic-PIV post-processor and digitized C26 Fig. 4 / wall-velocity data.
 - If the apex cut cell misbehaves, the fallback is to move the point source up
   one row (`ps_row_offset_cells: 1`). It should not be a widened inlet

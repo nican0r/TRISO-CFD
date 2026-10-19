@@ -175,8 +175,13 @@
 
 # Point source (C26 2.2.1): one cell centred on the axis at the bottom of
 # the cone.  MFiX 26.1.2 adds ps_massflow_g over the fluid volume of the
-# cell and momentum ps_massflow_g * |v| * v_hat (source_v_g.f), so ps_v_g
-# is the nozzle exit velocity Q / (pi D_n^2 / 4).
+# cell and momentum ps_massflow_g * |v| * v_hat (source_v_g.f).
+{%- if ps_momentum %}
+# ps_v_g is the nozzle exit velocity Q / (pi D_n^2 / 4).
+{%- else %}
+# MASS-ONLY source: ps_v_g = 0, so no momentum is added (source_v_g.f skips
+# |v| < small_number) and continuity accelerates the gas out of the cell.
+{%- endif %}
 #   flow = {{ flow_slpm }} slpm Ar -> m_dot = {{ "%.6e"|format(ps_massflow_g_kg_s) }} kg/s,
 #   U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s (D_n = {{ "%.5e"|format(2 * R_nozzle_m) }} m).
 # The region is the axis cell's faces, not a zero-width point: get_ps.f /
@@ -323,6 +328,9 @@
   des_interp_mean_fields = .True.
   des_interp_on          = .True.
   des_interp_scheme      = '{{ des_interp_scheme }}'
+{%- if des_interp_width_m is not none %}
+  des_interp_width       = {{ "%.6e"|format(des_interp_width_m) }}
+{%- endif %}
   gener_part_config      = .True.
   des_oneway_coupled     = .False.
   des_epg_clip           = {{ des_epg_clip }}

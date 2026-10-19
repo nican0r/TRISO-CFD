@@ -55,8 +55,9 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      annotation.
    - No dt collapse; CFL < 2; NIT < 30.
    The `check_smoke.py` stub checks (S3–S5) assume Case V's stub pipe. For
-   C26, run it with `--skip-stub-parcels` and use the inlet-jet checks above
-   instead. Do not widen the inlet
+   C26, run it with `--skip-stub-parcels --exit-voidage-info` and use the
+   inlet-jet checks above instead. (`--exit-voidage-info` added 2026-10-19,
+   after the c01 baseline's exit-layer EP_G of 0.891; see SKILL.md §3.6.) Do not widen the inlet
    (recipe Rule 3 history).
 3. **Baseline runs c01–c03** (tstop 3 s). Log each in `results/run_log.csv`.
    Spout check, over the last 0.6 s (C26's PIV window): at 10 slpm C26 calls

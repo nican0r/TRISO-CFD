@@ -161,6 +161,45 @@ def test_stl_sample_fraction_override_changes_only_the_stl(p01):
         assert p[k] == p01[k]
 
 
+def test_point_source_momentum_switch(p01, tmp_path):
+    assert p01["ps_momentum"] and p01["ps_v_g_m_s"] == p01["U_nozzle_m_s"]
+    p = build_C26_3d_params(_case("c01"), ps_momentum=False)
+    assert p["ps_v_g_m_s"] == 0.0
+    assert p["ps_massflow_g_kg_s"] == p01["ps_massflow_g_kg_s"]
+    out = tmp_path / "d.mfx"
+    render_case(C26_TEMPLATE, p, out)
+    assert re.search(r"ps_v_g\(1\)\s*=\s*0\.0+e\+00", out.read_text())
+    assert "MASS-ONLY" in out.read_text()
+
+
+
+def test_epg_clip_override(p01, tmp_path):
+    out = tmp_path / "a.mfx"
+    render_case(C26_TEMPLATE, p01, out)
+    assert re.search(r"^\s*des_epg_clip\s*=\s*0\.42\s*$", out.read_text(), re.M)
+    p = build_C26_3d_params(_case("c01"), epg_clip=0.30)
+    render_case(C26_TEMPLATE, p, out)
+    assert re.search(r"^\s*des_epg_clip\s*=\s*0\.3\s*$", out.read_text(), re.M)
+    with pytest.raises(ValueError):
+        build_C26_3d_params(_case("c01"), epg_clip=1.2)
+
+
+def test_interp_scheme_switch_writes_width(p01, tmp_path):
+    out = tmp_path / "a.mfx"
+    render_case(C26_TEMPLATE, p01, out)
+    assert p01["des_interp_width_m"] is None
+    assert not re.search(r"^\s*des_interp_width\s*=", out.read_text(), re.M)
+    p = build_C26_3d_params(_case("c01"), interp_scheme="SQUARE_DPVM")
+    assert p["des_interp_width_m"] == pytest.approx(p["dx_m"])
+    render_case(C26_TEMPLATE, p, out)
+    txt = out.read_text()
+    assert re.search(r"des_interp_scheme\s*=\s*'SQUARE_DPVM'", txt)
+    assert re.search(r"^\s*des_interp_width\s*=\s*2\.1000+e-03", txt, re.M)
+    with pytest.raises(ValueError):
+        build_C26_3d_params(_case("c01"), interp_scheme="GARG_2012")
+
+
+
 def test_dt_max_is_paper_step_capped_by_rule9(p01):
     # C26 p.9: 0.01 ms; recipe Rule 9: 0.5 dx / U_nozzle (2.8e-5 s at c01).
     assert p01["dt_max_paper_s"] == pytest.approx(1.0e-5)

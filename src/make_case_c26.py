@@ -97,6 +97,9 @@ def build_C26_3d_params(
     nodes: tuple[int, int, int] = (1, 1, 1),
     gridmap: tuple[Sequence[int], Sequence[int], Sequence[int]] | None = None,
     dx_sample_fraction: float | None = None,
+    ps_momentum: bool | None = None,
+    epg_clip: float | None = None,
+    interp_scheme: str | None = None,
 ) -> dict:
     """Assemble the template params for one row of params/sweep_C26.yaml.
 
@@ -116,6 +119,18 @@ def build_C26_3d_params(
                geometry.yaml ``dx_sample_fraction``.  Changes only the STL
                facet density (and so the cut-cell intersections), never the
                fluid mesh.
+    ps_momentum : True gives the point source ps_v_g = U_nozzle (momentum
+               flux m_dot * U_nozzle); False gives ps_v_g = 0, a mass-only
+               source.  Default geometry.yaml ``ps_momentum``.
+    epg_clip : DES_EPG_CLIP override (gas-fraction floor, 0-1); default
+               geometry.yaml ``des_epg_clip``.  Omitting the keyword (MFiX's
+               default, no floor) is not offered: on this mesh it fails with
+               Error 1100 in sliver cut cells under both LINEAR_HAT and
+               SQUARE_DPVM (run_log 2026-10-19, c01_smoke_r5_*).
+    interp_scheme : DES_INTERP_SCHEME override ('LINEAR_HAT' or
+               'SQUARE_DPVM'); default geometry.yaml ``des_interp_scheme``.
+               SQUARE_DPVM also writes DES_INTERP_WIDTH =
+               ``des_interp_width_cells`` * dx.
 
     Geometry (bed_C26, spouted_bed_C26_3d):
       - vessel: cone from a closed throat (r = R_t, y = 0) to the column
@@ -124,7 +139,8 @@ def build_C26_3d_params(
         cells across the box so the vessel axis is a cell centre;
       - gas enters through ONE point-source cell centred on the axis in the
         first fluid row above the cap (C26 2.2.1).  ps_v_g is the nozzle
-        exit velocity, so the source carries momentum flux m_dot * U_nozzle.
+        exit velocity (momentum flux m_dot * U_nozzle), or 0 for a
+        mass-only source (``ps_momentum``).
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
@@ -135,6 +151,11 @@ def build_C26_3d_params(
     bed = geometry["bed_C26"]
     mesh = geometry["spouted_bed_C26_3d"]
     dem = geometry["spouted_bed_C26_3d_dem"]
+    scheme = str(interp_scheme or dem["des_interp_scheme"])
+    if epg_clip is not None and not 0.0 < float(epg_clip) < 1.0:
+        raise ValueError(f"epg_clip must be in (0, 1), got {epg_clip}")
+    if scheme not in ("LINEAR_HAT", "SQUARE_DPVM"):
+        raise ValueError(f"interp_scheme must be LINEAR_HAT or SQUARE_DPVM, got {scheme!r}")
     base = sweep["base"]
 
     case_id = str(case["id"])
@@ -321,7 +342,9 @@ def build_C26_3d_params(
         "ps_row_offset_cells": ps_row,
         "r_cone_at_ps_top_m": r_cone_at_ps_top,
         "ps_massflow_g_kg_s": m_dot,
-        "ps_v_g_m_s": U_nozzle,
+        "ps_momentum": bool(mesh["ps_momentum"] if ps_momentum is None else ps_momentum),
+        "ps_v_g_m_s": U_nozzle if (mesh["ps_momentum"] if ps_momentum is None else ps_momentum)
+                      else 0.0,
         # operating point (provenance)
         "flow_slpm": flow_slpm,
         "Q_actual_m3_s": Q_actual,
@@ -361,8 +384,10 @@ def build_C26_3d_params(
         "des_en_input_pw": float(dem["des_en_input_pw"]),
         "des_etat_fac": float(dem["des_etat_fac"]),
         "des_etat_w_fac": float(dem["des_etat_w_fac"]),
-        "des_interp_scheme": str(dem["des_interp_scheme"]),
-        "des_epg_clip": float(dem["des_epg_clip"]),
+        "des_interp_scheme": scheme,
+        "des_interp_width_m": (float(dem["des_interp_width_cells"]) * dx_m
+                               if scheme == "SQUARE_DPVM" else None),
+        "des_epg_clip": float(dem["des_epg_clip"] if epg_clip is None else epg_clip),
         # output
         "monitor_dt_s": float(numerics["monitor_dt_s"]),
         "vtk_dt_background_s": float(numerics["vtk_dt_background_s"]),

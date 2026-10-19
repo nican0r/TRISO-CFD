@@ -92,6 +92,15 @@ def main() -> None:
     p.add_argument("--stl-sample-fraction", type=float, default=None, metavar="F",
                    help="STL SDF sampling step as a fraction of dx (default: "
                         "geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
+    p.add_argument("--ps-mass-only", action="store_true",
+                   help="point source adds gas mass only (ps_v_g = 0); default "
+                        "geometry.yaml ps_momentum")
+    p.add_argument("--epg-clip", type=float, default=None, metavar="EPG",
+                   help="DES_EPG_CLIP override (gas-fraction floor); default "
+                        "geometry.yaml des_epg_clip")
+    p.add_argument("--interp-scheme", choices=("LINEAR_HAT", "SQUARE_DPVM"), default=None,
+                   help="DES_INTERP_SCHEME override; SQUARE_DPVM also writes "
+                        "DES_INTERP_WIDTH (geometry.yaml des_interp_width_cells * dx)")
     p.add_argument("--out-root", type=Path, default=OUT_ROOT)
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
@@ -116,6 +125,9 @@ def main() -> None:
             case, tstop_s=args.tstop, run_name=f"C26_{case['id']}{name_suffix}",
             nodes=args.nodes, gridmap=gridmap,
             dx_sample_fraction=args.stl_sample_fraction,
+            ps_momentum=False if args.ps_mass_only else None,
+            epg_clip=args.epg_clip,
+            interp_scheme=args.interp_scheme,
         )
         run_dir = args.out_root / f"{case['id']}{name_suffix}"
         mfx_path = run_dir / f"{params['run_name']}.mfx"
