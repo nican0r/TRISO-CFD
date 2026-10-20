@@ -170,6 +170,23 @@ The initial setup was validated this way: pre-processing emitted
 `NUMBER OF FLUID CELLS = 14400`, the solver reached `t = 0.02 s` in ~18 s wall,
 and all expected output files appeared.
 
+## Job sizing from the case manifest (C26)
+
+`src/aws/submit.py` reads `aws_vcpu`, `aws_memory_mb`, `nranks` and
+`nodes_i/j/k` from the case's `manifest.json` for any flag left unset.
+Explicit flags win. Manifests without `aws_vcpu`, which covers every V_3d case,
+keep the old defaults (16 vCPU / 30000 MB).
+
+C26 (`src/run_C26_3d.py`) writes 4 vCPU, 6000 MB and 4 ranks (2×1×2,
+gridmap i = k = [13,14]). The account quota is 32 vCPU, so 8 C26 jobs run at
+once, packed 4 per c7a.4xlarge. The basis is in `src/aws/config.py`
+(`C26_MEMORY_MB`) and `notes/c26_conry2026_case.md` ("AWS run cost").
+
+```bash
+.venv/bin/python -m src.aws.submit --case-dir cases/C26_3d/c02 \
+    --mfx C26_c02.mfx --job-name c26-c02 --dry-run   # drop --dry-run to submit
+```
+
 ## Costs (on-demand, us-east-1 c7a)
 
 Single-node, no EFA, no placement group.
