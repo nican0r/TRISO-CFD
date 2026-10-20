@@ -16,6 +16,7 @@ from src.correlations import (  # noqa: E402
     G_STD,
     archimedes,
     cd_schiller_naumann,
+    coated_particle_stages,
     ergun_dp,
     geldart_class,
     relaxation_time,
@@ -195,3 +196,58 @@ def test_ums_mathur_gishler_scales_as_sqrt_H():
     u1 = ums_mathur_gishler(500e-6, 6050.0, 1.66, 0.050, 0.004, 0.05)
     u2 = ums_mathur_gishler(500e-6, 6050.0, 1.66, 0.050, 0.004, 0.20)
     assert u2 / u1 == pytest.approx(2.0, rel=1e-9)
+
+
+# Marshall et al. (2017), Table 1: nominal TRISO layers on a 425 um kernel.
+MARSHALL_2017_LAYERS = [
+    ("buffer", 100e-6, 1000.0),
+    ("IPyC", 40e-6, 1900.0),
+    ("SiC", 35e-6, 3200.0),
+    ("OPyC", 40e-6, 1900.0),
+]
+
+
+def test_coated_particle_stages_marshall_2017_table1():
+    # Published (Marshall 2017 Table 1): kernel 425 um, 11.1 g/cm^3 ->
+    #   +buffer 625 um 4.18, +IPyC 705 um 3.49, +SiC 775 um 3.42, +OPyC 855 um 3.03
+    stages = coated_particle_stages(425e-6, 11100.0, MARSHALL_2017_LAYERS)
+    assert [s[0] for s in stages] == ["core", "buffer", "IPyC", "SiC", "OPyC"]
+    d_um = [s[1] * 1e6 for s in stages[1:]]
+    rho_gcc = [s[2] / 1000.0 for s in stages[1:]]
+    assert d_um == pytest.approx([625.0, 705.0, 775.0, 855.0], abs=1e-6)
+    assert rho_gcc == pytest.approx([4.18, 3.49, 3.42, 3.03], abs=0.01)
+
+
+def test_coated_particle_stages_ysz_core_hand_calc():
+    # C26 YSZ core (411.6 um, 6000 kg/m^3) with the same layers.
+    #   +buffer: d = 611.6 um; f = (411.6/611.6)^3 = 0.30481
+    #            rho = 0.30481*6000 + 0.69519*1000 = 2524.0 kg/m^3
+    #   +IPyC  : d = 691.6 um; f = (611.6/691.6)^3 = 0.69157
+    #            rho = 0.69157*2524.0 + 0.30843*1900 = 2331.6
+    #   +SiC   : d = 761.6 um; f = (691.6/761.6)^3 = 0.74883
+    #            rho = 0.74883*2331.6 + 0.25117*3200 = 2549.7
+    #   +OPyC  : d = 841.6 um; f = (761.6/841.6)^3 = 0.74108
+    #            rho = 0.74108*2549.7 + 0.25892*1900 = 2381.5
+    stages = coated_particle_stages(411.6e-6, 6000.0, MARSHALL_2017_LAYERS)
+    assert [s[1] * 1e6 for s in stages] == pytest.approx(
+        [411.6, 611.6, 691.6, 761.6, 841.6], abs=1e-6)
+    assert [s[2] for s in stages] == pytest.approx(
+        [6000.0, 2524.0, 2331.6, 2549.7, 2381.5], abs=0.5)
+
+
+def test_coated_particle_stages_conserves_mass():
+    # Total mass = core mass + sum of shell masses.
+    stages = coated_particle_stages(411.6e-6, 6000.0, MARSHALL_2017_LAYERS)
+    vol = lambda d: math.pi / 6.0 * d ** 3  # noqa: E731
+    m = 6000.0 * vol(411.6e-6)
+    for (_, d0, _), (_, layer_t, layer_rho), (_, d1, rho1) in zip(
+            stages[:-1], MARSHALL_2017_LAYERS, stages[1:]):
+        m += layer_rho * (vol(d1) - vol(d0))
+        assert rho1 * vol(d1) == pytest.approx(m, rel=1e-12)
+
+
+def test_coated_particle_stages_rejects_bad_input():
+    with pytest.raises(ValueError):
+        coated_particle_stages(0.0, 6000.0, [])
+    with pytest.raises(ValueError):
+        coated_particle_stages(411.6e-6, 6000.0, [("buffer", -1e-6, 1000.0)])

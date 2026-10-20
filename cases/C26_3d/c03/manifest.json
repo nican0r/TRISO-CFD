@@ -11,11 +11,23 @@
   "dt_max_paper_s": 1e-05,
   "dt_min_s": 1e-07,
   "max_nit": 50,
-  "nodes_i": 3,
+  "nodes_i": 2,
   "nodes_j": 1,
-  "nodes_k": 3,
-  "nranks": 9,
-  "gridmap": null,
+  "nodes_k": 2,
+  "nranks": 4,
+  "gridmap": {
+    "i": [
+      13,
+      14
+    ],
+    "j": [
+      104
+    ],
+    "k": [
+      13,
+      14
+    ]
+  },
   "imax": 27,
   "jmax": 104,
   "kmax": 27,
@@ -48,6 +60,7 @@
   "ps_row_offset_cells": 0,
   "r_cone_at_ps_top_m": 0.002403060565298214,
   "ps_massflow_g_kg_s": 0.00038101421836726865,
+  "ps_momentum": true,
   "ps_v_g_m_s": 52.39344048253115,
   "flow_slpm": 14.0,
   "Q_actual_m3_s": 0.0002333333333333333,
@@ -93,6 +106,7 @@
   "des_etat_fac": 0.5,
   "des_etat_w_fac": 0.5,
   "des_interp_scheme": "LINEAR_HAT",
+  "des_interp_width_m": null,
   "des_epg_clip": 0.42,
   "monitor_dt_s": 0.001,
   "vtk_dt_background_s": 0.05,
@@ -112,5 +126,7 @@
     "MSE_m2_s2": 0.0049
   },
   "notes": "notes/c26_conry2026_case.md",
+  "aws_vcpu": 4,
+  "aws_memory_mb": 6000,
   "facet_count": 77088
 }

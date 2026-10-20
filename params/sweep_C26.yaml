@@ -1,38 +1,55 @@
-# Case C26 simulation matrix -- Conry et al. (2026) Table 2 (C26 p.4-5).
+# Case C26 simulation matrix (Conry et al. 2026 benchtop spout-fluidized bed).
 # Read by src/run_C26_3d.py.  Every case shares the bed_C26 geometry,
-# spouted_bed_C26_3d mesh, spouted_bed_C26_3d_dem closures, ar_25C gas and a
-# 60 g charge.  Only the columns of Table 2 vary.
-# See notes/c26_conry2026_case.md.
+# spouted_bed_C26_3d mesh, spouted_bed_C26_3d_dem closures (mew_w fixed at the
+# C26 baseline 0.1), ar_25C gas and the C26 YSZ base particle.
+# See notes/c26_conry2026_case.md ("Coating-stage / charge sweep").
+#
+# One factor at a time around the baseline c02 (YSZ, 60 g, 12 slpm):
+#   flow     : c01 / c02 / c03          10 / 12 / 14 slpm  (= C26 Table 2 cases 1-3)
+#   diameter : c02 / c04 / c05 / c06 / c07
+#              bare YSZ, then +buffer, +IPyC, +SiC, +OPyC (cumulative TRISO
+#              layers on the YSZ core, params/particles.yaml
+#              triso_coating_layers), all at 12 slpm and 60 g
+#   charge   : c08 / c02 / c09          40 / 60 / 80 g, at 12 slpm, bare YSZ
+# c04-c09 are this project's cases, NOT C26 Table 2 cases 4-9 (wall friction,
+# statistical weight and steel feedstock are no longer swept).
 
 base:
   gas_case: ar_25C            # source: C26 p.4 (100% Ar, 298 K)
   tstop_s: 3.0                # simulated end time [s]
                               # C26 2.2.2: "a minimum flow time of 3.0 s".
-                              # Cases with W > 1 were also run to 60 s in C26
-                              # for future comparisons; not needed for Table 3.
                               # source: C26 p.3 (2.2.2).
-  base_case: c01              # CLAUDE.md rule 11: smoke and validate this
-                              # case before running the rest.
+  base_case: c01              # CLAUDE.md rule 11: the validated base case
+                              # (smoked GO, 3 s AWS run, 2026-10-18).
+  ofat_baseline: c02          # reference point of the one-factor-at-a-time
+                              # sweep: YSZ, 60 g, 12 slpm.
+  stat_wt: 10                 # CGP statistical weight W [-] for every case.
+                              # Lower bound: the builder rejects W < 10; a row
+                              # may raise it.  Larger (coated) particles keep
+                              # W = 10 and so get larger parcels, d * W^(1/3).
+                              # source: C26 Table 2 baseline W; user decision
+                              # 2026-10-19.
 
-# Table 2 columns: feedstock, flow rate [slpm], statistical weight W [-],
-# particle-wall friction factor [-].
-#   c01-c03: baseline YSZ vs PIV (Fig. 3-4, Table 3).
-#   c04-c06: wall-friction test of the electrostatics hypothesis.
-#   c07-c09: statistical-weight (coarse-graining) sensitivity.
-#   c10-c12: stainless-steel feedstock, pure DEM.
+# Row keys: id, feedstock (params/particles.yaml block), flow_slpm [slpm],
+# inventory_g (bed charge [g]), optional coating_stage (last TRISO layer
+# applied to the feedstock: buffer, IPyC, SiC or OPyC; omitted = bare).
+# Flow levels: source C26 Table 2.  12 slpm is the fixed flow of the diameter
+# and charge blocks (user decision 2026-10-19; C26 Table 3: c02 has the
+# highest SSI, 0.7687, and lowest MSE, 0.0042).  60 g: source C26 p.4
+# (2.2.2); 40 and 80 g: user decision 2026-10-19.
 cases:
-  - {id: c01, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.1}
-  - {id: c02, feedstock: case_C26_ysz, flow_slpm: 12, stat_wt: 10, mew_w: 0.1}
-  - {id: c03, feedstock: case_C26_ysz, flow_slpm: 14, stat_wt: 10, mew_w: 0.1}
-  - {id: c04, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.3}
-  - {id: c05, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.5}
-  - {id: c06, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 10, mew_w: 0.7}
-  - {id: c07, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 5,  mew_w: 0.1}
-  - {id: c08, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 3,  mew_w: 0.1}
-  - {id: c09, feedstock: case_C26_ysz, flow_slpm: 10, stat_wt: 1,  mew_w: 0.1}
-  - {id: c10, feedstock: case_C26_ss,  flow_slpm: 22, stat_wt: 1,  mew_w: 0.1}
-  - {id: c11, feedstock: case_C26_ss,  flow_slpm: 26, stat_wt: 1,  mew_w: 0.1}
-  - {id: c12, feedstock: case_C26_ss,  flow_slpm: 30, stat_wt: 1,  mew_w: 0.1}
+  # flow block (C26 Table 2 cases 1-3; PIV benchmark, Table 3)
+  - {id: c01, feedstock: case_C26_ysz, flow_slpm: 10, inventory_g: 60}
+  - {id: c02, feedstock: case_C26_ysz, flow_slpm: 12, inventory_g: 60}   # OFAT baseline
+  - {id: c03, feedstock: case_C26_ysz, flow_slpm: 14, inventory_g: 60}
+  # diameter block: TRISO coating stages on the YSZ core
+  - {id: c04, feedstock: case_C26_ysz, coating_stage: buffer, flow_slpm: 12, inventory_g: 60}
+  - {id: c05, feedstock: case_C26_ysz, coating_stage: IPyC,   flow_slpm: 12, inventory_g: 60}
+  - {id: c06, feedstock: case_C26_ysz, coating_stage: SiC,    flow_slpm: 12, inventory_g: 60}
+  - {id: c07, feedstock: case_C26_ysz, coating_stage: OPyC,   flow_slpm: 12, inventory_g: 60}
+  # charge block: bed height set by the bed charge
+  - {id: c08, feedstock: case_C26_ysz, flow_slpm: 12, inventory_g: 40}
+  - {id: c09, feedstock: case_C26_ysz, flow_slpm: 12, inventory_g: 80}
 
 # PIV benchmark targets for c01-c03 (time-averaged spout-region velocity
 # magnitude maps, experiment vs simulation).  source: C26 Table 3 (p.5).

@@ -230,3 +230,43 @@ def ums_mathur_gishler(
     return (d_p / D_c) * (D_i / D_c) ** (1.0 / 3.0) * np.sqrt(
         2.0 * g * H * (rho_p - rho) / rho
     )
+
+
+def coated_particle_stages(
+    d_core_m: float,
+    rho_core_kg_m3: float,
+    layers,
+) -> list[tuple[str, float, float]]:
+    """Diameter and mean density after each coating layer of a layered sphere.
+
+    Each layer is a concentric shell of uniform thickness and density, so the
+    particle after layer k has
+
+        d_k   = d_(k-1) + 2 t_k                                          [m]
+        rho_k = (rho_(k-1) d_(k-1)^3 + rho_layer,k (d_k^3 - d_(k-1)^3)) / d_k^3
+                                                                    [kg/m^3]
+
+    (mass-weighted by shell volume).  This is how the stage densities of a
+    TRISO particle follow from its layer specification, e.g. Marshall et al.
+    (2017), Table 1 (425 um kernel -> 855 um, 3.03 g/cm^3).
+
+    d_core_m       : core (kernel) diameter [m]
+    rho_core_kg_m3 : core density [kg/m^3]
+    layers         : iterable of (name, thickness [m], density [kg/m^3]) in
+                     deposition order
+    Returns [(name, d [m], rho [kg/m^3]), ...] starting with ("core", d_core,
+    rho_core) and then one entry per layer, cumulative.
+    """
+    if d_core_m <= 0.0 or rho_core_kg_m3 <= 0.0:
+        raise ValueError("core diameter and density must be > 0")
+    d = float(d_core_m)
+    mass_d3 = float(rho_core_kg_m3) * d ** 3   # rho * d^3 is proportional to mass
+    out = [("core", d, float(rho_core_kg_m3))]
+    for name, t_m, rho_layer in layers:
+        if t_m <= 0.0 or rho_layer <= 0.0:
+            raise ValueError(f"layer {name!r}: thickness and density must be > 0")
+        d_new = d + 2.0 * float(t_m)
+        mass_d3 += float(rho_layer) * (d_new ** 3 - d ** 3)
+        d = d_new
+        out.append((str(name), d, mass_d3 / d ** 3))
+    return out

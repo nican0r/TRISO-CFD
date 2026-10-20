@@ -356,11 +356,37 @@ flow at the wall. Candidate causes (not yet tested; nothing changed):
 - PS momentum sets the spout core. With mass only, the axis v_p is close to
   C26 Fig. 7's ~0.53 m/s, and source gas leaves the apex cell partly
   sideways.
-- PS momentum does not explain the 3× wall velocity.
+- ~~PS momentum does not explain the 3× wall velocity.~~ Retracted
+  2026-10-19. The wall number cannot decide this. A circulation check
+  (parcel flux through y = 20 mm, same frames) shows:
+  - **r3:** spout net up +4 500 /s against annulus net down −10 200 /s. The
+    bed is still compacting from the loose IC, so the early wall value
+    includes settling, not just circulation. c01 at 2.4–3.0 s is balanced
+    (+5 180 / −5 285 /s).
+  - **r4:** spout net up only 14 % below r3 (+3 900 /s): the jet is slower
+    but carries nearly as many parcels. Annulus net down is only −2 560 /s,
+    and there are 24 fountain parcels against r3's 360.
+  - **r4 wall band:** mean |v_y| is 6.0e-2 m/s, 2× r3. The frame-to-frame sd
+    of the band mean (5.9e-2) is 3× the mean (1.93e-2). The "+8 %" is a
+    small net of large up/down motions. It is not evidence of faster
+    circulation.
+  - **C26 also reports pulsation.** Its model's wall velocity pulses between
+    positive and negative at 10 slpm; the experiment does not (p.7, Fig. 6).
+    C26 links this to bubble formation, "spout incoherence" (p.10). It
+    still calls the regime spouting (~10 events / 0.5 s) and says the wall
+    pulsations are small relative to the core.
+  - **c01 at 2.4–3.0 s looks like that:** wall mean upward in 8 % of frames,
+    0.05 s moving average −5.5e-3 to +2.4e-2 m/s, PSD 18 Hz.
+  - **r4 pulses far harder:** 46 % of frames upward, moving average
+    −4.5e-2 to +8.2e-2 m/s, 24 fountain parcels. It is also still in the
+    startup window.
+  - A steady 3 s mass-only run scored at 2.4–3.0 s is the only valid test.
 - r4 fails `check_smoke` S3 (v ratio 0.39/0.24) and the mid-bed v_g ≥ 5 m/s
   supporting check. Those were written for a momentum source, so a
   mass-only baseline would need its own inlet criteria before adoption.
-- `ps_momentum` stays `true`.
+- `ps_momentum` stayed `true` at the time. It became `false` (mass-only) on
+  2026-10-19 by user decision; see "AWS production runs: mass-only point
+  source".
 - The 0.1–0.3 s window is early. c01's wall v_p fell from ~1.8e-2 (0.1–0.3 s)
   to 1.1e-2 (2.4–3.0 s), so only a 3 s mass-only run can be scored against
   Figs. 6–7.
@@ -388,9 +414,26 @@ flow at the wall. Candidate causes (not yet tested; nothing changed):
   - These slivers sit just above MFiX's `TOL_SMALL_CELL` (default 0.01).
   - So C26 either set a floor or had no such slivers. Asked in the author
     email.
-- **Next A/B.** `c01_smoke_r6_clip030` lowers the floor to 0.30 with
-  LINEAR_HAT, one variable against r3. Criteria were pre-registered (wall v_p
-  change ≥ 30 % substantial, < 15 % no effect).
+- **Floor 0.30 A/B (`c01_smoke_r6_clip030`).** This is the r3 deck with the
+  floor lowered to 0.30 and LINEAR_HAT kept, so one variable changes against
+  r3. The criteria were pre-registered: a wall v_p change ≥ 30 % is
+  substantial, < 15 % means no effect. Metrics are over PIV frames
+  t = 0.1–0.3 s.
+  - **Health:** check_smoke GO, 0 FAIL / 0 FLAG. dP +728 Pa = 1.76 W/A;
+    S3 ratios 1.15 / 0.94.
+  - **Wall v_p:** 1.79e-2 → 2.06e-2 m/s (+15.1 %), which falls in the
+    **inconclusive** band. It moved up, away from the C26 model value of
+    3.31e-3. The r3 halves alone differ by 1.5× (2.17e-2 / 1.41e-2), so a
+    15 % change is within the noise of a 0.2 s window.
+  - **Peak axis v_p:** +3 %.
+  - **The floor does move:** at-floor cells drop from 62 % to 28 % in the
+    wall band and from 56 % to 0 % in the annulus. Median EP_G goes from
+    0.420 to 0.402 (wall) and 0.417 (annulus).
+  - **Run time:** 4882 s against 4655 s for r3.
+  - **Reading:** lowering the floor clearly changes the bed packing but does
+    not slow the wall layer. The floor is not a credible cause of the gap to
+    C26: 3.4× their model in the paper's window, t = 2.4–3.0 s, from the
+    3 s c01 run.
 - `--epg-clip` and `--interp-scheme` in `src/run_C26_3d.py` set these per run.
   `des_interp_width_cells` (geometry.yaml) gives the DPVM width.
 
@@ -429,9 +472,247 @@ locally at r3's whole-run rate (0.155 s/step).
      `--bind-to none`, which overrides the image's core binding, and sets the
      shared-memory/TCP transport (`btl self,vader,tcp`). Worth checking only
      if test 1 points to hardware or container.
+- **Test 1 result (`c01_aws4_timing`, job 743edb60).** AWS with the laptop's
+  split (2×1×2, i = k = [13,14]): fluid 0.14, CGDEM 0.09 s/step (medians,
+  t = 3–10 ms). The whole window ran at 0.234 s/step, slower than 9 ranks
+  (0.209). So fewer ranks is not the fix; the gap is mostly hardware or
+  container.
+  - Same decomposition, AWS against laptop: fluid 1.56× slower, CGDEM 2.25×.
+  - Rank count on AWS, 4 → 9: CGDEM 0.09 → 0.12 (exchange overhead; MFiX
+    runs `DES_PAR_EXCHANGE` every DEM substep when numPEs > 1,
+    `des/des_time_march.f:430`), fluid 0.14 → 0.09. The two roughly cancel.
+  - DEM loses more than fluid (2.25× against 1.56×), which points at
+    container MPI (test 3) on top of per-core speed. Not yet separated.
 - **Cost.** 16 vCPU are requested for 9 ranks, so 7 sit idle.
+- **Adopted sizing (2026-10-19): 4 ranks on 4 vCPU, 6000 MB.**
+  - Per run, 4 ranks is ~12 % slower than 9 (0.234 against 0.209 s/step),
+    but it uses a quarter of the vCPUs.
+  - On the 32-vCPU quota that means 8 jobs at once instead of 2. c01–c12
+    then take 2 waves of ~25 h (estimated) instead of 6 waves of ~22 h.
+  - Memory (local 4-rank c01, W = 10): steady 0.6–0.7 GB summed over ranks,
+    peak 1.09 GB during mesh/STL preprocessing.
+  - `src/run_C26_3d.py` now defaults to this split and writes
+    `aws_vcpu`/`aws_memory_mb` to the manifest; `src/aws/submit.py` reads
+    them. c02 and c03 were regenerated with it. c01 keeps its 3×1×3 deck,
+    which produced the baseline.
+  - Not checked for W = 5/3/1 (c07–c09): up to 10× the parcels, so the
+    memory and the best rank count may differ. Time and measure one before
+    submitting those.
 - **Until resolved:** C26 smokes run locally (4 ranks). Long runs go to AWS
   only when the laptop can't be spared, accepting ~1.7× the wall time.
+
+## Coating-stage / charge sweep (replaces Table 2 cases 4–12, 2026-10-19)
+
+This project's sweep no longer reproduces C26's sensitivity cases 4–12, which
+varied wall friction, statistical weight and steel feedstock. The matrix in
+`params/sweep_C26.yaml` instead varies gas flow, particle diameter (TRISO
+coating stage) and bed height (bed charge), one factor at a time around
+**c02**: YSZ, 60 g, 12 slpm. It builds on the C26 model only, with no
+correlations or operating points from Case V/D. The decisions are the user's,
+2026-10-19.
+
+| id | block | particle | d_p µm | ρ_p kg/m³ | charge g | H_static mm | Q slpm | parcel d mm | dx/d_parcel | parcels |
+|---|---|---|---|---|---|---|---|---|---|---|
+| c01 | flow | YSZ | 411.6 | 6000 | 60 | 34.8 | 10 | 0.89 | 2.37 | 27.3k |
+| c02 | **baseline** | YSZ | 411.6 | 6000 | 60 | 34.8 | 12 | 0.89 | 2.37 | 27.3k |
+| c03 | flow | YSZ | 411.6 | 6000 | 60 | 34.8 | 14 | 0.89 | 2.37 | 27.3k |
+| c04 | diameter | YSZ + buffer | 611.6 | 2524 | 60 | 47.9 | 12 | 1.32 | 1.59 | 19.8k |
+| c05 | diameter | + IPyC | 691.6 | 2332 | 60 | 49.7 | 12 | 1.49 | 1.41 | 14.8k |
+| c06 | diameter | + SiC | 761.6 | 2550 | 60 | 47.7 | 12 | 1.64 | 1.28 | 10.2k |
+| c07 | diameter | + OPyC (full TRISO) | 841.6 | 2381 | 60 | 49.2 | 12 | 1.81 | 1.16 | 8.1k |
+| c08 | charge | YSZ | 411.6 | 6000 | 40 | 30.2 | 12 | 0.89 | 2.37 | 18.2k |
+| c09 | charge | YSZ | 411.6 | 6000 | 80 | 38.6 | 12 | 0.89 | 2.37 | 36.4k |
+
+**c01–c03** are C26 Table 2 cases 1–3. They keep their PIV targets, and
+their deck physics is unchanged: a regenerated deck differs from the
+existing one only in comment and `description` lines, so the c01 3 s run
+stays valid. **c04–c09 are not C26 cases 4–9.**
+
+- **Particles.**
+  - The base particle is C26's YSZ (C26 calls it a TRISO-kernel surrogate).
+  - Each diameter level adds the next TRISO layer, cumulatively and in
+    deposition order:
+
+    | Layer | Thickness | Density |
+    |---|---|---|
+    | buffer | 100 µm | 1000 kg/m³ |
+    | IPyC | 40 µm | 1900 kg/m³ |
+    | SiC | 35 µm | 3200 kg/m³ |
+    | OPyC | 40 µm | 1900 kg/m³ |
+
+    Values are from Marshall et al. 2017, Table 1, in `particles.yaml`
+    `triso_coating_layers`. The AGR-5/6/7 Table 8 spec is given in comments.
+  - Stage d and ρ come from `src/correlations.py::coated_particle_stages`.
+    Its unit test reproduces Marshall's published stage values for a 425 µm
+    UCO kernel.
+  - **Assumed:** layers are uniform, so the YSZ PSD σ (12.21 µm) carries
+    through coating unchanged.
+- **Flow.**
+  - The flow block is C26's own 10 / 12 / 14 slpm.
+  - The diameter and charge blocks run at a fixed 12 slpm, the user's
+    "optimal" value. It is also C26 Table 3's best case (c02: SSI 0.7687,
+    MSE 0.0042).
+  - Flow is deliberately **not** scaled with stage or charge.
+- **Statistical weight.**
+  - W = 10 for every case, and **W ≥ 10 is a lower bound** (the builder
+    raises for W < 10).
+  - Larger particles therefore get larger parcels, d·10^(1/3). For c04–c07
+    that means dx/d_parcel falls from 1.59 to 1.16, against c01's 2.37.
+  - **Risk:** expect noisier voidage and possible gas-fraction-floor or
+    sliver-cell trouble (Error 1100 history above).
+  - **Fallback:** if a smoke fails, the C26 builder's own
+    `--interp-scheme SQUARE_DPVM` is the first candidate. It is proposed
+    before it is applied (rule 9).
+- **Fixed parameters.**
+  - `mew_w` is fixed at the Table 1 baseline of 0.1 (`geometry.yaml` key
+    renamed from `mew_w_base`).
+  - All other closures are unchanged. Every case keeps the paper's
+    dt_max = 1e-5 s, since U_nozzle is at most 52.4 m/s.
+- **Diameter confounds bed height.**
+  - At a fixed 60 g charge, coating lowers the particle density, so the
+    static bed rises from 34.8 mm to 47.7–49.7 mm. That is above the
+    41.6 mm cone top.
+  - So the diameter block also varies bed height and bed weight per unit
+    area. This is inherent to real layers at a fixed charge.
+  - The SiC stage is denser than the IPyC stage, so c06's bed is slightly
+    shallower than c05's.
+- **Charge block.** In the 60° cone, H grows only as m^(1/3), so 40 / 60 /
+  80 g gives 30.2 / 34.8 / 38.6 mm (about ±12 %).
+- **Seeded charge** (1 ms dry runs, 2026-10-19, inventory monitor at t = 0):
+
+  | case | c04 | c05 | c06 | c07 | c08 | c09 |
+  |---|---|---|---|---|---|---|
+  | seeded mass | 60.5 g | 58.8 g | 61.1 g | 60.1 g | 39.6 g | **76.1 g** |
+  | error vs charge | +0.9 % | −2.0 % | +1.9 % | +0.1 % | −0.9 % | **−4.9 %** |
+
+  For comparison, c01–c03 seed 61.0 g. Every case is within the 10 %
+  seeding rule.
+  - **Cause of c09's shortfall:** it is about one HEXA lattice row short
+    at the top of the seeded region. That row sits in the column, above
+    the cone top, where one row is about 1,750 parcels.
+  - **Status:** accepted as is (user decision 2026-10-19). The charge block
+    is 39.6 / 61.0 / 76.1 g as seeded.
+  - **Reporting:** the sweep summary uses the seeded mass, not the
+    nominal charge.
+- **Spouting at 12 slpm is not guaranteed.** The deeper coated beds and the
+  80 g bed may spout weakly or not at all. That is a result to report, not a
+  reason to change the flow.
+
+### Local smokes and criteria changes (2026-10-19)
+
+0.3 s, 4 ranks, `notes/smoke_validate_c26.py`; t = 0.1–0.3 s. Rows in
+`results/run_log.csv`.
+
+| case | s/step | core flux (≥ 5 ṁ_g) | centroid (≤ 1.05 mm) | mid-bed v_g (≥ 5 m/s) | ΔP / (W/A) | lost parcels (all via top PO) | verdict |
+|---|---|---|---|---|---|---|---|
+| c02 (YSZ, 60 g) | 0.169 | 34.3 | 0.04 mm | 17.5 m/s | 1.36 | 3 (0.011 %) | GO, spout |
+| c07 (full TRISO) | 0.121 | 1.6 | 1.43 mm | 1.64 m/s | 0.22 | 0 | GO (inlet), **no spout** |
+| c09 (YSZ, 80 g → 76.0 g seeded) | 0.161 | 35.8 | 0.48 mm | 15.2 m/s | 1.38 | 2 (0.006 %) | GO, spout |
+
+- **Outlet loss (criterion amended, user decision).** The c02 smoke lost 3
+  parcels. Particle_ID tracking shows each was last seen 1–9 mm below the
+  pressure outlet at y = H_dom = 210 mm (C26's domain top), moving up at up
+  to 4.7 m/s: ballistic fountain parcels, not wall leaks. c01 (10 slpm) lost
+  none in 3 s. P2 was "the inventory stays at the seeded value". It is now:
+  parcels may leave only through the top outlet (Particle_ID tracking), at
+  most 0.5 % of the seeded mass; any other loss fails. The domain stays at
+  210 mm, as in the paper.
+- **c07 does not spout at 12 slpm.** The inlet is healthy: PS in the axis
+  cell, exit v_g 1.19 U, inventory constant. The jet only opens a cavity:
+  axis EP_G is > 0.78 up to y ≈ 22 mm and 0.42–0.47 above. Axis v_g falls
+  from 13.6 m/s at 19.9 mm to 0.2–0.9 m/s at 28–47 mm.
+  - The bed comes to rest: parcels moving > 5 cm/s fall from 69 % to 2.5 %,
+    and there is no fountain.
+  - Upward core flux decays from 4.3 to 0.9 ṁ_g over the run.
+  - The bed is below minimum spouting: the particles are 2× larger and
+    2.5× lighter, and the bed is 41 % deeper.
+  - The `des_epg_clip` floor (0.42) is active in 71–72 % of dense-bed cells
+    in both c02 and c07, so it is not specific to c07.
+  - A 0.3 s smoke cannot exclude a spout later (C26: ≥ 3 s).
+- **Spout checks are now results outside the PIV cases (user decision).**
+  The validator splits its verdict:
+  - P1–P2 plus `check_smoke` gate inlet health and numerics.
+  - P3–P4 report whether the bed spouts. A spout is required only for c01–c03
+    (manifest `piv_targets_table3`), where C26 observed one.
+  - The misplaced-source c01 smoke is still NO-GO through P1, and
+    c01_smoke_r3 is still GO.
+- **c07 spout check at 18 slpm (pre-registered before running).** The user
+  kept c04–c07 at 12 slpm and added one check run:
+  `run_C26_3d --case c07 --flow-slpm 18 --run-dir-suffix _q18_smoke`.
+  - **Why 18 slpm:** a rough Mathur–Gishler scaling, used only for this
+    choice and not in the model, gives c07 about 1.5× bare YSZ's minimum
+    spouting flow. So 18 = 1.5 × 12 slpm puts c07 at about c02's excess over
+    minimum spouting.
+  - **Time step:** U_nozzle 67.4 m/s still gives dt_max = 1e-5 s.
+  - **Spout criterion:** P3i ≥ 5 ṁ_g and P4 ≥ 5 m/s, the same thresholds.
+  - **If it spouts:** c07's no-spout at 12 slpm is physical, and 1.81 mm
+    parcels can carry a spout in this model.
+  - **If it doesn't spout:** the run is inconclusive. Either c07's minimum
+    spouting flow is above 18 slpm, or 1.81 mm parcels in 2.1 mm cells hit a
+    numerical limit. The next step would be proposed then.
+
+### AWS production runs: mass-only point source (user decision 2026-10-19)
+
+- **Decision.** The sweep's 3 s runs use the mass-only point source
+  (`--ps-mass-only`, `ps_v_g = 0`), matching the c01–c03 runs already on AWS
+  (`c26-c0X-massonly`, submitted 2026-10-19).
+  - **Project default changed (user decision, same day).**
+    `params/geometry.yaml` now has `ps_momentum: false`, so every new C26
+    deck is mass-only.
+    - `--ps-momentum` restores the momentum source for A/Bs.
+    - `--ps-mass-only` is kept and now equals the default.
+    - The existing momentum artifacts are left as they are and not
+      regenerated: `cases/C26_3d/c01` (the completed 3 s momentum run and its
+      `aws_out`), `c02` and `c03` (momentum decks, never run), and the
+      `c02`/`c07`/`c09`/`c07_q18` smokes.
+  - The decks differ from the momentum decks only in `ps_v_g`, the run name
+    and the monitor names.
+  - Run dirs are `cases/C26_3d/<id>_massonly`, and job names
+    `c26-<id>-massonly`.
+  - The sweep summary reads them with `--suffix _massonly`.
+- **Caveat.** The c01–c03 mass-only runs are the A/B test of the point-source
+  momentum (see "Point-source momentum A/B"). Mass-only was adopted before
+  their 3 s results, by user decision. The c04–c09 runs follow the c02
+  mass-only baseline, whichever source scores better against the C26 PIV.
+- **Mass-only smoke criteria** (set before any mass-only c04–c09 result).
+  - `check_smoke` S3 (exit v_g / U_nozzle band 0.5–2) and P4 (mid-bed
+    v_g ≥ 5 m/s) were set on momentum-source runs. For `ps_momentum: false`
+    they are reported, not gated. On c01_smoke_r4_massonly, S3 gave 0.39
+    and P4 3.2 m/s, while P3 shows a spout (37.8 ṁ_g, 0.18 mm).
+  - All other inlet and numerics checks gate as before, and the spout is
+    judged on P3.
+  - The momentum smokes (c02, c07, c09) keep their verdicts.
+- **Automation** (`smoke_chain5.sh`, scratchpad; user: queue on AWS if the
+  smokes pass).
+  1. Generate `c04`–`c09_massonly` (tstop 3 s, 4 ranks).
+  2. Run a 1 ms serial dry run of each in scratch (rule 13).
+  3. Run a mass-only c04 smoke (`c04_massonly_smoke`, 0.3 s).
+  4. Submit via `src/aws/submit.py`, sizing from each manifest, with these
+     gates:
+     - the c04 mass-only smoke must be GO, or nothing is submitted;
+     - a case whose dry run fails is held;
+     - c05–c07 are held unless c07 at 18 slpm (momentum) is GO and spouts.
+- **Momentum smokes still apply.** They cover parcel size up to 1.81 mm
+  (c07), parcel count up to 34,640 (c09), and outlet loss. These do not
+  depend on the source model.
+- **Timeout (rule 14).** The Batch job definition sets no
+  `attemptDurationSeconds`, so jobs are not time-limited.
+  - Expected time: 300k steps at about 0.2–0.25 s/step (AWS 4-rank c01
+    0.234), roughly 17–21 h per case.
+  - Capacity: 9 jobs × 4 vCPU = 36 vCPU. With a 32-vCPU quota, one job
+    waits in RUNNABLE until a slot frees.
+- **Tools.**
+  - Smoke validation is `notes/smoke_validate_c26.py <run_dir>`. It runs
+    `check_smoke.py` with arguments from the manifest, plus the step-2
+    checks: PS volume, seeding/inventory, spout-core flux and centroid,
+    mid-bed v_g, and settled height.
+  - Step-3 metrics come from `notes/c26_step3_checks.py`, which now reads
+    the manifest; the C/D thresholds apply to c01–c03 only.
+  - The sweep summary is `notes/c26_sweep_summary.py`, which writes
+    `results/c26_sweep_summary.csv` and one figure per block. The averaging
+    window is in each caption.
+- **AWS memory.** `aws_memory_mb` scales linearly with parcels above the
+  c01 probe, so c09 gets 8000 MB.
 
 ## Open items (not done here)
 

@@ -11,10 +11,14 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
   (`params/geometry.yaml`); `case_C26_ysz`, `case_C26_ss`
   (`params/particles.yaml`); `ar_25C`, `slpm_reference_C26`
   (`params/gases.yaml`); `spouted_bed_C26_3d_numerics`
-  (`params/numerics.yaml`); Table 2 matrix `params/sweep_C26.yaml`.
+  (`params/numerics.yaml`); `triso_coating_layers` (`params/particles.yaml`);
+  case matrix `params/sweep_C26.yaml` (C26 Table 2 cases 1–3 plus the
+  coating-stage / charge sweep c04–c09; notes "Coating-stage / charge sweep").
 - Builder `src/make_case_c26.py`, STL `src/make_stl.py::build_cone_column_stl_implicit`,
   template `cases/C26_3d/template_dem.mfx.j2`, driver `src/run_C26_3d.py`.
 - Tests: `tests/test_make_case_c26.py`, `tests/test_make_stl_c26.py`.
+- Checks: `notes/smoke_validate_c26.py` (step 2), `notes/c26_step3_checks.py`
+  (step 3), `notes/c26_sweep_summary.py` (step 5).
 
 ## Steps
 
@@ -49,7 +53,18 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      test, which is unsound for a jet into a bed: the bed weight is ~58 ṁU,
      and in r2 the gas hands ~0.65 ṁU to spout particles by 11.5 mm.
    - Seeded parcels ≈ manifest `n_parcels_est` (shortfall ≤ 10 %, recipe Rule 8);
-     Monitor 3 (particle mass/count) stays at the seeded value.
+     Monitor 3 (particle mass/count) loses parcels only through the top
+     pressure outlet (Particle_ID tracking), ≤ 0.5 % of the seeded mass.
+     (Amended 2026-10-19 by user decision: was "stays at the seeded value";
+     the c02 smoke lost 3 ballistic fountain parcels via the PO.)
+   - Point source: mass-only (`ps_v_g = 0`) is the default since 2026-10-19
+     (user decision; `--ps-momentum` for A/Bs). For mass-only decks the
+     `check_smoke` S3 exit-velocity band and the mid-bed v_g ≥ 5 m/s check
+     were set on momentum runs, so they are reported, not gated, and the
+     spout is judged on the axial spout-channel checks.
+   - Spout checks (axial spout channel, mid-bed v_g) gate only C26's PIV
+     cases c01–c03. For the coating-stage / charge cases at fixed 12 slpm,
+     no spout is reported as a result (user decision 2026-10-19).
    - Settled bed height after the initial collapse: report it next to
      H_static = 34.8 mm (60° cone) and the C26 Fig. 1b "~25 mm" schematic
      annotation.
@@ -77,7 +92,20 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
    time-average 300 frames, and compute CC, SSI and MSE against the
    experimental maps. Digitize C26 Fig. 4 maps and wall v(t) into
    `data/digitized/`.
-5. **Sensitivity cases c04–c12** after c01–c03 pass.
+5. **Coating-stage / charge sweep c04–c09** (one factor at a time around c02:
+   YSZ, 60 g, 12 slpm, W = 10). It replaces C26's wall-friction,
+   statistical-weight and steel cases.
+   - c04–c07 add the TRISO layers buffer, IPyC, SiC and OPyC to the YSZ core.
+     The parcels grow to 1.81 mm in 2.1 mm cells.
+   - c08 and c09 use 40 and 80 g charges.
+   - **Smokes first** (rule 13): c02, then c07 (largest parcel), then c04,
+     then c09 (most parcels, memory check). Each is checked with
+     `notes/smoke_validate_c26.py`.
+   - **Full runs:** 3 s runs only after the smokes pass. Then run
+     `notes/c26_sweep_summary.py` over the last 0.6 s.
+   - **Reporting:** there is no experiment for c04–c09, so results are
+     relative sensitivities. A bed that doesn't spout at 12 slpm is reported
+     as is.
 
 ## Done when
 

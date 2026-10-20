@@ -14,6 +14,7 @@ Public API:
 
     load_sweep() -> dict
     slpm_to_mass_flow(flow_slpm, rho_ref_kg_m3) -> float
+    resolve_particle(case, particles) -> dict
     build_C26_3d_params(case, tstop_s=None, run_name=None, ...) -> dict
 
 All values SI (CLAUDE.md rule 3).  Every physical number comes from
@@ -26,6 +27,7 @@ import math
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from src.correlations import coated_particle_stages
 from src.make_case import (
     PARAMS_DIR,
     _bed_height_from_inventory,
@@ -37,7 +39,7 @@ SLPM_TO_M3_S = 1.0e-3 / 60.0   # unit conversion only: 1 L/min in m^3/s
 
 
 def load_sweep() -> dict:
-    """Return params/sweep_C26.yaml (Table 2 case matrix)."""
+    """Return params/sweep_C26.yaml (flow / coating-stage / charge matrix)."""
     return _load_yaml(PARAMS_DIR / "sweep_C26.yaml")
 
 
@@ -82,6 +84,54 @@ def write_gridmap(run_dir: Path, gridmap: Mapping[str, Sequence[int]]) -> Path:
     return path
 
 
+def resolve_particle(case: Mapping[str, object], particles: Mapping[str, object]) -> dict:
+    """Particle properties for one sweep row.
+
+    The row's ``feedstock`` names a params/particles.yaml block (C26 YSZ).
+    An optional ``coating_stage`` names the last TRISO layer applied to it
+    (particles.yaml ``triso_coating_layers``, deposition order); every layer
+    up to and including that one is added by
+    :func:`src.correlations.coated_particle_stages`.  The PSD standard
+    deviation of the feedstock is kept (uniform layers, assumed).
+
+    Returns label, coating_stage (None when bare), rho_p_kg_m3, d_p_mean_m,
+    d_p_sigma_m, psd_type, psd_n_sigma and the feedstock's inventory_g.
+    """
+    feed_key = str(case["feedstock"])
+    if feed_key not in particles:
+        raise KeyError(f"feedstock {feed_key!r} not in params/particles.yaml")
+    feed = particles[feed_key]
+    rho_p = float(feed["rho_p_kg_per_m3"])
+    d_mean = float(feed["d_p_mean_m"])
+    label = str(feed.get("label", feed_key))
+    stage = case.get("coating_stage")
+    if stage is not None:
+        stage = str(stage)
+        layers = particles["triso_coating_layers"]
+        names = [str(layer["name"]) for layer in layers]
+        if stage not in names:
+            raise KeyError(f"coating_stage {stage!r} not in triso_coating_layers {names}")
+        applied = layers[: names.index(stage) + 1]
+        stages = coated_particle_stages(
+            d_mean, rho_p,
+            [(layer["name"], float(layer["t_m"]), float(layer["rho_kg_per_m3"]))
+             for layer in applied],
+        )
+        _, d_mean, rho_p = stages[-1]
+        label = f"{label} + " + " + ".join(str(layer["name"]) for layer in applied)
+    return {
+        "feedstock": feed_key,
+        "label": label,
+        "coating_stage": stage,
+        "rho_p_kg_m3": rho_p,
+        "d_p_mean_m": d_mean,
+        "d_p_sigma_m": math.sqrt(float(feed["d_p_var_m2"])),
+        "psd_type": str(feed["psd_type"]),
+        "psd_n_sigma": float(feed["psd_n_sigma"]),
+        "inventory_g": float(feed["inventory_g"]),
+    }
+
+
 def _gas_props(T_K: float, p_Pa: float, composition: Mapping[str, float]):
     from src.gasprops import gas_props
 
@@ -105,8 +155,12 @@ def build_C26_3d_params(
 
     case     : one entry of sweep_C26.yaml ``cases`` -- keys ``id``,
                ``feedstock`` (particles.yaml block), ``flow_slpm``,
-               ``stat_wt`` (CGP statistical weight W; 1 = pure DEM) and
-               ``mew_w`` (particle-wall friction factor).
+               ``inventory_g`` (bed charge [g]; default the feedstock's),
+               optional ``coating_stage`` (last TRISO layer on the
+               feedstock, see :func:`resolve_particle`) and optional
+               ``stat_wt`` (CGP statistical weight W; default and lower
+               bound sweep ``base.stat_wt`` = 10).  The
+               particle-wall friction factor is geometry.yaml ``mew_w``.
     tstop_s  : simulated end time [s]; default sweep ``base.tstop_s``.
     run_name : MFiX run_name; default ``C26_<id>``.
     nodes    : DMP decomposition (NI, NJ, NK); each must divide its axis.
@@ -159,15 +213,18 @@ def build_C26_3d_params(
     base = sweep["base"]
 
     case_id = str(case["id"])
-    feed_key = str(case["feedstock"])
-    if feed_key not in particles:
-        raise KeyError(f"feedstock {feed_key!r} not in params/particles.yaml")
-    feed = particles[feed_key]
+    particle = resolve_particle(case, particles)
+    feed_key = particle["feedstock"]
     flow_slpm = float(case["flow_slpm"])
-    stat_wt = float(case["stat_wt"])
-    mew_w = float(case["mew_w"])
-    if stat_wt < 1.0:
-        raise ValueError(f"stat_wt must be >= 1 (got {stat_wt})")
+    # base.stat_wt is both the default W and its lower bound: larger
+    # particles get larger parcels, never a smaller W.
+    stat_wt_min = float(base["stat_wt"])
+    stat_wt = float(case.get("stat_wt", stat_wt_min))
+    mew_w = float(dem["mew_w"])
+    if stat_wt < stat_wt_min:
+        raise ValueError(
+            f"stat_wt must be >= {stat_wt_min:g} (got {stat_wt}); larger particles "
+            "use larger parcels, not a smaller W")
     if not (0.0 <= mew_w <= 1.0):
         raise ValueError(f"mew_w must be in [0, 1] (got {mew_w})")
     tstop_s = float(base["tstop_s"] if tstop_s is None else tstop_s)
@@ -262,15 +319,17 @@ def build_C26_3d_params(
     dt_s = float(numerics["dt_init_fraction"]) * dt_max_s
 
     # ---- particles -------------------------------------------------------
-    rho_p = float(feed["rho_p_kg_per_m3"])
-    d_mean = float(feed["d_p_mean_m"])
-    sigma = math.sqrt(float(feed["d_p_var_m2"]))
-    n_sig = float(feed["psd_n_sigma"])
+    rho_p = particle["rho_p_kg_m3"]
+    d_mean = particle["d_p_mean_m"]
+    sigma = particle["d_p_sigma_m"]
+    n_sig = particle["psd_n_sigma"]
     d_min = d_mean - n_sig * sigma
     d_max = d_mean + n_sig * sigma
     if d_min <= 0.0:
         raise ValueError(f"{feed_key}: mean - n_sigma*sigma <= 0")
-    m_bed = float(feed["inventory_g"]) * 1.0e-3
+    m_bed = float(case.get("inventory_g", particle["inventory_g"])) * 1.0e-3
+    if m_bed <= 0.0:
+        raise ValueError(f"inventory_g must be > 0 (got {m_bed * 1e3} g)")
     eps_s_ic = float(dem["eps_s_ic"])
     eps_s_packed = float(dem["eps_s_packed"])
 
@@ -290,6 +349,7 @@ def build_C26_3d_params(
     n_real = m_bed / (rho_p * math.pi / 6.0 * _mean_cube_normal(d_mean, sigma))
     solids_model = "DEM" if stat_wt == 1.0 else "CGP"
     m_parcel = stat_wt * rho_p * math.pi / 6.0 * d_mean ** 3
+    d_parcel = d_mean * stat_wt ** (1.0 / 3.0)   # CGP parcel diameter [m]
     dt_rayleigh_s = math.pi * math.sqrt(m_parcel / float(dem["kn"]))
 
     # ---- output windows --------------------------------------------------
@@ -299,13 +359,15 @@ def build_C26_3d_params(
     piv_t_start = max(0.0, tstop_s - piv_n * piv_dt)
 
     half = 0.5 * dx_m
+    stage_txt = particle["coating_stage"] or "bare"
     return {
         "case_id": case_id,
         "feedstock": feed_key,
-        "feedstock_label": str(feed.get("label", feed_key)),
+        "feedstock_label": particle["label"],
+        "coating_stage": particle["coating_stage"],
         "description": description or (
-            f"C26 {case_id}: {feed_key} {flow_slpm:g} slpm Ar, W={stat_wt:g}, "
-            f"mew_w={mew_w:g} (Conry et al. 2026 Table 2)"
+            f"C26 {case_id}: {feed_key} ({stage_txt}), {m_bed * 1e3:g} g, "
+            f"{flow_slpm:g} slpm Ar (Conry et al. 2026 model)"
         ),
         "run_name": run_name,
         "run_type": "new",
@@ -361,7 +423,7 @@ def build_C26_3d_params(
         "cgp_stat_wt": stat_wt,
         "rho_p_kg_m3": rho_p,
         "d_p_m": d_mean,
-        "psd_type": str(feed["psd_type"]),
+        "psd_type": particle["psd_type"],
         "psd_mean_dp_m": d_mean, "psd_stdev_m": sigma,
         "psd_min_dp_m": d_min, "psd_max_dp_m": d_max,
         "inventory_kg": m_bed,
@@ -374,8 +436,10 @@ def build_C26_3d_params(
         "H_mid_m": 0.5 * H_static_m,
         "n_real_particles": n_real,
         "n_parcels_est": n_real / stat_wt,
+        "d_parcel_m": d_parcel,
+        "dx_over_d_parcel": dx_m / d_parcel,
         "dt_rayleigh_s": dt_rayleigh_s,
-        # DEM closure (C26 Table 1; mew_w per case, Table 2)
+        # DEM closure (C26 Table 1; mew_w fixed at the Table 1 baseline)
         "drag_type": str(dem["drag_type"]),
         "kn": float(dem["kn"]), "kn_w": float(dem["kn_w"]),
         "kt_fac": float(dem["kt_fac"]), "kt_w_fac": float(dem["kt_w_fac"]),

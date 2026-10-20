@@ -656,12 +656,17 @@ spouted_bed_C26_3d:
                            # and c01_smoke_r3 (results/run_log.csv 2026-10-17).
   top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
                            # source: spouted-bed recipe Rule 19.
-  ps_momentum: true        # point source carries the nozzle momentum [-]:
+  ps_momentum: false       # point source carries the nozzle momentum [-]:
                            # true -> ps_v_g = U_nozzle (momentum m_dot*U);
                            # false -> ps_v_g = 0, mass only (MFiX GUI default
                            # for a mass-flow PS; C26 2.2.1 wording "when the
                            # flow mass is added" suggests this).  C26 does not
-                           # state it.  A/B: c01_smoke_r4_massonly.
+                           # state it.  A/B: c01_smoke_r4_massonly; 3 s A/B
+                           # c01-c03_massonly vs the momentum c01 run.
+                           # Default false since 2026-10-19 (user decision);
+                           # it was true for the c01 3 s run, the c01-c03 decks
+                           # in cases/C26_3d/c0X and the c02/c07/c09 smokes.
+                           # Momentum for A/Bs: run_C26_3d --ps-momentum.
                            # source: assumed.
   ps_row_offset_cells: 0   # point-source cell row above the cap [-]
                            # (0 = first fluid row, y in [0, dx]).  C26 2.2.1:
@@ -687,9 +692,11 @@ spouted_bed_C26_3d_dem:
                            # source: C26 Table 1 (assumed same at wall).
   mew: 0.1                 # interparticle friction factor [-]
                            # source: C26 Table 1.
-  mew_w_base: 0.1          # particle-wall friction factor, baseline [-]
-                           # (swept 0.1/0.3/0.5/0.7 in params/sweep_C26.yaml)
-                           # source: C26 Table 1, Table 2.
+  mew_w: 0.1               # particle-wall friction factor [-]
+                           # Fixed for every case; not swept (C26 Table 2
+                           # swept 0.1-0.7; this project's sweep_C26.yaml
+                           # varies flow, coating stage and charge instead).
+                           # source: C26 Table 1 (baseline), Table 2.
   des_en_input_pp: 0.5     # interparticle restitution coefficient [-]
                            # source: C26 Table 1.
   des_en_input_pw: 0.5     # particle-wall restitution coefficient [-]

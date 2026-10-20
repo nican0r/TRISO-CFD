@@ -1,4 +1,4 @@
-"""Generate Case C26 run directories (Conry et al. 2026, Table 2 matrix).
+"""Generate Case C26 run directories (flow / coating-stage / charge sweep).
 
 For each selected case in params/sweep_C26.yaml, writes:
 
@@ -19,12 +19,19 @@ Examples:
   .venv/bin/python -m src.run_C26_3d --case c01 --dry-run
   # non-uniform partition: narrow slabs over the cone, where the parcels are
   .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9
+
+With neither --nodes nor --gridmap-*, cases get DEFAULT_GRIDMAP: 4 ranks
+(2x1x2, i = k = [13,14]), the laptop split and the best throughput per vCPU on
+AWS (notes/c26_conry2026_case.md, "AWS run cost"). The manifest's aws_vcpu
+(= nranks) and aws_memory_mb (src/aws/config.py C26_MEMORY_MB) size the Batch
+job; src/aws/submit.py reads them when --vcpu/--memory are omitted.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -32,9 +39,27 @@ from src.make_case import REPO_ROOT, render_case
 from src.make_case_c26 import build_C26_3d_params, load_sweep, write_gridmap
 from src.make_stl import build_cone_column_stl_implicit
 from src.run_V_3d_day10 import _parse_nodes, write_runner
+from src.aws.config import C26_MEMORY_MB
 
 TEMPLATE = REPO_ROOT / "cases" / "C26_3d" / "template_dem.mfx.j2"
 OUT_ROOT = REPO_ROOT / "cases" / "C26_3d"
+
+# Default DMP partition (cells per rank along i, j, k): 2x1x2 = 4 ranks.
+# 27 cells do not split evenly in two, hence a gridmap rather than --nodes.
+DEFAULT_GRIDMAP = ([13, 14], [104], [13, 14])
+
+# Parcel count of the c01 memory probe behind C26_MEMORY_MB (src/aws/config.py,
+# results/run_log.csv 2026-10-19 "c01 memory probe").
+C26_MEMORY_PROBE_PARCELS = 27782
+
+
+def aws_memory_mb(n_parcels_est: float) -> int:
+    """Batch memory [MB]: C26_MEMORY_MB scaled linearly with the parcel count
+    above the probed c01 deck, rounded up to 1000 MB.  Conservative (memory
+    was 0.6-1.1 GB at 27,782 parcels); revisit with each case's smoke RSS."""
+    scale = max(1.0, float(n_parcels_est) / C26_MEMORY_PROBE_PARCELS)
+    return int(math.ceil(C26_MEMORY_MB * scale / 1000.0) * 1000)
+
 
 # Keys too bulky or redundant for the manifest.
 _MANIFEST_SKIP = {"dx_m_list", "dy_m_list", "dz_m_list"}
@@ -48,6 +73,14 @@ def _parse_sizes(spec: str) -> list[int]:
     if not sizes or min(sizes) < 1:
         raise argparse.ArgumentTypeError(f"gridmap sizes must be >= 1; got {spec!r}")
     return sizes
+
+
+def _repo_relative(path: Path) -> str:
+    """Path relative to the repo root, or absolute for an --out-root outside it."""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _select(cases: list[dict], spec: str) -> list[dict]:
@@ -82,8 +115,10 @@ def main() -> None:
                    help="case id(s) from params/sweep_C26.yaml, comma-separated, or 'all'")
     p.add_argument("--tstop", type=float, default=None,
                    help="override simulated end time [s] (default: sweep base.tstop_s)")
-    p.add_argument("--nodes", type=_parse_nodes, default=(1, 1, 1), metavar="NI,NJ,NK",
-                   help="DMP decomposition; must divide imax/jmax/kmax (27/104/27)")
+    p.add_argument("--nodes", type=_parse_nodes, default=None, metavar="NI,NJ,NK",
+                   help="DMP decomposition; must divide imax/jmax/kmax (27/104/27). "
+                        "Default (no --nodes, no --gridmap-*): DEFAULT_GRIDMAP, 4 ranks; "
+                        "1,1,1 for serial")
     for axis in "ijk":
         p.add_argument(f"--gridmap-{axis}", type=_parse_sizes, default=None, metavar="N,N,...",
                        help=f"non-uniform DMP partition: cells per rank along {axis} "
@@ -92,15 +127,23 @@ def main() -> None:
     p.add_argument("--stl-sample-fraction", type=float, default=None, metavar="F",
                    help="STL SDF sampling step as a fraction of dx (default: "
                         "geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
-    p.add_argument("--ps-mass-only", action="store_true",
-                   help="point source adds gas mass only (ps_v_g = 0); default "
-                        "geometry.yaml ps_momentum")
+    ps = p.add_mutually_exclusive_group()
+    ps.add_argument("--ps-mass-only", action="store_true",
+                    help="point source adds gas mass only (ps_v_g = 0); the "
+                         "geometry.yaml ps_momentum default since 2026-10-19")
+    ps.add_argument("--ps-momentum", action="store_true",
+                    help="point source carries the nozzle momentum "
+                         "(ps_v_g = U_nozzle), for A/Bs against the default")
     p.add_argument("--epg-clip", type=float, default=None, metavar="EPG",
                    help="DES_EPG_CLIP override (gas-fraction floor); default "
                         "geometry.yaml des_epg_clip")
     p.add_argument("--interp-scheme", choices=("LINEAR_HAT", "SQUARE_DPVM"), default=None,
                    help="DES_INTERP_SCHEME override; SQUARE_DPVM also writes "
                         "DES_INTERP_WIDTH (geometry.yaml des_interp_width_cells * dx)")
+    p.add_argument("--flow-slpm", type=float, default=None, metavar="Q",
+                   help="override the case's gas flow [slpm] for a one-off check "
+                        "outside the sweep matrix (e.g. c07 spout check); "
+                        "requires --run-dir-suffix")
     p.add_argument("--out-root", type=Path, default=OUT_ROOT)
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
@@ -109,23 +152,30 @@ def main() -> None:
     p.add_argument("--dry-run", action="store_true",
                    help="print manifests; write nothing")
     args = p.parse_args()
+    if args.flow_slpm is not None and not args.run_dir_suffix:
+        p.error("--flow-slpm needs --run-dir-suffix (keeps the sweep's run dir and index)")
 
     sweep = load_sweep()
     selected = _select(sweep["cases"], args.case)
     gridmap = None
     if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
         gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
+    elif args.nodes is None:
+        gridmap = DEFAULT_GRIDMAP
+    nodes = args.nodes or (1, 1, 1)
     index = []
     stl_cache: Path | None = None
     facet_count = None
 
     for case in selected:
         name_suffix = args.run_dir_suffix
+        if args.flow_slpm is not None:
+            case = {**case, "flow_slpm": args.flow_slpm}
         params = build_C26_3d_params(
             case, tstop_s=args.tstop, run_name=f"C26_{case['id']}{name_suffix}",
-            nodes=args.nodes, gridmap=gridmap,
+            nodes=nodes, gridmap=gridmap,
             dx_sample_fraction=args.stl_sample_fraction,
-            ps_momentum=False if args.ps_mass_only else None,
+            ps_momentum=True if args.ps_momentum else (False if args.ps_mass_only else None),
             epg_clip=args.epg_clip,
             interp_scheme=args.interp_scheme,
         )
@@ -138,8 +188,13 @@ def main() -> None:
             "mfx": mfx_path.name,
             "stl": params["stl_filename"],
             "is_base_case": case["id"] == sweep["base"]["base_case"],
+            "is_ofat_baseline": case["id"] == sweep["base"]["ofat_baseline"],
+            "flow_slpm_override": args.flow_slpm is not None,
             "piv_targets_table3": sweep.get("piv_targets_table3", {}).get(case["id"]),
             "notes": "notes/c26_conry2026_case.md",
+            # AWS Batch sizing, read by src/aws/submit.py: one vCPU per rank.
+            "aws_vcpu": params["nranks"],
+            "aws_memory_mb": aws_memory_mb(params["n_parcels_est"]),
         })
         if args.dry_run:
             print(json.dumps(manifest, indent=2))
@@ -165,10 +220,13 @@ def main() -> None:
         (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         write_runner(run_dir, mfx_path.name, params["nranks"])
         index.append({
-            "id": case["id"], "run_dir": str(run_dir.relative_to(REPO_ROOT)),
-            "feedstock": params["feedstock"], "flow_slpm": params["flow_slpm"],
+            "id": case["id"], "run_dir": _repo_relative(run_dir),
+            "feedstock": params["feedstock"], "coating_stage": params["coating_stage"],
+            "d_p_m": params["d_p_m"], "rho_p_kg_m3": params["rho_p_kg_m3"],
+            "inventory_kg": params["inventory_kg"], "H_static_m": params["H_static_m"],
+            "flow_slpm": params["flow_slpm"],
             "solids_model": params["solids_model"], "cgp_stat_wt": params["cgp_stat_wt"],
-            "mew_w": params["mew_w"], "U_nozzle_m_s": params["U_nozzle_m_s"],
+            "d_parcel_m": params["d_parcel_m"], "U_nozzle_m_s": params["U_nozzle_m_s"],
             "dt_max_s": params["dt_max_s"], "n_parcels_est": params["n_parcels_est"],
             "tstop_s": params["tstop_s"],
         })

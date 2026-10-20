@@ -178,3 +178,33 @@ case_C26_ss:
   inventory_g: 60.0           # charge mass [g]
                               # source: C26 p.4 (2.2.2, "All cases had a 60 g
                               #         particle load").
+
+# TRISO coating layers applied to the C26 YSZ particle (case_C26_ysz) for the
+# coating-stage sweep in params/sweep_C26.yaml (c04-c07).  YSZ is the base
+# particle (C26 p.3: YSZ is "typically used as a surrogate for TRISO fuel
+# kernels"); each stage adds the next layer, cumulatively, in deposition
+# order.  Stage diameter and mean density come from
+# src/correlations.py::coated_particle_stages.
+# Layer values: Marshall et al. (2017) Table 1, "Nominal TRISO particle layer
+# dimensions with a 425 um kernel" (OSTI 1367510; scraped copy in
+# .firecrawl/osti-fulltext.json).  Cross-check, AGR-5/6/7 fabrication report
+# (Marshall 2020) Table 8 specification (.firecrawl/agr567-fabrication.json):
+# buffer 100 +/- 15 um at 1.05 +/- 0.10 g/cm^3, IPyC 40 +/- 4 um at
+# 1.90 +/- 0.05, SiC 35 +/- 3 um at >= 3.19, OPyC 40 +/- 4 um at 1.90 +/- 0.05.
+# Layers are taken as uniform, so the PSD standard deviation of the base
+# particle carries through coating unchanged (source: assumed).
+triso_coating_layers:
+  - name: buffer            # porous carbon buffer
+    t_m: 100.0e-6           # layer thickness [m]
+                            # source: Marshall 2017 Table 1.
+    rho_kg_per_m3: 1000.0   # layer density [kg/m^3]
+                            # source: Marshall 2017 Table 1 (AGR spec 1050).
+  - name: IPyC              # inner pyrolytic carbon
+    t_m: 40.0e-6            # source: Marshall 2017 Table 1.
+    rho_kg_per_m3: 1900.0   # source: Marshall 2017 Table 1.
+  - name: SiC               # silicon carbide
+    t_m: 35.0e-6            # source: Marshall 2017 Table 1.
+    rho_kg_per_m3: 3200.0   # source: Marshall 2017 Table 1 (AGR spec >= 3190).
+  - name: OPyC              # outer pyrolytic carbon
+    t_m: 40.0e-6            # source: Marshall 2017 Table 1.
+    rho_kg_per_m3: 1900.0   # source: Marshall 2017 Table 1.

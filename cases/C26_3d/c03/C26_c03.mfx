@@ -25,9 +25,9 @@
   tstop       = 3.0
   dt          = 1.000000e-05
   # DMP (MPI) decomposition: nodesi * nodesj * nodesk = mpirun -np.
-  nodesi = 3
+  nodesi = 2
   nodesj = 1
-  nodesk = 3
+  nodesk = 2
   dt_min      = 1.000000e-07
   # dt_max = min(C26 time step 1.0e-05 s, 0.5 * dx / U_nozzle (recipe
   # Rule 9)) with dx = 2.1000e-03 m and U_nozzle = 52.3934 m/s.
@@ -322,8 +322,8 @@
 
 # Point source (C26 2.2.1): one cell centred on the axis at the bottom of
 # the cone.  MFiX 26.1.2 adds ps_massflow_g over the fluid volume of the
-# cell and momentum ps_massflow_g * |v| * v_hat (source_v_g.f), so ps_v_g
-# is the nozzle exit velocity Q / (pi D_n^2 / 4).
+# cell and momentum ps_massflow_g * |v| * v_hat (source_v_g.f).
+# ps_v_g is the nozzle exit velocity Q / (pi D_n^2 / 4).
 #   flow = 14.0 slpm Ar -> m_dot = 3.810142e-04 kg/s,
 #   U_nozzle = 52.3934 m/s (D_n = 2.38125e-03 m).
 # The region is the axis cell's faces, not a zero-width point: get_ps.f /

@@ -1,4 +1,4 @@
-"""Tests for Case C26 (Conry et al. 2026): builder, sweep matrix, rendered deck."""
+"""Tests for Case C26 (Conry et al. 2026 model): builder, sweep matrix, rendered deck."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ import re
 
 import pytest
 
-from src.make_case import REPO_ROOT, render_case
+from src.make_case import REPO_ROOT, _load_yaml, render_case
 from src.make_case_c26 import (
     build_C26_3d_params,
     load_sweep,
+    resolve_particle,
     slpm_to_mass_flow,
     write_gridmap,
 )
@@ -40,6 +41,14 @@ RHO_AR_25C = 101325.0 * _M_AR / (_R * 298.15)          # = 1.6329 kg/m^3
 
 def _case(case_id: str) -> dict:
     return next(c for c in load_sweep()["cases"] if c["id"] == case_id)
+
+
+ALL_IDS = [f"c{i:02d}" for i in range(1, 10)]
+
+
+@pytest.fixture(scope="module")
+def all_params() -> dict:
+    return {cid: build_C26_3d_params(_case(cid)) for cid in ALL_IDS}
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +92,6 @@ def test_nozzle_velocity_hand_value(p01):
     # Q = 10 slpm = 1.6667e-4 m^3/s (reference state == gas state, 298 K, 1 atm)
     # A = pi (2.38125e-3 / 2)^2 = 4.4535e-6 m^2  ->  U = 37.42 m/s
     assert p01["U_nozzle_m_s"] == pytest.approx(37.42, rel=2e-3)
-    assert p01["ps_v_g_m_s"] == pytest.approx(p01["U_nozzle_m_s"])
     assert p01["ps_massflow_g_kg_s"] == pytest.approx(
         p01["U_nozzle_m_s"] * math.pi * p01["R_nozzle_m"] ** 2 * p01["rho_g_kg_m3"],
         rel=1e-9)
@@ -91,11 +99,12 @@ def test_nozzle_velocity_hand_value(p01):
 
 @pytest.mark.parametrize("cid,u_expected", [
     ("c01", 37.42), ("c02", 44.91), ("c03", 52.39),
-    ("c10", 82.33), ("c11", 97.30), ("c12", 112.27),
+    # diameter and charge blocks run at the baseline 12 slpm
+    ("c04", 44.91), ("c05", 44.91), ("c06", 44.91), ("c07", 44.91),
+    ("c08", 44.91), ("c09", 44.91),
 ])
-def test_nozzle_velocity_scales_with_flow(cid, u_expected):
-    assert build_C26_3d_params(_case(cid))["U_nozzle_m_s"] == pytest.approx(
-        u_expected, rel=2e-3)
+def test_nozzle_velocity_scales_with_flow(cid, u_expected, all_params):
+    assert all_params[cid]["U_nozzle_m_s"] == pytest.approx(u_expected, rel=2e-3)
 
 
 # ---------------- mesh / geometry ----------------
@@ -162,14 +171,19 @@ def test_stl_sample_fraction_override_changes_only_the_stl(p01):
 
 
 def test_point_source_momentum_switch(p01, tmp_path):
-    assert p01["ps_momentum"] and p01["ps_v_g_m_s"] == p01["U_nozzle_m_s"]
-    p = build_C26_3d_params(_case("c01"), ps_momentum=False)
-    assert p["ps_v_g_m_s"] == 0.0
-    assert p["ps_massflow_g_kg_s"] == p01["ps_massflow_g_kg_s"]
+    # Default (geometry.yaml ps_momentum: false, 2026-10-19): mass-only source.
+    assert not p01["ps_momentum"] and p01["ps_v_g_m_s"] == 0.0
     out = tmp_path / "d.mfx"
-    render_case(C26_TEMPLATE, p, out)
+    render_case(C26_TEMPLATE, p01, out)
     assert re.search(r"ps_v_g\(1\)\s*=\s*0\.0+e\+00", out.read_text())
     assert "MASS-ONLY" in out.read_text()
+    p = build_C26_3d_params(_case("c01"), ps_momentum=True)
+    assert p["ps_v_g_m_s"] == pytest.approx(p["U_nozzle_m_s"])
+    assert p["ps_massflow_g_kg_s"] == p01["ps_massflow_g_kg_s"]
+    render_case(C26_TEMPLATE, p, out)
+    m = re.search(r"ps_v_g\(1\)\s*=\s*([0-9.eE+\-]+)", out.read_text())
+    assert m and float(m.group(1)) == pytest.approx(p["U_nozzle_m_s"], rel=1e-5)
+    assert "MASS-ONLY" not in out.read_text()
 
 
 
@@ -200,15 +214,18 @@ def test_interp_scheme_switch_writes_width(p01, tmp_path):
 
 
 
-def test_dt_max_is_paper_step_capped_by_rule9(p01):
+def test_dt_max_is_paper_step_capped_by_rule9(p01, all_params):
     # C26 p.9: 0.01 ms; recipe Rule 9: 0.5 dx / U_nozzle (2.8e-5 s at c01).
     assert p01["dt_max_paper_s"] == pytest.approx(1.0e-5)
-    assert p01["dt_max_s"] == pytest.approx(1.0e-5)
     assert p01["dt_s"] <= p01["dt_max_s"]
-    # SS at 30 slpm: Rule 9 (9.4e-6 s) is tighter than the paper step.
-    p12 = build_C26_3d_params(_case("c12"))
-    assert p12["dt_max_s"] == pytest.approx(0.5 * p12["dx_m"] / p12["U_nozzle_m_s"])
-    assert p12["dt_max_s"] < p01["dt_max_s"]
+    # Every sweep case is at <= 14 slpm (<= 52.4 m/s): the paper step holds.
+    for cid, p in all_params.items():
+        assert p["dt_max_s"] == pytest.approx(1.0e-5), cid
+    # 30 slpm (C26's steel flow, not in the sweep): Rule 9 (9.4e-6 s) is
+    # tighter than the paper step.
+    p30 = build_C26_3d_params({**_case("c01"), "id": "x30", "flow_slpm": 30})
+    assert p30["dt_max_s"] == pytest.approx(0.5 * p30["dx_m"] / p30["U_nozzle_m_s"])
+    assert p30["dt_max_s"] < p01["dt_max_s"]
 
 
 # ---------------- particles / sweep matrix ----------------
@@ -221,32 +238,113 @@ def test_psd_from_measured_variance(p01):
     assert p01["psd_max_dp_m"] == pytest.approx(411.6e-6 + 3 * sigma)
 
 
-def test_sweep_matches_table2():
-    cases = load_sweep()["cases"]
-    assert [c["id"] for c in cases] == [f"c{i:02d}" for i in range(1, 13)]
-    rows = [(c["feedstock"], c["flow_slpm"], c["stat_wt"], c["mew_w"]) for c in cases]
-    ysz, ss = "case_C26_ysz", "case_C26_ss"
-    assert rows == [
-        (ysz, 10, 10, 0.1), (ysz, 12, 10, 0.1), (ysz, 14, 10, 0.1),
-        (ysz, 10, 10, 0.3), (ysz, 10, 10, 0.5), (ysz, 10, 10, 0.7),
-        (ysz, 10, 5, 0.1), (ysz, 10, 3, 0.1), (ysz, 10, 1, 0.1),
-        (ss, 22, 1, 0.1), (ss, 26, 1, 0.1), (ss, 30, 1, 0.1),
-    ]
+def _factors(c: dict) -> tuple:
+    return (c["flow_slpm"], c.get("coating_stage"), c["inventory_g"])
 
 
-@pytest.mark.parametrize("cid,model", [("c01", "CGP"), ("c08", "CGP"),
-                                       ("c09", "DEM"), ("c10", "DEM")])
-def test_solids_model_from_stat_wt(cid, model):
-    assert build_C26_3d_params(_case(cid))["solids_model"] == model
+def test_sweep_is_one_factor_at_a_time_around_c02():
+    sweep = load_sweep()
+    cases = sweep["cases"]
+    assert [c["id"] for c in cases] == ALL_IDS
+    assert sweep["base"]["ofat_baseline"] == "c02"
+    assert sweep["base"]["base_case"] == "c01"
+    assert all(c["feedstock"] == "case_C26_ysz" for c in cases)
+    rows = {c["id"]: _factors(c) for c in cases}
+    assert rows == {
+        "c01": (10, None, 60), "c02": (12, None, 60), "c03": (14, None, 60),
+        "c04": (12, "buffer", 60), "c05": (12, "IPyC", 60),
+        "c06": (12, "SiC", 60), "c07": (12, "OPyC", 60),
+        "c08": (12, None, 40), "c09": (12, None, 80),
+    }
+    base = rows["c02"]
+    for cid, row in rows.items():
+        if cid != "c02":
+            assert sum(a != b for a, b in zip(row, base)) == 1, cid
+    # levels per factor: flow 3, coating stage 5 (bare + every layer), charge 3
+    assert sorted({r[0] for r in rows.values()}) == [10, 12, 14]
+    assert len({r[1] for r in rows.values()}) == 5
+    assert sorted({r[2] for r in rows.values()}) == [40, 60, 80]
 
 
-def test_table1_closures(p01):
+def test_coating_stages_cover_every_triso_layer_in_order():
+    particles = _load_yaml(REPO_ROOT / "params" / "particles.yaml")
+    layer_names = [layer["name"] for layer in particles["triso_coating_layers"]]
+    assert layer_names == ["buffer", "IPyC", "SiC", "OPyC"]
+    stages = [_case(c).get("coating_stage") for c in ("c04", "c05", "c06", "c07")]
+    assert stages == layer_names
+
+
+def test_coating_stage_diameter_and_density(all_params):
+    # src/correlations.py::coated_particle_stages on the YSZ core
+    # (tests/test_correlations.py hand calc).
+    expected = {"c02": (411.6, 6000.0), "c04": (611.6, 2524.0), "c05": (691.6, 2331.6),
+                "c06": (761.6, 2549.7), "c07": (841.6, 2381.5)}
+    for cid, (d_um, rho) in expected.items():
+        assert all_params[cid]["d_p_m"] * 1e6 == pytest.approx(d_um, abs=1e-6), cid
+        assert all_params[cid]["rho_p_kg_m3"] == pytest.approx(rho, abs=0.5), cid
+    d = [all_params[c]["d_p_m"] for c in ("c02", "c04", "c05", "c06", "c07")]
+    assert d == sorted(d) and len(set(d)) == 5
+    # PSD width of the YSZ feedstock carries through coating (uniform layers).
+    sigma = math.sqrt(149.1e-12)
+    for cid in ("c04", "c07"):
+        p = all_params[cid]
+        assert p["psd_stdev_m"] == pytest.approx(sigma)
+        assert p["psd_max_dp_m"] == pytest.approx(p["d_p_m"] + 3 * sigma)
+    assert all_params["c07"]["feedstock_label"].endswith("buffer + IPyC + SiC + OPyC")
+
+
+def test_resolve_particle_rejects_unknown_stage():
+    particles = _load_yaml(REPO_ROOT / "params" / "particles.yaml")
+    with pytest.raises(KeyError):
+        resolve_particle({"feedstock": "case_C26_ysz", "coating_stage": "TRISO"}, particles)
+    bare = resolve_particle({"feedstock": "case_C26_ysz"}, particles)
+    assert bare["coating_stage"] is None and bare["d_p_mean_m"] == pytest.approx(411.6e-6)
+
+
+def test_stat_wt_is_ten_everywhere_and_a_lower_bound(all_params):
+    assert load_sweep()["base"]["stat_wt"] == 10   # default and lower bound
+    for cid, p in all_params.items():
+        assert p["cgp_stat_wt"] == 10.0, cid
+        assert p["solids_model"] == "CGP", cid
+        assert p["d_parcel_m"] == pytest.approx(p["d_p_m"] * 10.0 ** (1.0 / 3.0)), cid
+    # larger particles get larger parcels: 841.6 um * 10^(1/3) = 1.813 mm
+    assert all_params["c07"]["d_parcel_m"] == pytest.approx(1.813e-3, rel=1e-3)
+    assert all_params["c07"]["dx_over_d_parcel"] == pytest.approx(1.158, rel=2e-3)
+    with pytest.raises(ValueError, match="stat_wt must be >= 10"):
+        build_C26_3d_params({**_case("c01"), "stat_wt": 5})
+    assert build_C26_3d_params({**_case("c01"), "stat_wt": 20})["cgp_stat_wt"] == 20.0
+
+
+def test_bed_charge_sets_bed_height(all_params):
+    p = all_params
+    assert p["c08"]["inventory_kg"] == pytest.approx(0.040)
+    assert p["c09"]["inventory_kg"] == pytest.approx(0.080)
+    assert p["c08"]["H_static_m"] < p["c02"]["H_static_m"] < p["c09"]["H_static_m"]
+    assert p["c08"]["H_static_m"] == pytest.approx(30.2e-3, abs=0.1e-3)
+    assert p["c09"]["H_static_m"] == pytest.approx(38.6e-3, abs=0.1e-3)
+    # coated stages at 60 g: lower density -> deeper bed, above the cone top
+    for cid in ("c04", "c05", "c06", "c07"):
+        assert p[cid]["H_static_m"] > p[cid]["h_cone_m"], cid
+    for cid, q in p.items():
+        assert q["H_static_m"] < q["H_ic_m"] < q["H_dom_m"], cid
+
+
+def test_c01_regression(p01):
+    # c01 deck physics must not move (its 3 s AWS run, 2026-10-18).
+    assert p01["ps_massflow_g_kg_s"] == pytest.approx(2.7215e-4, rel=1e-4)
+    assert p01["H_static_m"] == pytest.approx(34.84e-3, rel=1e-3)
+    assert p01["H_ic_m"] == pytest.approx(43.7e-3, rel=2e-3)
+    assert p01["cgp_stat_wt"] == 10.0 and p01["coating_stage"] is None
+
+
+def test_table1_closures(p01, all_params):
     assert p01["drag_type"] == "TGS"
     assert (p01["kn"], p01["kn_w"]) == (1000.0, 1000.0)
     assert (p01["kt_fac"], p01["des_etat_fac"]) == (0.285, 0.5)
     assert (p01["mew"], p01["mew_w"]) == (0.1, 0.1)
     assert (p01["des_en_input_pp"], p01["des_en_input_pw"]) == (0.5, 0.5)
-    assert build_C26_3d_params(_case("c06"))["mew_w"] == 0.7
+    # particle-wall friction is fixed at the C26 baseline, not swept
+    assert {p["mew_w"] for p in all_params.values()} == {0.1}
 
 
 def test_parcel_count_estimate(p01):
@@ -276,7 +374,7 @@ def test_deck_has_point_source_and_no_inflow(tmp_path):
     m = re.search(r"ps_massflow_g\(1\)\s*=\s*([0-9.eE+\-]+)", text)
     assert m and float(m.group(1)) == pytest.approx(p["ps_massflow_g_kg_s"], rel=1e-5)
     m = re.search(r"ps_v_g\(1\)\s*=\s*([0-9.eE+\-]+)", text)
-    assert m and float(m.group(1)) == pytest.approx(p["U_nozzle_m_s"], rel=1e-5)
+    assert m and float(m.group(1)) == 0.0   # mass-only default
     assert "'MI'" not in text
     assert not re.search(r"^\s*bc_type\(3\)", text, flags=re.M)
 
@@ -289,13 +387,22 @@ def test_deck_drag_and_psd(tmp_path):
     assert re.search(r"vtk_t_start\(3\)\s*=", text)
 
 
-def test_deck_cgp_keyword_only_when_coarse_grained(tmp_path):
-    text, _ = _render(tmp_path, "c01")
-    assert re.search(r"solids_model\(1\)\s*=\s*'CGP'", text)
-    assert re.search(r"cgp_stat_wt\(1\)\s*=\s*10", text)
-    text9, _ = _render(tmp_path, "c09")
-    assert re.search(r"solids_model\(1\)\s*=\s*'DEM'", text9)
-    assert not re.search(r"^\s*cgp_stat_wt", text9, flags=re.M)
+def test_deck_cgp_keyword_in_every_case(tmp_path):
+    # W >= 10 everywhere, so every deck is CGP with cgp_stat_wt written.
+    for cid in ("c01", "c07"):
+        text, _ = _render(tmp_path, cid)
+        assert re.search(r"solids_model\(1\)\s*=\s*'CGP'", text), cid
+        assert re.search(r"cgp_stat_wt\(1\)\s*=\s*10", text), cid
+
+
+def test_deck_carries_coated_particle(tmp_path):
+    text, p = _render(tmp_path, "c07")
+    m = re.search(r"d_p0\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(p["d_p_m"], rel=1e-5)
+    m = re.search(r"ro_s0\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(p["rho_p_kg_m3"], rel=1e-5)
+    m = re.search(r"ic_y_n\(2\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(p["H_ic_m"], rel=1e-5)
 
 
 def test_deck_mesh_lines(tmp_path):
@@ -329,7 +436,7 @@ def test_deck_keywords_are_verified(tmp_path):
     """CLAUDE.md rule 1: every keyword is either already in the verified
     V_3d DEM template or in the 2026-10-16 C26 verified list."""
     allowed = _keywords(V3D_DEM_TEMPLATE.read_text()) | C26_NEW_KEYWORDS
-    for cid in ("c01", "c09", "c12"):
+    for cid in ("c01", "c04", "c07", "c09"):
         text, _ = _render(tmp_path, cid)
         unknown = _keywords(text) - allowed
         assert not unknown, f"{cid}: unverified keywords {sorted(unknown)}"
