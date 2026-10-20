@@ -79,17 +79,33 @@ only with a pathology-review-grade justification. Here are the justifications.
 - Gas point sources work with DEM/CGP solids in 26.1.2. Only *solids* point
   sources are rejected for DEM/CGP (`check_point_sources.f:443-451`).
 
-### Recipe Rule 6 (4-quadrant IC with a central gas column) → one loose bed region
+### Recipe Rule 6 (4-quadrant IC with a central gas column) → one bed IC region
 
 - R5 (`notes/day10_r5_ic_review.md`) found that the quadrant pattern copies
   NETL's draft-tube bore, which this geometry does not have. With a closed cone
   apex and no stub, there is also no orifice for seeded particles to fall
   through. That was the original Fix-A motivation.
 - C26 §2.2.2: "Particles were initialized at the bottom of the reactor and
-  followed the particle size distribution". We seed one region over the full
-  cross-section from y = 0 to H_ic at a loose ε_s,ic = 0.30 (assumed), as in
-  R5's loose-IC approach. The bed settles under gravity while the point source
-  flows.
+  followed the particle size distribution". We seed one IC region over the
+  full cross-section from y = 0 to H_ic, with ε_s,ic = 0.30 (assumed). H_ic
+  is the height the charge would fill at 0.30. The bed settles under gravity
+  while the point source flows.
+- **The seeded bed is not loose (checked 2026-10-20).** In MFiX 26.1.2,
+  `ic_ep_s` sets only the parcel count, `floor(ic_ep_s · IC_VOL / P_VOL)`
+  (`des/generate_particles_mod.f:731`). The parcels go on a HEXA lattice
+  spaced at (1 + `ic_des_spacing`) × the largest parcel diameter (L849–856),
+  filled from y = 0 up until the count is reached (L941–1033).
+  - So the bed starts at the lattice packing, not at 0.30: about 0.50 for
+    YSZ (c01–c03, c08, c09) and 0.56 for c07. In the c02 smoke at t = 0 the
+    median nearest-neighbour distance is 1.014 mm (= 1.05 × 0.966 mm) and
+    the interior ε_s is 0.51.
+  - The top of the IC region starts empty. Seeded bed tops at t = 0 (99th
+    percentile of parcel y): c02 38.1 mm (H_ic 43.7), c04 51.5 (66.8),
+    c07 51.9 (69.1), c09 40.6 (49.3).
+  - The lattice then compacts under gravity to an interior ε_s of 0.59–0.62
+    within ~40–80 ms. The settled height is set by the seeded charge and
+    that packing. H_ic enters no check; the monitors and thresholds use
+    H_static.
 
 ### Recipe Rule 12 (SYAM_OBRIEN) → TGS
 
@@ -374,7 +390,7 @@ and is being run as the 3 s c01–c03 mass-only runs; 3 is reviewed under
   2026-10-19. The wall number cannot decide this. A circulation check
   (parcel flux through y = 20 mm, same frames) shows:
   - **r3:** spout net up +4 500 /s against annulus net down −10 200 /s. The
-    bed is still compacting from the loose IC, so the early wall value
+    bed is still compacting from the seeded lattice, so the early wall value
     includes settling, not just circulation. c01 at 2.4–3.0 s is balanced
     (+5 180 / −5 285 /s).
   - **r4:** spout net up only 14 % below r3 (+3 900 /s): the jet is slower
@@ -424,7 +440,7 @@ and is being run as the 3 s c01–c03 mass-only runs; 3 is reviewed under
   - LINEAR_HAT, no floor: fails at t = 0.
   - SQUARE_DPVM, `des_interp_width` = 2.1 mm (the C26 cell size; width
     assumed, not reported), no floor: fails at t = 0.0048 s as the bed
-    settles. A 3 ms dry run had passed on the loose IC.
+    settles. A 3 ms dry run had passed on the seeded IC.
   - These slivers sit just above MFiX's `TOL_SMALL_CELL` (default 0.01).
   - So C26 either set a floor or had no such slivers. Asked in the author
     email.
@@ -604,9 +620,20 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
 
   For comparison, c01–c03 seed 61.0 g. Every case is within the 10 %
   seeding rule.
-  - **Cause of c09's shortfall:** it is about one HEXA lattice row short
-    at the top of the seeded region. That row sits in the column, above
-    the cone top, where one row is about 1,750 parcels.
+  - **Cause of c09's shortfall:** the parcel count, not the lattice.
+    MFiX counts parcels from `IC_VOL`, the summed volume of whole fluid
+    cells in the IC index range (`GET_IC_VOLUME`,
+    `des/generate_particles_mod.f:2623`), so `ic_y_n = H_ic` acts as if
+    snapped to the nearest cell face. c09's H_ic of 49.3 mm (23.48 cells)
+    snaps down to 48.3 mm. That drops ~1 mm of column, ~3.6 g at
+    ε_s 0.30.
+  - The other cases' errors have the same cause. Their signs follow the
+    snap direction: up for c01–c04, c06 and c07; down for c05 and c08. The
+    magnitudes also carry the cut-cell volume error against the nominal
+    cone.
+  - Corrected 2026-10-20: this note first blamed one missing HEXA lattice
+    row. The lattice fills until the count is reached, so it is the count
+    that is short.
   - **Status:** accepted as is (user decision 2026-10-19). The charge block
     is 39.6 / 61.0 / 76.1 g as seeded.
   - **Reporting:** the sweep summary uses the seeded mass, not the

@@ -719,10 +719,16 @@ spouted_bed_C26_3d_dem:
                            # not reported in C26; width = the paper's fluid
                            # cell size (C26 2.2.1, p.3).
                            # source: assumed (A/B c01_smoke_r5_dpvm_noclip).
-  eps_s_ic: 0.30           # loose solids fraction of the seeded bed [-]
+  eps_s_ic: 0.30           # solids fraction of the IC region (ic_ep_s) [-].
+                           # Sets the parcel COUNT only (MFiX 26.1.2 seeds
+                           # floor(ic_ep_s*IC_VOL/P_VOL) parcels) and, in the
+                           # builder, the IC region top H_ic.  The parcels sit
+                           # on a HEXA lattice at 1.05 x the largest parcel
+                           # diameter, filled from y = 0 up, so the bed starts
+                           # at ~0.50 (YSZ) and below H_ic, then settles under
+                           # gravity (notes/c26_conry2026_case.md, Rule 6).
                            # C26 2.2.2: particles "initialized at the bottom
-                           # of the reactor"; the bed settles under gravity.
-                           # Loose, not packed (R5 IC review).
+                           # of the reactor".
                            # source: assumed (notes/day10_r5_ic_review.md).
   eps_s_packed: 0.57       # packed solids fraction used ONLY to derive the
                            # static bed height H_static (monitor placement,

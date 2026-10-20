@@ -10,7 +10,7 @@
 #!   - gas enters through ONE point-source cell on the axis (ps_*), not a
 #!     mass inflow through an STL stub pipe;
 #!   - the STL is a closed cone + column (no stub, flat cap at y = 0);
-#!   - a single loose bed IC seeded from the measured PSD (ic_psd_*);
+#!   - a single bed IC region seeded from the measured PSD (ic_psd_*);
 #!   - TGS drag, C26 Table 1 contact parameters;
 #!   - a 0.6 s / 2 ms particle-VTK window at the end of the run for PIV.
 #! New keywords (ps_*, ic_psd_*, vtk_t_start/vtk_t_end, drag_type='TGS'
@@ -121,10 +121,12 @@
     ic_v_s(1,1)  = 0.0
     ic_w_s(1,1)  = 0.0
 
-  # IC 2: loose bed over the full cross-section, 0 <= y <= H_ic =
-  # {{ "%.4f"|format(H_ic_m) }} m, eps_s = {{ eps_s_ic }}.  Lattice sites outside
-  # the cone are dropped by the cut-cell geometry.  Inventory-conserving:
-  # {{ "%.1f"|format(inventory_kg * 1000) }} g (params/sweep_C26.yaml; C26 2.2.2: 60 g).  The bed settles under gravity.
+  # IC 2: bed region over the full cross-section, 0 <= y <= H_ic =
+  # {{ "%.4f"|format(H_ic_m) }} m.  ic_ep_s = {{ eps_s_ic }} sets the parcel count only, sized for
+  # {{ "%.1f"|format(inventory_kg * 1000) }} g (params/sweep_C26.yaml; C26 2.2.2: 60 g).  MFiX packs the
+  # parcels on the HEXA lattice from y = 0 up, so the bed starts denser than
+  # eps_s and below H_ic.  Lattice sites outside the cone are dropped by the
+  # cut-cell geometry.  The bed settles under gravity.
     ic_x_w(2)    = {{ "%.6e"|format(x_min_m) }}
     ic_x_e(2)    = {{ "%.6e"|format(x_max_m) }}
     ic_y_s(2)    = 0.0

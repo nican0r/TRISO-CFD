@@ -343,7 +343,7 @@ def build_C26_3d_params(
     # Cross-check of the C25/C26 Fig. 1 "~25 mm" annotation (not a model input).
     H_static_if_90deg_m = _h(eps_s_packed, 45.0)
     if H_ic_m >= H_dom_m:
-        raise ValueError(f"seeded bed height {H_ic_m} m exceeds H_dom {H_dom_m} m")
+        raise ValueError(f"IC region top H_ic {H_ic_m} m exceeds H_dom {H_dom_m} m")
 
     n_real = m_bed / (rho_p * math.pi / 6.0 * _mean_cube_normal(d_mean, sigma))
     solids_model = "CGP"   # W >= base.stat_wt (10): always coarse-grained

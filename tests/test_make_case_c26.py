@@ -149,7 +149,7 @@ def test_bed_heights_and_paper_annotation(p01):
     # give ~ 24 mm, closer to the C25/C26 Fig. 1 "~25 mm".  Logged, not tuned.
     assert 0.030 < p01["H_static_m"] < 0.040
     assert 0.020 < p01["H_static_if_90deg_m"] < 0.028
-    assert p01["H_ic_m"] > p01["H_static_m"]      # loose seeding is taller
+    assert p01["H_ic_m"] > p01["H_static_m"]      # IC region top above packed bed
     assert p01["H_ic_m"] < p01["H_dom_m"]
 
 
