@@ -16,6 +16,7 @@ Public API:
     slpm_to_mass_flow(flow_slpm, rho_ref_kg_m3) -> float
     resolve_particle(case, particles) -> dict
     build_C26_3d_params(case, tstop_s=None, run_name=None, ...) -> dict
+    write_gridmap(run_dir, gridmap) -> Path
 
 All values SI (CLAUDE.md rule 3).  Every physical number comes from
 params/*.yaml (CLAUDE.md rule 2).
@@ -192,9 +193,9 @@ def build_C26_3d_params(
       - uniform mesh dx = D_c / n_cells_across_D (2.1 mm); an ODD number of
         cells across the box so the vessel axis is a cell centre;
       - gas enters through ONE point-source cell centred on the axis in the
-        first fluid row above the cap (C26 2.2.1).  ps_v_g is the nozzle
-        exit velocity (momentum flux m_dot * U_nozzle), or 0 for a
-        mass-only source (``ps_momentum``).
+        first fluid row above the cap (C26 2.2.1).  ps_v_g is 0 for the
+        default mass-only source, or the nozzle exit velocity (momentum flux
+        m_dot * U_nozzle) with ``ps_momentum``.
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
@@ -262,8 +263,6 @@ def build_C26_3d_params(
     imax, jmax, kmax = len(dx_m_list), len(dy_m_list), len(dz_m_list)
     if imax != n_xz or kmax != n_xz or jmax != n_vert + n_below:
         raise AssertionError("mesh construction mismatch")
-    if imax % 2 != 1:
-        raise AssertionError("box must have an odd cell count across x/z")
 
     if gridmap is not None:
         if len(gridmap) != 3:
@@ -347,7 +346,7 @@ def build_C26_3d_params(
         raise ValueError(f"seeded bed height {H_ic_m} m exceeds H_dom {H_dom_m} m")
 
     n_real = m_bed / (rho_p * math.pi / 6.0 * _mean_cube_normal(d_mean, sigma))
-    solids_model = "DEM" if stat_wt == 1.0 else "CGP"
+    solids_model = "CGP"   # W >= base.stat_wt (10): always coarse-grained
     m_parcel = stat_wt * rho_p * math.pi / 6.0 * d_mean ** 3
     d_parcel = d_mean * stat_wt ** (1.0 / 3.0)   # CGP parcel diameter [m]
     dt_rayleigh_s = math.pi * math.sqrt(m_parcel / float(dem["kn"]))
@@ -432,7 +431,6 @@ def build_C26_3d_params(
         "eps_s_packed": eps_s_packed,
         "H_static_m": H_static_m,
         "H_static_if_90deg_m": H_static_if_90deg_m,
-        "H_static_paper_annotation_m": 0.025,
         "H_mid_m": 0.5 * H_static_m,
         "n_real_particles": n_real,
         "n_parcels_est": n_real / stat_wt,

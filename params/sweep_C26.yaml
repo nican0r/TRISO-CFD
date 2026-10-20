@@ -19,8 +19,10 @@ base:
   tstop_s: 3.0                # simulated end time [s]
                               # C26 2.2.2: "a minimum flow time of 3.0 s".
                               # source: C26 p.3 (2.2.2).
-  base_case: c01              # CLAUDE.md rule 11: the validated base case
-                              # (smoked GO, 3 s AWS run, 2026-10-18).
+  base_case: c01              # CLAUDE.md rule 11 base case: smoked GO
+                              # (c01_smoke_r3); 3 s momentum run 2026-10-18
+                              # health GO, step-3 C1/D FAIL; 3 s mass-only
+                              # run c01_massonly submitted 2026-10-19.
   ofat_baseline: c02          # reference point of the one-factor-at-a-time
                               # sweep: YSZ, 60 g, 12 slpm.
   stat_wt: 10                 # CGP statistical weight W [-] for every case.

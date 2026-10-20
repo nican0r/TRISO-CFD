@@ -33,8 +33,9 @@ DEFAULT_VCPU = 16
 DEFAULT_MEMORY_MB = 30000
 
 # C26 (Conry et al. 2026) job sizing: one vCPU per rank, 4 ranks (2x1x2).
-# 4 ranks gives the most throughput per vCPU (c01_aws4_timing: 0.234 s/step on
-# 4 vCPU vs 0.209 on 16 vCPU / 9 ranks), so a 32-vCPU quota runs 8 jobs.
+# 4 ranks gives the most throughput per vCPU (c01_aws4_timing: 0.234 s/step
+# with 4 ranks vs 0.209 with 9 ranks, both on a 16-vCPU allocation), so a
+# 32-vCPU quota runs 8 jobs.
 # Memory: local 4-rank c01 (W=10, 27,782 parcels), measured 2026-10-19:
 # steady 0.6-0.7 GB summed over ranks, peak 1.09 GB during mesh/STL
 # preprocessing. 6000 MB is ~5x headroom and still fits 4 jobs on a

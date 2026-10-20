@@ -9,8 +9,8 @@ Creates (or no-ops if already present):
   - Batch job queue         wired to the compute env
   - Batch job definition    pointing to <ecr>/<repo>:<tag>, retry=1
 
-Does NOT build or push the image — use `make docker-build && make docker-push`
-(or the helpers at the bottom of this file via --build / --push flags).
+Builds and pushes the image (docker/) only with --build
+(docker_build_and_push: docker build, tag, ECR login, push).
 
 Usage:
     .venv/bin/python -m src.aws.provision          # provision everything
@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 

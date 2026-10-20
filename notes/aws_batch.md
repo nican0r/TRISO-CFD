@@ -1,9 +1,10 @@
 # Running MFiX on AWS Batch
 
 This project runs MFiX 26.1.2 on AWS Batch (EC2, on-demand) for workloads that
-are too long or too parallel for the laptop (Day 11-12 CFD-DEM, Day 13 16-run
-parametric sweep). The laptop is still used to render cases and post-process
-results; Batch only runs the solver.
+are too long or too parallel for the laptop (on this branch, the Case C26 3 s
+CFD-CGDEM runs c01–c09; the Day 10–13 Case V/D runs and their drivers are on
+branch `case-v-d-day10-13`). The laptop is still used to render cases and
+post-process results; Batch only runs the solver.
 
 ## What the stack looks like
 
@@ -41,11 +42,11 @@ Pieces, with their file / resource name:
 | Submit script | `.venv/bin/python -m src.aws.submit` | `src/aws/submit.py` |
 | Poll script | `.venv/bin/python -m src.aws.poll` | `src/aws/poll.py` |
 | Shared config | `src/aws/config.py` | all names, region, instance types |
-| Run manifest | `results/run_log.csv` (one 'submitted' row per job, carries `aws_job_id`) | appended by `src/aws/submit.py:append_run_log_row` (submit.py:61) |
+| Run manifest | `results/run_log.csv` (one 'submitted' row per job, carries `aws_job_id`) | appended by `src/aws/submit.py::append_run_log_row` |
 
 Note on tracking: there is no stand-alone AWS job manifest file. Each case
-directory carries its own `cases/<case>/manifest.json` (written by the day-N
-driver) with physical parameters, and `results/run_log.csv` is the project-
+directory carries its own `cases/<case>/manifest.json` (written by the case
+driver, e.g. `src/run_C26_3d.py`) with physical parameters, and `results/run_log.csv` is the project-
 wide tracked manifest (CLAUDE.md rule 15: "Submit jobs via the tracked
 manifest system"). `submit.py` appends a `status=submitted` row *before*
 dispatch, so the aws_job_id and S3 prefix are logged even if Batch rejects
@@ -78,47 +79,40 @@ gets reclaimed mid-flight (Day 11-12's 20-60 h CFD-DEM run is the reason).
 
 ## Per-run workflow
 
-### Single run (Day 10, Day 11-12)
+### Single run (C26)
 
 ```bash
 # 1. render the case locally (same driver that worked on the laptop)
-.venv/bin/python -m src.run_V_3d_day10
+.venv/bin/python -m src.run_C26_3d --case c04 --run-dir-suffix _massonly
 
-# 2. dry-run plan (no S3, no submit — useful for sanity-check)
+# 2. dry-run plan (no S3, no submit; sizing comes from the manifest)
 .venv/bin/python -m src.aws.submit \
-    --case-dir cases/V_3d/day10 \
-    --mfx V_3d_day10.mfx \
-    --job-name d10-pic \
-    --vcpu 16 --memory 30000 \
+    --case-dir cases/C26_3d/c04_massonly \
+    --mfx C26_c04_massonly.mfx \
+    --job-name c26-c04-massonly \
     --dry-run
 
-# 3. real submit (syncs case to S3, submits Batch job, appends run_log row)
-.venv/bin/python -m src.aws.submit \
-    --case-dir cases/V_3d/day10 \
-    --mfx V_3d_day10.mfx \
-    --job-name d10-pic \
-    --vcpu 16 --memory 30000
+# 3. real submit (syncs case to S3, submits Batch job, appends run_log row):
+#    the same command without --dry-run
 # prints: [submit] job id: <job-id>
 
 # 4. watch until done, then pull results into cases/.../aws_out
-.venv/bin/python -m src.aws.poll <job-id> --watch --pull cases/V_3d/day10/aws_out
+.venv/bin/python -m src.aws.poll <job-id> --watch --pull cases/C26_3d/c04_massonly/aws_out
 ```
 
-Day 11-12 is identical, just with a larger `--vcpu` / `--memory` and the
-Day-11-12 driver.
-
-### Array run (Day 13)
+### Array run
 
 ```bash
-# 1. render all 16 sweep leaves under cases/sweep13/case_00/ ... case_15/
-.venv/bin/python -m src.run_V_3d_sweep13   # (day 13 driver)
+# 1. render one complete case dir per index: <sweep_root>/case_00/, case_01/, ...
+#    (the Day-13 driver src/run_V_3d_day13.py, on branch case-v-d-day10-13,
+#    writes cases/D_sweep13/ this way)
 
 # 2. submit as a Batch array
 .venv/bin/python -m src.aws.submit \
-    --array-root cases/sweep13 \
-    --mfx V_3d_sweep.mfx \
-    --job-name d13-sweep \
-    --array-size 16 \
+    --array-root cases/<sweep_root> \
+    --mfx <deck>.mfx \
+    --job-name <sweep-name> \
+    --array-size N \
     --vcpu 16 --memory 30000
 
 # 3. poll the parent job id; children are <id>:0, <id>:1, ...
@@ -127,8 +121,8 @@ Day-11-12 driver.
 
 The entrypoint reads `AWS_BATCH_JOB_ARRAY_INDEX`, formats it as `case_NN`,
 and syncs only its own leaf from S3. The compute env's `MAX_VCPUS = 64`
-(in `src/aws/config.py`) lets ~4 children run in parallel; raise it to 256
-to run all 16 at once (same total cost, just finishes sooner).
+(in `src/aws/config.py`) caps how many children run at once (4 at 16 vCPU);
+raising it runs more at once (same total cost, just finishes sooner).
 
 ## Entrypoint contract
 
@@ -142,7 +136,7 @@ The container's `/opt/entrypoint.sh` reads these env vars (passed via Batch's
 | `CASE_S3_ARRAY` | yes (array) | `s3://<bucket>/sweep/<name>/` root for array children |
 | `RESULTS_S3_ARRAY` | yes (array) | corresponding results root |
 | `MFX_FILE` | yes | deck filename inside the case dir |
-| `NP` | no | MPI rank count (default 1; `src/aws/submit.py` sets it = `--vcpu`) |
+| `NP` | no | MPI rank count (default 1; `src/aws/submit.py` sets it to `--nranks`, else the manifest's `nranks`, else `--vcpu`) |
 | `EXTRA_MFIX_ARGS` | no | extra argv for `mfixsolver` (e.g. `-r` to restart) |
 | `NODESI` / `NODESJ` / `NODESK` | no | explicit DMP partitioning; product must equal `NP`. If all unset, `docker/entrypoint.sh:inject_dmp_keywords` auto-picks `NODESI=1, NODESJ=NP, NODESK=1` (axial decomposition for spouted-bed geometries) and patches the keywords into the deck before launch — `mfixsolver_dmp` does not accept CLI keyword overrides. |
 | `LOCAL_SMOKE` | no | if `1`, skip S3 and run on `/work` bind-mount |
@@ -177,14 +171,15 @@ and all expected output files appeared.
 Explicit flags win. Manifests without `aws_vcpu`, which covers every V_3d case,
 keep the old defaults (16 vCPU / 30000 MB).
 
-C26 (`src/run_C26_3d.py`) writes 4 vCPU, 6000 MB and 4 ranks (2×1×2,
-gridmap i = k = [13,14]). The account quota is 32 vCPU, so 8 C26 jobs run at
-once, packed 4 per c7a.4xlarge. The basis is in `src/aws/config.py`
-(`C26_MEMORY_MB`) and `notes/c26_conry2026_case.md` ("AWS run cost").
+C26 (`src/run_C26_3d.py`) writes 4 vCPU, 4 ranks (2×1×2, gridmap
+i = k = [13,14]) and 6000 MB, scaled up by parcel count (c09: 8000 MB). The
+account quota is 32 vCPU, so 8 C26 jobs run at once, packed 4 per
+c7a.4xlarge. The basis is in `src/aws/config.py` (`C26_MEMORY_MB`) and
+`notes/c26_conry2026_case.md` ("AWS run cost").
 
 ```bash
-.venv/bin/python -m src.aws.submit --case-dir cases/C26_3d/c02 \
-    --mfx C26_c02.mfx --job-name c26-c02 --dry-run   # drop --dry-run to submit
+.venv/bin/python -m src.aws.submit --case-dir cases/C26_3d/c02_massonly \
+    --mfx C26_c02_massonly.mfx --job-name c26-c02-massonly --dry-run   # drop --dry-run to submit
 ```
 
 ## Costs (on-demand, us-east-1 c7a)

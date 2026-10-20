@@ -221,8 +221,8 @@ def test_dt_max_is_paper_step_capped_by_rule9(p01, all_params):
     # Every sweep case is at <= 14 slpm (<= 52.4 m/s): the paper step holds.
     for cid, p in all_params.items():
         assert p["dt_max_s"] == pytest.approx(1.0e-5), cid
-    # 30 slpm (C26's steel flow, not in the sweep): Rule 9 (9.4e-6 s) is
-    # tighter than the paper step.
+    # High-flow check (30 slpm, reachable via --flow-slpm, not in the sweep):
+    # Rule 9 (9.4e-6 s) is tighter than the paper step.
     p30 = build_C26_3d_params({**_case("c01"), "id": "x30", "flow_slpm": 30})
     assert p30["dt_max_s"] == pytest.approx(0.5 * p30["dx_m"] / p30["U_nozzle_m_s"])
     assert p30["dt_max_s"] < p01["dt_max_s"]

@@ -1,4 +1,4 @@
-"""Generate the Case V 3D spouted-bed geometry as a watertight STL.
+"""Generate the Case V and Case C26 3D spouted-bed geometries as STLs.
 
 The vessel inner wall is a surface of revolution built from the (r, z) profile
 
@@ -14,6 +14,9 @@ Public API:
 
     build_spouted_bed_stl(R_c_m, R_i_m, cone_half_angle_deg, H_dom_m,
                            theta_segments, out_path) -> Path
+    build_cone_column_stl_implicit(R_c_m, R_t_m, cone_half_angle_deg, H_dom_m,
+                                   dx_sample_m, out_path, top_extend_m) -> Path
+        Case C26: closed cone + column for a gas point source (no inlet stub).
 
 All lengths SI (m).  Facet normals point INWARD (toward the fluid region),
 per MFiX's OUT_STL_VALUE = 1.0 internal-flow convention: the F_AT classifier

@@ -7,18 +7,21 @@ For each selected case in params/sweep_C26.yaml, writes:
   cases/C26_3d/<id>/manifest.json     run provenance
   cases/C26_3d/<id>/run.sh            MFiX runner (serial or DMP)
 
-and cases/C26_3d/sweep_index.json listing every generated case.  It does
-NOT launch MFiX.  Per CLAUDE.md rules 11 and 13, smoke-run the base case
-(c01) locally and validate it with the mfix-smoke-validate skill before
-running anything else.
+It does NOT launch MFiX.  Per CLAUDE.md rules 11 and 13, smoke-run a case
+locally and validate it with notes/smoke_validate_c26.py before submitting
+its long run.
+
+Use a fresh --run-dir-suffix for new runs: the unsuffixed c01-c03 dirs and
+the existing *_smoke dirs are run provenance (results/run_log.csv).
 
 Examples:
 
-  .venv/bin/python -m src.run_C26_3d --case c01 --tstop 0.3 --run-dir-suffix _smoke
-  .venv/bin/python -m src.run_C26_3d --case all
-  .venv/bin/python -m src.run_C26_3d --case c01 --dry-run
+  .venv/bin/python -m src.run_C26_3d --case c04 --run-dir-suffix _massonly
+  .venv/bin/python -m src.run_C26_3d --case c02 --tstop 0.3 --run-dir-suffix _smoke_r2
+  .venv/bin/python -m src.run_C26_3d --case all --dry-run
   # non-uniform partition: narrow slabs over the cone, where the parcels are
-  .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9
+  .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9 \
+      --run-dir-suffix _gridmap_test
 
 With neither --nodes nor --gridmap-*, cases get DEFAULT_GRIDMAP: 4 ranks
 (2x1x2, i = k = [13,14]), the laptop split and the best throughput per vCPU on
@@ -73,14 +76,6 @@ def _parse_sizes(spec: str) -> list[int]:
     if not sizes or min(sizes) < 1:
         raise argparse.ArgumentTypeError(f"gridmap sizes must be >= 1; got {spec!r}")
     return sizes
-
-
-def _repo_relative(path: Path) -> str:
-    """Path relative to the repo root, or absolute for an --out-root outside it."""
-    try:
-        return str(path.relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
 
 
 def _select(cases: list[dict], spec: str) -> list[dict]:
@@ -153,7 +148,7 @@ def main() -> None:
                    help="print manifests; write nothing")
     args = p.parse_args()
     if args.flow_slpm is not None and not args.run_dir_suffix:
-        p.error("--flow-slpm needs --run-dir-suffix (keeps the sweep's run dir and index)")
+        p.error("--flow-slpm needs --run-dir-suffix (keeps the sweep's run dir)")
 
     sweep = load_sweep()
     selected = _select(sweep["cases"], args.case)
@@ -163,7 +158,6 @@ def main() -> None:
     elif args.nodes is None:
         gridmap = DEFAULT_GRIDMAP
     nodes = args.nodes or (1, 1, 1)
-    index = []
     stl_cache: Path | None = None
     facet_count = None
 
@@ -219,29 +213,7 @@ def main() -> None:
             gridmap_path.unlink()
         (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         write_runner(run_dir, mfx_path.name, params["nranks"])
-        index.append({
-            "id": case["id"], "run_dir": _repo_relative(run_dir),
-            "feedstock": params["feedstock"], "coating_stage": params["coating_stage"],
-            "d_p_m": params["d_p_m"], "rho_p_kg_m3": params["rho_p_kg_m3"],
-            "inventory_kg": params["inventory_kg"], "H_static_m": params["H_static_m"],
-            "flow_slpm": params["flow_slpm"],
-            "solids_model": params["solids_model"], "cgp_stat_wt": params["cgp_stat_wt"],
-            "d_parcel_m": params["d_parcel_m"], "U_nozzle_m_s": params["U_nozzle_m_s"],
-            "dt_max_s": params["dt_max_s"], "n_parcels_est": params["n_parcels_est"],
-            "tstop_s": params["tstop_s"],
-        })
         print(f"wrote {run_dir}")
-
-    if not args.dry_run and index and not args.run_dir_suffix:
-        # Merge into the existing index so a single-case regeneration does
-        # not drop the other cases.
-        index_path = args.out_root / "sweep_index.json"
-        merged = {}
-        if index_path.is_file():
-            merged = {row["id"]: row for row in json.loads(index_path.read_text())}
-        merged.update({row["id"]: row for row in index})
-        rows = [merged[k] for k in sorted(merged)]
-        index_path.write_text(json.dumps(rows, indent=2) + "\n")
 
 
 if __name__ == "__main__":

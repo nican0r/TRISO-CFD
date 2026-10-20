@@ -41,7 +41,7 @@ al. 2005). C26 is a different rig with different everything:
 
 Mixing these into `bed_V` / `case_V` would silently change Case V. New blocks
 are added instead (`bed_C26`, `spouted_bed_C26_3d`, `spouted_bed_C26_3d_dem`,
-`case_C26_ysz`, `case_C26_ss`, `ar_25C`, `spouted_bed_C26_3d_numerics`,
+`case_C26_ysz`, `triso_coating_layers`, `ar_25C`, `spouted_bed_C26_3d_numerics`,
 `params/sweep_C26.yaml`). Case V files are untouched.
 
 ## Deliberate deviations from the spouted-bed recipe
@@ -66,8 +66,11 @@ only with a pathology-review-grade justification. Here are the justifications.
 - In 26.1.2 the point source adds `ps_massflow_g` spread over the fluid volume
   of its cells (`set_ps.f`). It adds momentum `ps_massflow_g × |v| × v̂`, where
   |v| is the magnitude of (`ps_u_g`, `ps_v_g`, `ps_w_g`) (`source_v_g.f:984-987`,
-  `set_ps.f:CALC_PS_VEL_MAG`). We set `ps_v_g` = nozzle exit velocity
-  Q / (π D_n²/4). The jet then carries the physical momentum flux ṁ·U_n.
+  `set_ps.f:CALC_PS_VEL_MAG`). Since 2026-10-19 the source is mass-only by
+  default (`ps_momentum: false`, `ps_v_g = 0`; user decision, see "AWS
+  production runs: mass-only point source"). With `--ps-momentum`, `ps_v_g`
+  = nozzle exit velocity Q / (π D_n²/4) and the jet carries ṁ·U_n; that was
+  the design until 2026-10-19 and is kept for A/Bs.
 - **Axis placement.** 24 cells across D puts the vessel axis on a cell face.
   To put it at a cell centre, the box uses an odd cell count (27 = 24 across D
   plus a 1.5-cell margin each side). The point source is then one cell at
@@ -103,8 +106,8 @@ are not emitted.
 
 dt_max = min(1.0e-5 s, 0.5 · dx / U_nozzle), from `params/numerics.yaml`.
 C26 p.9 (§3.2.1): "a single time step was 0.01 ms". That is the binding value
-for the YSZ cases. Rule 9 binds only for stainless steel at 30 slpm
-(9.4e-6 s). This deliberately does not copy the V_3d decks' 1e-3 s ceiling,
+for every case in `params/sweep_C26.yaml` (U_nozzle ≤ 52.4 m/s, so the Rule-9
+bound is ≥ 2.0e-5 s). Rule 9 would bind only above ~28 slpm. This deliberately does not copy the V_3d decks' 1e-3 s ceiling,
 which R5 flagged as a Rule-9 violation. (Changed 2026-10-17. The first c01
 smoke used the Rule-9 value alone, 2.8e-5 s.)
 
@@ -125,9 +128,9 @@ normals (Rule 20), and the R5 overlapping-seam SDF union (no membrane).
 3. **Bed-height inconsistency.** The C25/C26 Fig. 1 annotation "~25 mm" is the
    *static bed height* (C25 caption: "dimensions of the cone width, cone
    angle, and bed height"). 60 g of YSZ at ε_s = 0.57 in a 60° cone gives
-   **~35 mm**. ~25 mm is only consistent with a ~90° cone. The builder logs
-   both numbers in every manifest. The first smoke must report the settled
-   bed height so this can be judged.
+   **~35 mm**. ~25 mm is only consistent with a ~90° cone. Every manifest
+   logs `H_static_m` and the 90° cross-check `H_static_if_90deg_m`. The first
+   smoke settled at 34.5 mm (2026-10-17), matching the 60° estimate.
 4. **Column height / outlet.** Domain top = 100 × 2.1 mm = 0.210 m (§2.2.1),
    with a pressure outlet there.
 5. **Below-cap margin.** 4 blocked cell rows under the y = 0 cap. That keeps
@@ -167,11 +170,17 @@ Checked 2026-10-16 against the installed source at
   by `cgp_stat_wt^(1/3)` internally (`check_solids_common_discrete.f:190-194`),
   so the deck carries **real** particle sizes.
 - `vtk_t_start`, `vtk_t_end`: `cartesian_grid/cartesian_grid_init_namelist.f:976-992`.
+- `monitor_pmass`, `monitor_pcount` (type-101 Monitor 3, added 2026-10-17):
+  `init_namelist.f` 4715/4722; `check_output_control.f` 888-892; usage from
+  `tutorials/dem/hopper_3d`.
+- `des_interp_width` (emitted only with `--interp-scheme SQUARE_DPVM`,
+  2026-10-19): `des/des_init_namelist.f` 1021-1040.
 - All other keywords are reused unchanged from `cases/V_3d/template_dem.mfx.j2`.
-- Cross-check: all 135 keyword names in the rendered c01/c09/c12 decks were
+- Cross-check: all 135 keyword names in the rendered 2026-10-16 decks were
   grepped against every `*init_namelist*.f` in the installed source; none
   are missing. `tests/test_make_case_c26.py::test_deck_keywords_are_verified`
-  keeps the deck within the V_3d-template set plus the list above.
+  renders c01/c04/c07/c09 and keeps each deck within the V_3d-template set
+  plus the list above (default decks, so not `des_interp_width`).
 
 ## First c01 smoke and full-text review (2026-10-17)
 
@@ -219,7 +228,9 @@ the 3 s baseline at ~44 h. Two ways to cut that were tested. All runs are in
    - CGDEM got *slower*: 0.52 s/step against 0.40 s in r2. The busiest rank's
      parcel count fell 8× without any gain, so particle load per rank is not
      the bottleneck.
-   - The support is kept for later use. The baseline uses uniform 3×1×3.
+   - The support is kept. The c01 baseline used uniform 3×1×3; since
+     2026-10-19 the default is the 4-rank gridmap i = k = [13,14] (see "AWS
+     run cost").
 2. **Coarser STL: 3.5× faster DEM, adopted.**
    - `dx_sample_fraction` (`params/geometry.yaml`) changed from 0.25 to 0.5.
      The marching-cubes sampling step goes from 0.525 to 1.05 mm, and the
@@ -249,9 +260,10 @@ the 3 s baseline at ~44 h. Two ways to cut that were tested. All runs are in
      | ΔP / W/A, PSD peak | 1.79, 15 Hz | 1.69, 14.9 Hz |
      | solids inventory | constant | constant |
 
-   - Still to check: wall roughness. At dx/2 a facet edge is ~1 mm against
-     0.41 mm particles. Compare the wall-velocity target (Fig. 6d, ~1e-3 m/s)
-     against a dx/4 run if c01's wall velocity comes out off.
+   - Wall roughness: at dx/2 a facet edge is ~1 mm against 0.41 mm
+     particles. Checked 2026-10-19 after c01's wall velocity came out off:
+     r2 (dx/4) and r3 (dx/2) give 1.61e-2 and 1.79e-2 m/s, within each run's
+     own spread (see "Not the STL" below).
    - `--stl-sample-fraction` in `src/run_C26_3d.py` overrides the yaml value
      for such tests.
    - c01–c03 were regenerated with the new STL (3×1×3, 3 s).
@@ -306,7 +318,9 @@ frames; the script is noted in run_log.
 
 **Reading.** Both failures point the same way. Our bed circulates ~2–3×
 faster than C26's model: a faster spout core means faster annulus return
-flow at the wall. Candidate causes (not yet tested; nothing changed):
+flow at the wall. Candidate causes at the time (1 was then A/B-tested below
+and is being run as the 3 s c01–c03 mass-only runs; 3 is reviewed under
+"Gas-fraction floor"):
 1. **Point-source momentum.** Our source injects gas at `ps_v_g =
    U_nozzle`, adding a momentum flux ṁU at the apex.
    - C26 §2.2.1 justifies the 2.1 mm cell because, with a point source,
@@ -382,8 +396,8 @@ flow at the wall. Candidate causes (not yet tested; nothing changed):
     startup window.
   - A steady 3 s mass-only run scored at 2.4–3.0 s is the only valid test.
 - r4 fails `check_smoke` S3 (v ratio 0.39/0.24) and the mid-bed v_g ≥ 5 m/s
-  supporting check. Those were written for a momentum source, so a
-  mass-only baseline would need its own inlet criteria before adoption.
+  supporting check. Those were written for a momentum source; the mass-only
+  criteria were set afterwards (see "Mass-only smoke criteria").
 - `ps_momentum` stayed `true` at the time. It became `false` (mass-only) on
   2026-10-19 by user decision; see "AWS production runs: mass-only point
   source".
@@ -457,7 +471,7 @@ locally at r3's whole-run rate (0.155 s/step).
   so it was not adopted and the presets were removed. The earlier
   `c01_gridmap_check` (8× fewer parcels on the busiest rank, 25 ranks) was
   slower too.
-- **Suspected, not yet tested:**
+- **Suspected causes** (1 tested, see "Test 1 result"; 2 and 3 untested):
   1. **Per-rank overhead grows with rank count.** CGDEM went from 0.40 s
      (9 ranks) to 0.52 s (25 ranks) with the dx/4 STL. Candidates are ghost
      particle exchange each DEM substep (~5 per fluid step) and STL facet
@@ -483,23 +497,26 @@ locally at r3's whole-run rate (0.155 s/step).
     `des/des_time_march.f:430`), fluid 0.14 → 0.09. The two roughly cancel.
   - DEM loses more than fluid (2.25× against 1.56×), which points at
     container MPI (test 3) on top of per-core speed. Not yet separated.
-- **Cost.** 16 vCPU are requested for 9 ranks, so 7 sit idle.
+- **Cost (before the change below).** 16 vCPU were requested for 9 ranks, so
+  7 sat idle.
 - **Adopted sizing (2026-10-19): 4 ranks on 4 vCPU, 6000 MB.**
   - Per run, 4 ranks is ~12 % slower than 9 (0.234 against 0.209 s/step),
     but it uses a quarter of the vCPUs.
-  - On the 32-vCPU quota that means 8 jobs at once instead of 2. c01–c12
-    then take 2 waves of ~25 h (estimated) instead of 6 waves of ~22 h.
+  - On the 32-vCPU quota that means 8 jobs at once instead of 2. The nine
+    runs c01–c09 then take 2 waves (8 at once, the ninth queued) instead of
+    5.
   - Memory (local 4-rank c01, W = 10): steady 0.6–0.7 GB summed over ranks,
     peak 1.09 GB during mesh/STL preprocessing.
   - `src/run_C26_3d.py` now defaults to this split and writes
     `aws_vcpu`/`aws_memory_mb` to the manifest; `src/aws/submit.py` reads
     them. c02 and c03 were regenerated with it. c01 keeps its 3×1×3 deck,
     which produced the baseline.
-  - Not checked for W = 5/3/1 (c07–c09): up to 10× the parcels, so the
-    memory and the best rank count may differ. Time and measure one before
-    submitting those.
-- **Until resolved:** C26 smokes run locally (4 ranks). Long runs go to AWS
-  only when the laptop can't be spared, accepting ~1.7× the wall time.
+  - Every case is W = 10. `src/run_C26_3d.py::aws_memory_mb` scales the
+    probe linearly by parcel count (c09, 36.4k parcels: 8000 MB). The local
+    0.3 s smokes peaked at 285–315 MB RSS (c04/c07 mass-only, c07_q18).
+- **Where runs go:** smokes run locally (4 ranks). The 3 s runs
+  c01–c09_massonly run on AWS at 4 vCPU each (submitted 2026-10-19/20),
+  accepting ~1.7× the laptop wall time.
 
 ## Coating-stage / charge sweep (replaces Table 2 cases 4–12, 2026-10-19)
 
@@ -608,6 +625,12 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
 | c02 (YSZ, 60 g) | 0.169 | 34.3 | 0.04 mm | 17.5 m/s | 1.36 | 3 (0.011 %) | GO, spout |
 | c07 (full TRISO) | 0.121 | 1.6 | 1.43 mm | 1.64 m/s | 0.22 | 0 | GO (inlet), **no spout** |
 | c09 (YSZ, 80 g → 76.0 g seeded) | 0.161 | 35.8 | 0.48 mm | 15.2 m/s | 1.38 | 2 (0.006 %) | GO, spout |
+| c07_q18 (full TRISO, 18 slpm) | 0.159 | 16.1 | 0.39 mm | 18.0 m/s | −2.00 | 0 | **NO-GO** (S6), spout |
+| c04, mass-only (YSZ + buffer) | 0.132 | 19.2 | 0.41 mm | 2.25 m/s (reported) | 2.05 | 0 | GO, spout |
+| c07, mass-only (full TRISO) | 0.113 | 0.2 | 3.53 mm | 0.73 m/s (reported) | 2.19 | 0 | GO (inlet), **no spout** |
+
+The first four rows use the momentum source, the last two the mass-only
+default (criteria below).
 
 - **Outlet loss (criterion amended, user decision).** The c02 smoke lost 3
   parcels. Particle_ID tracking shows each was last seen 1–9 mm below the
@@ -638,7 +661,8 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
     c01_smoke_r3 is still GO.
 - **c07 spout check at 18 slpm (pre-registered before running).** The user
   kept c04–c07 at 12 slpm and added one check run:
-  `run_C26_3d --case c07 --flow-slpm 18 --run-dir-suffix _q18_smoke`.
+  `run_C26_3d --case c07 --flow-slpm 18 --ps-momentum --run-dir-suffix _q18_smoke`
+  (momentum source, the default at the time).
   - **Why 18 slpm:** a rough Mathur–Gishler scaling, used only for this
     choice and not in the model, gives c07 about 1.5× bare YSZ's minimum
     spouting flow. So 18 = 1.5 × 12 slpm puts c07 at about c02's excess over
@@ -650,6 +674,12 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
   - **If it doesn't spout:** the run is inconclusive. Either c07's minimum
     spouting flow is above 18 slpm, or 1.81 mm parcels in 2.1 mm cells hit a
     numerical limit. The next step would be proposed then.
+  - **Result (`c07_q18_smoke`, 2026-10-19): it spouts.** P3i 16.1 ṁ_g,
+    P3ii 0.39 mm, P4 18.0 m/s, so by the rule above c07's no-spout at
+    12 slpm is physical. `check_smoke` S6 failed (mean ΔP −590 Pa =
+    −2.00 W/A): a static-pressure depression in the 67 m/s momentum source
+    cell, not an unsupported bed (the bed above row 0 is pressure-supported).
+    It does not apply to the mass-only decks.
 
 ### AWS production runs: mass-only point source (user decision 2026-10-19)
 
@@ -692,6 +722,11 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
      - the c04 mass-only smoke must be GO, or nothing is submitted;
      - a case whose dry run fails is held;
      - c05–c07 are held unless c07 at 18 slpm (momentum) is GO and spouts.
+  - **Outcome.** The c04 mass-only smoke was GO and spouts, so c04, c08 and
+    c09 were submitted (2026-10-19/20). `c07_q18_smoke` was NO-GO on S6 but
+    spouts, so c05–c07 were held; they were submitted on 2026-10-20 at the
+    user's direction, c07 last (lowest priority, no spout at 12 slpm). All
+    nine `c26-<id>-massonly` jobs are submitted.
 - **Momentum smokes still apply.** They cover parcel size up to 1.81 mm
   (c07), parcel count up to 34,640 (c09), and outlet loss. These do not
   depend on the source model.
@@ -718,14 +753,16 @@ stays valid. **c04–c09 are not C26 cases 4–9.**
 
 - Point-source momentum and wall velocity: asked the C26 authors for the
   .mfx/STL, the PS velocity, the apex geometry and probe definitions
-  (2026-10-19). Options pending their reply:
-  - a 3 s mass-only c01 (~22 h);
-  - looking for the wall-velocity cause elsewhere (MFiX 23.2 vs 26.1.2
-    cut-cell wall contact, apex geometry).
-
-- AWS per-step cost: the dx/2 baseline ran at 0.264 s/step overall (0.210
-  over t = 3–10 ms). See "AWS run cost: open performance issues" for the
-  untested causes and the 4-rank AWS test.
+  (2026-10-19); no reply yet. The 3 s mass-only c01–c03 runs (submitted
+  2026-10-19) are the A/B: score them with `notes/c26_step3_checks.py`
+  (C1/D, t = [2.4, 3.0] s) when they return. The MFiX 23.2 vs 26.1.2
+  wall-contact review is done (see "Gas-fraction floor"); the apex geometry
+  is still open.
+- Fig. 8e cone angle: measure it from a high-resolution extraction before
+  changing geometry (the text says 60°).
+- AWS per-step cost: the 4-rank AWS test is done (the gap is hardware or
+  container, not rank count; 4 ranks adopted). Per-core speed and the
+  container MPI settings (`--bind-to none`, btl) are untested.
 - Synthetic-PIV post-processor and digitized C26 Fig. 4 / wall-velocity data.
 - If the apex cut cell misbehaves, the fallback is to move the point source up
   one row (`ps_row_offset_cells: 1`). It should not be a widened inlet

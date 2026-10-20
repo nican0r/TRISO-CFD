@@ -16,9 +16,10 @@
 #   RESULTS_S3_ARRAY  s3://bucket/sweep/<prefix>/results/
 #   EXTRA_MFIX_ARGS   extra argv passed to mfixsolver (e.g. "-r")
 #   NODESI/NODESJ/NODESK  explicit DMP partitioning (must multiply to NP).
-#                         If any are unset, entrypoint auto-picks: NODESJ=NP,
+#                         If all are unset, entrypoint auto-picks: NODESJ=NP,
 #                         NODESI=NODESK=1 (axial decomposition — biased toward
-#                         the typical tallest axis in spouted-bed geometries).
+#                         the typical tallest axis in spouted-bed geometries);
+#                         otherwise any unset one defaults to 1.
 #
 # Local smoke-test mode: if LOCAL_SMOKE=1 is set, the entrypoint skips all S3
 # interaction and simply runs the solver on /work (which should be bind-mounted

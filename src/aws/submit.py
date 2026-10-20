@@ -1,33 +1,31 @@
 """Submit an MFiX case to AWS Batch.
 
 Workflow:
-  1. Caller has already run their day-N driver so a case directory exists
-     under cases/<...>/ with the .mfx + STL + manifest.json.
+  1. Caller has already run their case driver (e.g. src/run_C26_3d.py) so a
+     case directory exists under cases/<...>/ with the .mfx + STL +
+     manifest.json.
   2. This script `aws s3 sync`s the case up to the project bucket, submits
      a Batch job that points at it, and appends a 'submitted' row to
      results/run_log.csv so provenance is attached before the job even runs.
 
-Single-run usage:
+Single-run usage (sizing from the manifest, see below):
     .venv/bin/python -m src.aws.submit \
-        --case-dir cases/V_3d/day10 \
-        --mfx V_3d_day10.mfx \
-        --job-name d10-pic \
-        --vcpu 16 --memory 30000
+        --case-dir cases/C26_3d/c02_massonly \
+        --mfx C26_c02_massonly.mfx \
+        --job-name c26-c02-massonly \
+        --dry-run                       # drop --dry-run to submit
 
-Array-run usage (Day 13 sweep):
+Array-run usage (one sweep dir per array index):
     .venv/bin/python -m src.aws.submit \
-        --array-root cases/sweep13 \
-        --mfx V_3d_sweep.mfx \
-        --job-name d13-sweep \
-        --array-size 16 --vcpu 16 --memory 30000
+        --array-root cases/<sweep_root> \
+        --mfx <deck>.mfx \
+        --job-name <sweep-name> \
+        --array-size N --vcpu 16 --memory 30000
 
 Sizing from the case manifest: if <case>/manifest.json (array mode: case_00's)
 has "aws_vcpu", then any of --vcpu, --memory, --nranks and --nodes left unset
 come from its aws_vcpu, aws_memory_mb, nranks and nodes_i/j/k.  C26 case
-generators write these (4 vCPU / 4 ranks, src/run_C26_3d.py), e.g.:
-
-    .venv/bin/python -m src.aws.submit \
-        --case-dir cases/C26_3d/c02 --mfx C26_c02.mfx --job-name c26-c02
+generators write these (4 vCPU / 4 ranks, src/run_C26_3d.py).
 
 Explicit flags win.  Manifests without "aws_vcpu" keep the old defaults
 (config.DEFAULT_VCPU / DEFAULT_MEMORY_MB, nranks = vcpu, entrypoint nodes).

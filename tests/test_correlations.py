@@ -240,7 +240,7 @@ def test_coated_particle_stages_conserves_mass():
     stages = coated_particle_stages(411.6e-6, 6000.0, MARSHALL_2017_LAYERS)
     vol = lambda d: math.pi / 6.0 * d ** 3  # noqa: E731
     m = 6000.0 * vol(411.6e-6)
-    for (_, d0, _), (_, layer_t, layer_rho), (_, d1, rho1) in zip(
+    for (_, d0, _), (_, _, layer_rho), (_, d1, rho1) in zip(
             stages[:-1], MARSHALL_2017_LAYERS, stages[1:]):
         m += layer_rho * (vol(d1) - vol(d0))
         assert rho1 * vol(d1) == pytest.approx(m, rel=1e-12)

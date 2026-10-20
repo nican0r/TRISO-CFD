@@ -280,32 +280,30 @@ def main():
         report('S4', f'voidage ({k})', st,
                f'mean EP_G = {emean:.3f} (range {min(ep[k]):.3f}-{max(ep[k]):.3f}; min {a.orifice_epg_min})')
 
-    below = []
     if a.skip_stub_parcels:
         print('  [SKIP] S5 stub parcels         --skip-stub-parcels: no stub pipe below the inlet')
-        pa = []
-    for tt, f in pa:
-        p = read_vtk_xml(f)
-        below.append((tt, int((p['coordinates'][:, 1] < a.orifice_y).sum())))
-    # Pass/fail uses the metric window only (ground rule 1); parcels that enter
-    # the stub during start-up and are cleared by the jet are a FLAG to explain.
-    win = [n for tt, n in below if tt >= a.t_response]
-    pre = [n for tt, n in below if tt < a.t_response]
-    per_frame = ", ".join(f"{tt:.2f}s:{n}" for tt, n in below)
-    if a.skip_stub_parcels:
-        pass
-    elif not below:
-        report('S5', 'stub parcels', 'FAIL', 'no PARTICLES frames listed in PARTICLES.pvd')
-    elif not win:
-        report('S5', 'stub parcels', 'FAIL', f'no PARTICLES frames at t >= {a.t_response} s')
     else:
-        report('S5', 'stub parcels', 'PASS' if max(win) == 0 else 'FAIL',
-               f'max parcels below orifice plane at t >= {a.t_response} s = {max(win)} over '
-               f'{len(win)} frames (per frame: {per_frame})')
-        if pre and max(pre) > 0:
-            report('S5b', 'stub parcels startup', 'FLAG',
-                   f'max {max(pre)} parcels below orifice plane at t < {a.t_response} s '
-                   f'(start-up only; cleared by the window -- explain in the report)')
+        below = []
+        for tt, f in pa:
+            p = read_vtk_xml(f)
+            below.append((tt, int((p['coordinates'][:, 1] < a.orifice_y).sum())))
+        # Pass/fail uses the metric window only (ground rule 1); parcels that enter
+        # the stub during start-up and are cleared by the jet are a FLAG to explain.
+        win = [n for tt, n in below if tt >= a.t_response]
+        pre = [n for tt, n in below if tt < a.t_response]
+        per_frame = ", ".join(f"{tt:.2f}s:{n}" for tt, n in below)
+        if not below:
+            report('S5', 'stub parcels', 'FAIL', 'no PARTICLES frames listed in PARTICLES.pvd')
+        elif not win:
+            report('S5', 'stub parcels', 'FAIL', f'no PARTICLES frames at t >= {a.t_response} s')
+        else:
+            report('S5', 'stub parcels', 'PASS' if max(win) == 0 else 'FAIL',
+                   f'max parcels below orifice plane at t >= {a.t_response} s = {max(win)} over '
+                   f'{len(win)} frames (per frame: {per_frame})')
+            if pre and max(pre) > 0:
+                report('S5b', 'stub parcels startup', 'FLAG',
+                       f'max {max(pre)} parcels below orifice plane at t < {a.t_response} s '
+                       f'(start-up only; cleared by the window -- explain in the report)')
 
     # ---------------- pressure monitors ----------------
     pin = find_one(rd, '*P_INLET*.csv', a.p_inlet_csv)

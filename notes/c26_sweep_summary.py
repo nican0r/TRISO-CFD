@@ -14,7 +14,7 @@ appears in every block.  Every caption states the averaging window
 (CLAUDE.md rule 6).  A case's run dir is <root>/<id><suffix>/aws_out when
 that holds a manifest.json, else <root>/<id><suffix>.
 
-    MPLBACKEND=Agg .venv/bin/python notes/c26_sweep_summary.py
+    MPLBACKEND=Agg .venv/bin/python notes/c26_sweep_summary.py --suffix _massonly   # production runs
     MPLBACKEND=Agg .venv/bin/python notes/c26_sweep_summary.py --suffix _smoke --tag smoke
 """
 import argparse

@@ -4,7 +4,10 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ipynb_checkpoints/
-.venv/
+# .venv is a symlink to .venv.nosync; a trailing-slash rule would not match it.
+.venv
+.venv.nosync/
+.venv.evicted/
 venv/
 
 # MFiX / raw simulation output (CLAUDE.md rule 7 — keep raw output out of git)
@@ -38,9 +41,6 @@ cases/**/*.csv
 .DS_Store
 .vscode/
 .idea/
-.venv
-.venv.nosync/
-.venv.evicted/
 
 # AWS Batch downloads: aws_out/ echoes the case inputs next to the raw output
 cases/**/aws_out/

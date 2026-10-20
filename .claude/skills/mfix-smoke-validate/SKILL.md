@@ -125,6 +125,8 @@ Use frames at `t ≥ t_response` only. Read `Gas_Velocity` and `EP_G` with the n
 
 **Pass criterion:** `0.5 ≤ mean(v_layer) / bc_v_g ≤ 2.0` in **both** layers.
 
+**Exception: C26 mass-only point source** (`ps_momentum: false`; user decision 2026-10-19, made before any c04–c09 mass-only result). `--bc-v-g` = U_nozzle is not the source-cell velocity when the source adds mass only (c01_smoke_r4_massonly: 0.39), so `notes/smoke_validate_c26.py` reports S3 without gating on it and judges the spout on its P3 checks. Momentum-source decks are still gated on S3.
+
 **Fail interpretation:**
 - `ratio ≈ 0` → **classic cut-cell blocking** (Day-11-12). F_AT misclassified the BC-adjacent cells (single-cell-wide, flush with STL, or at a geometric corner). Fix the geometry (raise `R_i/dx`, redefine the BC region, ≥ 4 cells across the orifice).
 - `ratio ≈ 1 but opposite sign` → BC direction convention bug.

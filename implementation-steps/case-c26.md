@@ -8,7 +8,7 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 ## Already in place (branch `case-c26-conry2026`)
 
 - Params: `bed_C26`, `spouted_bed_C26_3d`, `spouted_bed_C26_3d_dem`
-  (`params/geometry.yaml`); `case_C26_ysz`, `case_C26_ss`
+  (`params/geometry.yaml`); `case_C26_ysz`
   (`params/particles.yaml`); `ar_25C`, `slpm_reference_C26`
   (`params/gases.yaml`); `spouted_bed_C26_3d_numerics`
   (`params/numerics.yaml`); `triso_coating_layers` (`params/particles.yaml`);
@@ -22,13 +22,17 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 
 ## Steps
 
-1. **Regenerate locally** (the decks embed Cantera gas properties and the
+1. **Generate decks locally** (the decks embed Cantera gas properties and the
    STL is gitignored): `.venv/bin/python -m pytest tests/` then
-   `.venv/bin/python -m src.run_C26_3d --case all`.
-2. **Base-case smoke (CLAUDE.md rule 11, 13).**
-   `.venv/bin/python -m src.run_C26_3d --case c01 --tstop 0.3 --run-dir-suffix _smoke`,
-   run `cases/C26_3d/c01_smoke/run.sh`, validate with the
-   `mfix-smoke-validate` skill. The 0.3 s smoke tests **inlet health and
+   `.venv/bin/python -m src.run_C26_3d --case <ids> --run-dir-suffix <new suffix>`.
+   Use a new suffix: the committed run dirs (unsuffixed c01–c03, `*_massonly`,
+   `*_smoke*`) are run provenance, and regenerating one rewrites its deck.
+   The production decks are `cases/C26_3d/<id>_massonly` (2026-10-19).
+2. **Base-case smoke (CLAUDE.md rule 11, 13).** Done: c01_smoke_r3 GO
+   (2026-10-17); mass-only c01_smoke_r4_massonly (2026-10-19). To repeat:
+   `.venv/bin/python -m src.run_C26_3d --case c01 --tstop 0.3 --run-dir-suffix _smoke_r7`,
+   run its `run.sh`, validate with `notes/smoke_validate_c26.py` (which runs
+   the `mfix-smoke-validate` skill's `check_smoke.py`). The 0.3 s smoke tests **inlet health and
    numerics only**. C26 needs ≥ 3.0 s to pass the startup transient (p.3,
    §2.2.2), so a spout is judged in step 3, not here. Case-specific checks:
    - run.log "Point source setup information" shows the **axis cell's** fluid
@@ -75,6 +79,8 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
    after the c01 baseline's exit-layer EP_G of 0.891; see SKILL.md §3.6.) Do not widen the inlet
    (recipe Rule 3 history).
 3. **Baseline runs c01–c03** (tstop 3 s). Log each in `results/run_log.csv`.
+   Status: c01 with the momentum source reached 3 s (health GO; step-3
+   A/B PASS, C1/D FAIL); c01–c03_massonly were submitted 2026-10-19.
    Spout check, over the last 0.6 s (C26's PIV window): at 10 slpm C26 calls
    the regime "near minimum spouting" with "approximately 10 spouting events
    every 0.5 s" (§3.1, §2.2.2), so expect a pulsed spout, not a steady one.
@@ -84,8 +90,9 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      0.5 m/s on the axis and ~0 at the walls (C26 Fig. 7, model).
    - Mean downward wall velocity of order 1e-3 m/s (C26 Fig. 6d: experiment
      0.93e-3, their model 3.3e-3).
-   Set the Batch timeout generously: C26 needed 167 h for 3 s at W = 10
-   (Table 5); budget from the smoke's s/step.
+   Batch jobs carry no timeout (no `attemptDurationSeconds`); budget
+   ~17–21 h per case at 4 ranks from the smoke's s/step (C26 needed 167 h
+   for 3 s at W = 10, Table 5).
 4. **Synthetic PIV post-processor** (`src/post/piv_c26.py`, not written yet):
    project `Particles_PIV` frames onto the camera plane, render them, run the
    same windowed cross-correlation as PIVlab (~4 mm windows, C26 Fig. 1c),
@@ -102,18 +109,21 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      then c09 (most parcels, memory check). Each is checked with
      `notes/smoke_validate_c26.py`.
    - **Full runs:** 3 s runs only after the smokes pass. Then run
-     `notes/c26_sweep_summary.py` over the last 0.6 s.
+     `notes/c26_sweep_summary.py --suffix _massonly` over the last 0.6 s.
+   - Status: smokes done (notes "Local smokes and criteria changes");
+     c04–c09_massonly submitted 2026-10-19/20.
    - **Reporting:** there is no experiment for c04–c09, so results are
      relative sensitivities. A bed that doesn't spout at 12 slpm is reported
      as is.
 
 ## Done when
 
-- c01 smoke passes the step-2 checks, and the result is recorded in `results/run_log.csv`.
+- c01 smoke passes the step-2 checks, and the result is recorded in
+  `results/run_log.csv`. (Done: c01_smoke_r3, 2026-10-17.)
 - c01–c03 reach t = 3.0 s without `DT < DT_MIN`.
 - CC, SSI and MSE for c01–c03 are reported next to C26 Table 3
   (0.68/0.82/0.83, 0.61/0.77/0.77, 0.0068/0.0042/0.0049 m²/s²) with the
   averaging window stated (CLAUDE.md rule 6). No tuning to match.
 - The settled-bed-height discrepancy (35 vs ~25 mm) is stated plainly, with the
-  cone-angle implication.
+  cone-angle implication. (Done: notes, "Geometry decisions" item 3.)
 - All tests pass.

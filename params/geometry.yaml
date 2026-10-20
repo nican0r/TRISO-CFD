@@ -725,6 +725,7 @@ spouted_bed_C26_3d_dem:
                            # Loose, not packed (R5 IC review).
                            # source: assumed (notes/day10_r5_ic_review.md).
   eps_s_packed: 0.57       # packed solids fraction used ONLY to derive the
-                           # static bed height H_static for monitor placement
-                           # and the ~25 mm bed-height cross-check [-].
+                           # static bed height H_static (monitor placement,
+                           # the step-3/smoke check thresholds and the ~25 mm
+                           # bed-height cross-check) [-].
                            # source: assumed; same value as case_V.eps_s_bed.
