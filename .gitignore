@@ -38,3 +38,17 @@ cases/**/*.csv
 .DS_Store
 .vscode/
 .idea/
+.venv
+.venv.nosync/
+.venv.evicted/
+
+# AWS Batch downloads: aws_out/ echoes the case inputs next to the raw output
+cases/**/aws_out/
+cases/**/.wall_start
+cases/**/.wall_end
+
+# Local state and reference material (not project source)
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.firecrawl/
+/*.pdf
