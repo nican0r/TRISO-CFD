@@ -165,6 +165,10 @@ case_C26_ysz:
                               #         mean + 3 sigma, check_bc_dem.f:249).
   inventory_g: 60.0           # charge mass [g]
                               # source: C26 p.4 (2.2.2) and Fig. 1 caption.
+  eps_mf_range: [0.40, 0.45]  # bed voidage at minimum fluidization [-], used
+                              # only for U_mf estimates (notes/c26_cgp_drag_check.py).
+                              # source: assumed (loose random packing of
+                              #         near-monosized spheres); C26 gives none.
 
 # TRISO coating layers applied to the C26 YSZ particle (case_C26_ysz) for the
 # coating-stage sweep in params/sweep_C26.yaml (c04-c07).  YSZ is the base

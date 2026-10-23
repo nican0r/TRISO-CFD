@@ -1,0 +1,141 @@
+# Synthetic PIV of Case C26 particle output (src/post/piv_c26.py) and the
+# digitized C26 Fig. 4 maps it is scored against (src/post/digitize_c26_fig4.py).
+# C26 = Conry et al. 2026, Nucl. Eng. Des. 456:115009.
+#
+# C26 runs PIVlab (Stamhuis & Thielicke 2014) on side-view high-speed video
+# (430 fps, p.3 2.1) and "on images of the simulated SFB analogously to the
+# experiments" (p.9 3.2.1), but gives no camera or PIV settings; it points to
+# Conry et al. 2025 for the full process, which this project does not have.
+# So every camera and PIV setting below is ASSUMED unless a C26 page is cited.
+# All values SI.
+
+camera:
+  view_axis: z            # line of sight; image axes are x (horizontal) and
+                          # y (vertical, up); the camera sits at z -> -inf.
+                          # source: assumed (side view, C26 Fig. 1a-b; the
+                          #         bed is axisymmetric, so x vs z is arbitrary).
+  pixel_m: 1.0e-4         # image pixel size at the object [m] (0.1 mm)
+                          # source: assumed; C26 gives no camera resolution.
+                          #         ~9 px across a 0.89 mm parcel.
+  # Each parcel is drawn as an opaque sphere of its VTK Diameter (the parcel
+  # diameter in CGP mode), intensity sqrt(1 - (r/R)^2), on a black
+  # background, nearest surface wins (z-buffer).  source: assumed; C26 Fig. 4
+  # (simulated snapshot) shows opaque parcels at parcel size.
+
+piv:
+  windows_px: [64, 32, 32] # interrogation window per pass [px]
+                          # source: assumed, PIVlab default sizes (64 then 32).
+                          # Each pass offsets the windows by the previous
+                          # estimate (sub-pixel); the repeated 32 px pass
+                          # brings the sub-pixel bias for 0.9 mm (9 px) parcel
+                          # images from ~0.1 px to < 0.01 px (rendered shift
+                          # tests, 2026-10-20; tests/test_piv_c26.py).
+                          # NOT the "~4 mm" box of C26 Fig. 1c, which is the
+                          # wall-velocity sampling region (wall_roi below).
+  step_px: 16             # vector spacing [px] (50 % overlap of the last pass)
+                          # source: assumed, PIVlab default 50 % overlap.
+  uod_threshold: 2.0      # normalized median test threshold [-]
+                          # source: Westerweel & Scarano 2005, Exp. Fluids
+                          #         39:1096, recommended value.
+  uod_eps_px: 0.1         # normalized median test noise level [px]
+                          # source: Westerweel & Scarano 2005.
+  min_window_std: 1.0e-3  # a window whose intensity std is below this in
+                          # either frame is empty: displacement 0 [-]
+                          # (intensity is 0-1).  source: assumed; a real camera
+                          # sees static background there, which correlates at
+                          # zero displacement.
+
+spout_map:
+  # C26 Fig. 4: time-averaged velocity-magnitude maps of the region above the
+  # bed, "2 in. wide; edges of each image correspond to the wall of the
+  # vessel", with "masks placed over the bed annular surface" (caption, p.6).
+  # The map spans x in [-R_c, R_c] (manifest R_c_m).  Its bottom is the bed
+  # surface: the time-median over the PIV frames of the 95th percentile of
+  # parcel y (the smoke check P5 definition).  Its height is 2 R_c times the
+  # aspect ratio of the digitized experiment panel for the same flow.
+  # source: C26 Fig. 4 caption; bottom position assumed (the mask strip under
+  # each panel is ~3.4 mm tall, so the bed surface lies within ~3 mm of it).
+  bed_surface_percentile: 95   # [-] source: assumed (as smoke check P5).
+  bottom_offset_m: 0.0    # map bottom = bed surface + this [m]
+                          # source: assumed.  Sensitivity on c01: -3.4 mm (the
+                          # mask strip height) moves CC 0.21 -> 0.62, +3.4 mm
+                          # -> 0.10 (notes/c26_conry2026_case.md, "Synthetic
+                          # PIV").  Fix independently of the score before the
+                          # mass-only runs are scored.
+  empty_windows: zero     # how a window with no particles in a frame pair
+                          # enters the time mean: 'zero' = zero velocity
+                          # (averaged over all pairs); 'skip' = left out
+                          # (averaged over the pairs with particles).
+                          # source: assumed; C26 does not say, and PIVlab's
+                          # handling depends on its validation settings.
+  # Map value = |time mean of the PIV vectors| per point, so up and down
+  # motion in the line of sight cancels, as C26 p.5 describes for the spout.
+  # source: C26 p.5 (3.1: vectors averaged "on a pixel-by-pixel basis";
+  #         opposing populations "cancel out").
+
+wall_roi:
+  # Wall velocity: mean vertical PIV velocity in a small box on the bed wall,
+  # downward positive (C26 p.7 3.2).
+  size_m: 4.0e-3          # side of the square sampling box [m]
+                          # source: C26 Fig. 1c ("~4 mm" x "~4 mm" box).
+  x_center_m: 0.0         # box centre, horizontal [m]
+                          # source: C26 p.10 ("a small region is identified in
+                          #         the center of the bed wall"); Fig. 1c box
+                          #         sits at the image centre (read by eye).
+  y_center_frac: 0.5      # box centre height / bed surface height [-]
+                          # source: C26 Fig. 1c (box at about mid-bed, read by
+                          #         eye) and p.10 (balance between slow top
+                          #         and fast bottom).
+
+metrics:
+  # CC (Pearson), SSI (structural similarity) and MSE [m^2/s^2] between two
+  # maps on the comparison grid.  C26 p.5 names the metrics only; SSI uses the
+  # MATLAB ssim defaults (C26 works in MATLAB/PIVlab).
+  ssim_sigma_px: 1.5      # Gaussian window sigma [grid cells]
+                          # source: Wang et al. 2004 (IEEE TIP 13:600); MATLAB
+                          #         ssim default.
+  ssim_radius_px: 5       # Gaussian filter radius [grid cells]: MATLAB filter
+                          # size 2*ceil(3*sigma)+1 = 11.  source: MATLAB ssim.
+  ssim_k1: 0.01           # [-] source: Wang et al. 2004; MATLAB default.
+  ssim_k2: 0.03           # [-] source: Wang et al. 2004; MATLAB default.
+  ssim_dynamic_range: 1.0 # L [m/s]: MATLAB default for double data.
+                          # source: assumed (C26 does not state it).
+
+fig4:
+  # Digitizing C26 Fig. 4 (p.6).  The figure is the JPEG embedded in the C26
+  # PDF; the digitizer checks its hash, so the pixel boxes below stay valid.
+  pdf: experimental-computational-modeling-approach.pdf   # repo root, gitignored
+  image_width_px: 1694
+  image_height_px: 1511
+  image_sha256: cea0a01d70ba7c34bbe03e07e60e5e00319b465167bdfa15f74d5a76b1d07ef0
+  # Colorbar "Magnitude [m/s]": jet, linear, 4.000e-04 to 4.000e-01 m/s,
+  # nine evenly spaced labels.  source: C26 Fig. 4.
+  colorbar_rows: [52, 70]       # pixel rows sampled (inclusive)
+  colorbar_cols: [81, 1409]     # pixel columns from v_min to v_max (inclusive)
+  v_min_m_s: 4.0e-4             # source: C26 Fig. 4 colorbar.
+  v_max_m_s: 0.4                # source: C26 Fig. 4 colorbar.
+  max_color_distance: 30        # RGB distance beyond which a pixel is not on
+                                # the colormap (NaN, filled from neighbours).
+                                # source: assumed; JPEG noise on map pixels is
+                                # < 8 (99th percentile).
+  grid_cols: 100                # comparison grid cells across the vessel [-]
+                                # (0.5 mm at 50 mm).  source: assumed.
+  # Map interiors [col0, col1, row0, row1] in image pixels, inclusive, 1-2 px
+  # inside the panel border; the mask strip under each map is excluded.
+  # Keys are the flow rate [slpm].  The panels differ in pixel size, so each
+  # model panel is resampled onto the grid of the experiment panel.
+  panels_exp:
+    10: [82, 517, 108, 452]
+    12: [547, 982, 108, 452]
+    14: [1009, 1388, 108, 452]
+  panels_model:
+    10: [81, 518, 511, 809]
+    12: [547, 971, 504, 808]
+    14: [1011, 1387, 500, 804]
+
+wall_targets:
+  # Mean downward wall velocity [m/s] at 10 / 12 / 14 slpm, C26 Fig. 6d.
+  # source: C26 p.7 (3.2).
+  exp_m_s:   {10: 0.933e-3, 12: 1.83e-3, 14: 2.55e-3}
+  # C26 model, "from particles at the wall" (Fig. 6 caption), not PIV.
+  model_m_s: {10: 3.31e-3, 12: 5.05e-3, 14: 6.95e-3}

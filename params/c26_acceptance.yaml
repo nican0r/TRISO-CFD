@@ -1,0 +1,58 @@
+# Case C26 acceptance criteria for the 3 s runs, scored against Conry et al.
+# 2026 (C26).  Read by notes/c26_watch_post.py.  SI units: velocities [m/s],
+# frequencies [Hz], MSE [m^2/s^2].
+#
+# Every threshold was written down before the results it scores; the date
+# and the notes section are given with each block
+# (notes/c26_conry2026_case.md).  Window: the manifest's PIV window, the last
+# 0.6 s (t = 2.4-3.0 s for tstop = 3 s; C26 p.5, 3.1).
+
+step3:
+  # source: notes "c01 baseline result and step-3 spout checks",
+  # pre-registered 2026-10-19.
+  A_fountain_min_frame_frac: 0.5   # >= 20 parcels above H_static + 10 mm in
+                                   # >= 50 % of PIV frames [-].
+                                   # source: C26 p.5 (3.1), fountain in the
+                                   # PIV images at every flow.
+  B_psd_peak_hz: [10.0, 20.0]      # dP PSD peak [Hz].  source: C26 p.3
+                                   # (2.2.2) "approximately 10 spouting events
+                                   # every 0.5 s" -> 20 Hz; 10 Hz lower edge
+                                   # assumed.
+  C1_axis_vp_m_s: [0.26, 1.06]     # peak axis parcel v_y over y = 10/20/30 mm
+                                   # [m/s].  source: C26 Fig. 7 (model, 10
+                                   # slpm) ~0.53 m/s, x 0.5 to x 2 (assumed).
+  C2_outer_over_axis_max: 0.1      # outermost occupied bin |v_y| / axis v_y,
+                                   # at every probe height [-].  source: C26
+                                   # Fig. 7, ~0 at the walls; 0.1 assumed.
+  D_wall_m_s: [0.3e-3, 10.0e-3]    # mean downward parcel v_y within d_cg of
+                                   # the wall, y < H_static [m/s].  source:
+                                   # C26 Fig. 6d / p.7 (exp 0.933e-3, model
+                                   # 3.31e-3 at 10 slpm); band assumed.
+  gated_cases: [c01]               # C1 and D bands come from 10 slpm figures:
+                                   # they gate c01 only and are a reference
+                                   # for c02/c03 (notes, "c01-c03 mass-only
+                                   # 3 s results").
+
+piv_map:
+  # Synthetic-PIV spout map against the digitized C26 Fig. 4a.
+  # Pre-registered 2026-10-21, before any axis-face 3 s result.
+  # The map "matches C26's model" when each metric is at least as good as the
+  # worse of C26's two model scores: Table 3 (params/sweep_C26.yaml
+  # piv_targets_table3) and C26's Fig. 4b scored against 4a through this
+  # pipeline (src/post/piv_c26.py).  CC and SSI >= the lower of the two, MSE
+  # <= the higher.  source: assumed (C26 gives no acceptance level; Table 3
+  # is its own model's score).
+  rule: c26_model_floor
+
+grid_layout_ab:
+  # Grid-layout A/B (notes "Wall-velocity gap: diagnosis and the grid-layout
+  # A/B"), pre-registered 2026-10-20.  Wall D of the axis-face run against
+  # the same case on the old layout (<id>_massonly, step-3 D over
+  # t = 2.4-3.0 s, notes "c01-c03 mass-only 3 s results").
+  baseline_suffix: _massonly
+  baseline_D_m_s: {c01: 2.23e-2, c02: 2.92e-2, c03: 3.39e-2}
+  substantial_drop_frac: 0.30      # D falls >= 30 % -> substantial [-]
+  no_effect_frac: 0.15             # |change| < 15 % -> no effect [-];
+                                   # otherwise inconclusive.
+  fwhm_probe_y_m: 20.0e-3          # height of the reported spout FWHM [m]
+                                   # (same pre-registration).

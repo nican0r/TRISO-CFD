@@ -22,6 +22,9 @@ from src.correlations import (  # noqa: E402
     relaxation_time,
     reynolds,
     terminal_velocity,
+    tgs_drag_coefficient,
+    tgs_drag_factor,
+    umf_tgs,
     umf_wen_yu,
     ums_mathur_gishler,
 )
@@ -141,6 +144,49 @@ def test_umf_wen_yu_stokes_limit_small_ar():
     u_mf = umf_wen_yu(d_p, rho_p, rho, mu)
     stokes_like = (rho_p - rho) * G_STD * d_p ** 2 / (1651.96 * mu)
     assert u_mf == pytest.approx(stokes_like, rel=0.02)
+
+
+def test_tgs_drag_factor_hand_calc():
+    # eps = 0.42, phi = 0.58, Re = 10:
+    #   F_isol/eps^3 = (1 + 0.15 * 10^0.687) / 0.42^3 = 1.729610 / 0.074088 = 23.3454
+    #   5.81 phi/eps^3 = 3.3698 / 0.074088                               = 45.4838
+    #   0.48 phi^(1/3)/eps^4 = 0.48 * 0.833955 / 0.0311170              = 12.8643
+    #   phi^3 Re (0.95 + 0.61 phi^3/eps^2)
+    #     = 0.195112 * 10 * (0.95 + 0.61 * 0.195112 / 0.1764)           =  3.1700
+    #   F = 84.8635
+    assert tgs_drag_factor(0.42, 10.0) == pytest.approx(84.8635, rel=1e-4)
+
+
+def test_tgs_drag_factor_isolated_sphere_is_schiller_naumann():
+    # phi = 0: every voidage term vanishes, leaving 1 + 0.15 Re^0.687
+    assert tgs_drag_factor(1.0, 50.0) == pytest.approx(1.0 + 0.15 * 50.0 ** 0.687)
+
+
+def test_tgs_drag_coefficient_isolated_sphere_force():
+    # DgA * V_p * u at eps = 1 must equal Cd(Re) * 0.5 rho u^2 * pi d^2 / 4
+    d_p, rho, mu, u = 411.6e-6, 1.633, 2.302e-5, 0.8
+    force = tgs_drag_coefficient(1.0, u, d_p, rho, mu) * math.pi / 6.0 * d_p ** 3 * u
+    re = reynolds(u, d_p, rho, mu)
+    expected = cd_schiller_naumann(re) * 0.5 * rho * u * u * math.pi / 4.0 * d_p ** 2
+    assert force == pytest.approx(expected, rel=1e-12)
+
+
+def test_tgs_drag_factor_rejects_bad_voidage():
+    with pytest.raises(ValueError):
+        tgs_drag_factor(0.0, 1.0)
+    with pytest.raises(ValueError):
+        tgs_drag_factor(1.2, 1.0)
+
+
+def test_umf_tgs_stokes_limit():
+    # Re -> 0: F -> F0 = (1 + 5.81 phi)/eps^3 + 0.48 phi^(1/3)/eps^4, and
+    #   18 mu eps F0 / d^2 * U/eps = eps (rho_p - rho) g
+    #   -> U = eps (rho_p - rho) g d^2 / (18 mu F0)
+    d_p, rho_p, rho, mu, eps = 10e-6, 2500.0, 1.2, 1.8e-5, 0.42
+    phi = 1.0 - eps
+    f0 = (1.0 + 5.81 * phi) / eps ** 3 + 0.48 * phi ** (1.0 / 3.0) / eps ** 4
+    stokes = eps * (rho_p - rho) * G_STD * d_p ** 2 / (18.0 * mu * f0)
+    assert umf_tgs(d_p, rho_p, rho, mu, eps) == pytest.approx(stokes, rel=1e-3)
 
 
 def test_geldart_class_group_D_triso_surrogate():

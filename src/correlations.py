@@ -167,6 +167,87 @@ def umf_wen_yu(
     return re_mf * mu / (rho * d_p)
 
 
+def tgs_drag_factor(epsilon: float, re: float) -> float:
+    """Tenneti-Garg-Subramaniam dimensionless drag force F(phi, Re).
+
+        F = F_isol / eps^3 + F_phi + F_phi_Re
+        F_isol   = 1 + 0.15 Re^0.687
+        F_phi    = 5.81 phi / eps^3 + 0.48 phi^(1/3) / eps^4
+        F_phi_Re = phi^3 Re (0.95 + 0.61 phi^3 / eps^2)
+        phi      = 1 - eps
+
+    Reference: Tenneti, Garg & Subramaniam (2011), "Drag law for monodisperse
+    gas-solid systems using particle-resolved direct numerical simulation of
+    flow past fixed assemblies of spheres", Int. J. Multiphase Flow 37(9),
+    1072-1092. Coded as in MFiX 26.1.2 `model/drag_gs.f` DRAG_TGS.
+
+    epsilon : gas volume fraction [-], in (0, 1]
+    re      : slip Reynolds number eps * rho * |u_g - v_p| * d_p / mu [-]
+    Returns F [-]; F = 1 + 0.15 Re^0.687 for an isolated sphere (eps = 1).
+    """
+    if not 0.0 < epsilon <= 1.0:
+        raise ValueError(f"epsilon must be in (0, 1], got {epsilon}")
+    phi = 1.0 - epsilon
+    f = (1.0 + 0.15 * re ** 0.687) / epsilon ** 3
+    f += 5.81 * phi / epsilon ** 3 + 0.48 * phi ** (1.0 / 3.0) / epsilon ** 4
+    f += phi ** 3 * re * (0.95 + 0.61 * phi ** 3 / epsilon ** 2)
+    return f
+
+
+def tgs_drag_coefficient(
+    epsilon: float, u_slip: float, d_p: float, rho: float, mu: float
+) -> float:
+    """TGS drag coefficient per unit particle volume, as MFiX DES applies it.
+
+        DgA = 18 mu eps / d_p^2 * F(phi, Re),   Re = eps rho |u_slip| d_p / mu
+
+    The drag force on one particle is DgA * V_p * u_slip (MFiX model A,
+    `des/drag_gp_des.f`: F_gp = DgA * PVOL). In the isolated-sphere limit this is
+    3 pi mu d_p u_slip (1 + 0.15 Re^0.687), i.e. Schiller-Naumann.
+
+    epsilon : gas volume fraction [-]
+    u_slip  : interstitial gas velocity minus particle velocity [m/s]
+    d_p     : particle diameter used by the drag law [m]
+    rho     : gas density [kg/m^3]
+    mu      : gas dynamic viscosity [Pa*s]
+    Returns DgA [kg/(m^3 s)].
+    """
+    re = epsilon * reynolds(u_slip, d_p, rho, mu)
+    return 18.0 * mu * epsilon / (d_p * d_p) * tgs_drag_factor(epsilon, re)
+
+
+def umf_tgs(
+    d_p: float, rho_p: float, rho: float, mu: float, epsilon: float,
+    g: float = G_STD,
+) -> float:
+    """Minimum fluidization velocity of a uniform bed under the TGS drag law.
+
+    Uniform suspended bed in MFiX DES model A (particles at rest, gas
+    interstitial velocity U/eps). Gas momentum: eps G = eps rho g + n F_gp u_g;
+    particle: F_gp u_g = V_p (rho_p g - G), with G = -dP/dy. Eliminating G
+    gives the per-particle-volume balance
+
+        DgA(eps, U/eps) * U / eps = eps (rho_p - rho) g
+
+    solved for the superficial velocity U with brentq.
+
+    d_p     : particle diameter used by the drag law [m]
+    rho_p   : particle density [kg/m^3]
+    rho     : gas density [kg/m^3]
+    mu      : gas dynamic viscosity [Pa*s]
+    epsilon : bed voidage at minimum fluidization [-]
+    g       : gravitational acceleration [m/s^2]
+    Returns U_mf [m/s] (superficial).
+    """
+    rhs = epsilon * (rho_p - rho) * g
+
+    def residual(u: float) -> float:
+        u_g = u / epsilon
+        return tgs_drag_coefficient(epsilon, u_g, d_p, rho, mu) * u_g - rhs
+
+    return brentq(residual, 1.0e-9, 100.0, xtol=1.0e-12)
+
+
 def geldart_class(d_p: float, rho_p: float, rho: float) -> str:
     """Rule-based Geldart (1973) powder classifier.
 

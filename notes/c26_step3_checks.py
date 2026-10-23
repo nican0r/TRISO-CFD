@@ -107,7 +107,7 @@ def step3_metrics(run):
         probes[yy] = {'r_wall': r_wall(yy), 'axis_v': mean[ax], 'axis_sd': sd[ax],
                       'outer_x': (xc[occ[0]], xc[occ[-1]]) if len(occ) else (np.nan, np.nan),
                       'outer_v': (mean[occ[0]], mean[occ[-1]]) if len(occ) else (np.nan, np.nan),
-                      'profile': mean[occ]}
+                      'profile': mean[occ], 'profile_x': xc[occ]}
     w1, w2 = np.array(wall1), np.array(wall2)
     return {
         'case': c, 'n_frames': len(frames),
@@ -154,6 +154,7 @@ def main(run):
         print('     ' + ' '.join(f'{v:+.2f}' for v in p['profile']))
     print(f"\nD wall (downward +): band d_cg: mean {res['wall_dcg']:.2e} m/s (sd over frames "
           f"{res['wall_dcg_sd']:.2e}); band 2 d_cg: {res['wall_2dcg']:.2e} m/s")
+    return res
 
 
 if __name__ == '__main__':

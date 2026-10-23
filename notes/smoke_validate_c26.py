@@ -101,9 +101,15 @@ def lost_parcel_exits(run, m):
 def run_check_smoke(run, m):
     bed_top_r = min(m['R_t_m'] + m['H_static_m'] * math.tan(math.radians(m['cone_half_angle_deg'])),
                     m['R_c_m'])
+    # S3/S4 average the first-row cells whose centres lie within --orifice-r.
+    # With the axis on a cell face (manifest ps_footprint_cells 2) the four
+    # source-cell centres sit at r = dx/sqrt(2) > R_nozzle, so widen the
+    # radius by a quarter cell past them (still inside the next ring).
+    ps_cells = m.get('ps_footprint_cells', 1)
+    exit_r = max(m['R_nozzle_m'], (ps_cells - 1) * m['dx_m'] / math.sqrt(2) + 0.25 * m['dx_m'])
     cmd = [sys.executable, str(SKILL / 'check_smoke.py'), str(run),
            '--bc-v-g', f"{m['U_nozzle_m_s']:.6g}",
-           '--orifice-r', f"{m['R_nozzle_m']:.6g}",
+           '--orifice-r', f"{exit_r:.6g}",
            '--dx', f"{m['dx_m']:.6g}",
            '--bed-mass', f"{m['inventory_kg']:.6g}",
            '--bed-top-r', f'{bed_top_r:.6g}',
@@ -142,7 +148,8 @@ def main(run):
     if mv:
         vol = float(mv.group(1))
         report('P1', 'PS cell volume', 'PASS' if vol >= PS_VOLUME_MIN_M3 else 'FAIL',
-               f'{vol:.3e} m^3 (axis cell 7.0e-9; sliver ~3.3e-10)')
+               f'{vol:.3e} m^3 over {m.get("ps_footprint_cells", 1)**2} cell(s) '
+               '(axis cell 7.0e-9; sliver ~3.3e-10)')
     else:
         report('P1', 'PS cell volume', 'FAIL', 'no "Point source setup information" in run.log')
 
