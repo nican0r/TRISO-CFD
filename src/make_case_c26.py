@@ -68,6 +68,34 @@ def _mean_cube_normal(mu: float, sigma: float) -> float:
 GRIDMAP_MIN_CELLS = 3
 
 
+def _n_cells_xz(mesh: Mapping[str, object], axis_on_face: bool) -> int:
+    """Cells across the box in x and z (geometry.yaml spouted_bed_C26_3d).
+
+    axis_on_face False: an ODD count (24 + 2 margins + 1 = 27), so the axis
+    is a cell centre.  True: the even count 24 + 2 margins = 26, so the axis
+    is the edge shared by the four central cells, as in C26's 24-cell mesh.
+    """
+    n = int(mesh["n_cells_across_D"]) + 2 * int(mesh["n_margin_cells_xz"])
+    if axis_on_face:
+        if n % 2:
+            raise ValueError(f"axis_on_cell_face needs an even cell count across the box, got {n}")
+        return n
+    return n + (1 if n % 2 == 0 else 0)
+
+
+def default_gridmap(axis_on_face: bool | None = None) -> tuple[list[int], list[int], list[int]]:
+    """The 4-rank default partition (2x1x2): halves along i and k, one rank
+    along j.  [12, 12] on the 24-cell box (default since 2026-10-22),
+    [12, 13] on the odd 25-cell box.
+    axis_on_face defaults to geometry.yaml ``axis_on_cell_face``."""
+    mesh = _load_yaml(PARAMS_DIR / "geometry.yaml")["spouted_bed_C26_3d"]
+    if axis_on_face is None:
+        axis_on_face = bool(mesh["axis_on_cell_face"])
+    n = _n_cells_xz(mesh, axis_on_face)
+    half = [n // 2, n - n // 2]
+    return list(half), [], list(half)
+
+
 def write_gridmap(run_dir: Path, gridmap: Mapping[str, Sequence[int]]) -> Path:
     """Write MFiX's gridmap.dat (dmp_modules/gridmap_mod.f, PARTITION).
 
@@ -151,6 +179,7 @@ def build_C26_3d_params(
     ps_momentum: bool | None = None,
     epg_clip: float | None = None,
     interp_scheme: str | None = None,
+    axis_on_face: bool | None = None,
 ) -> dict:
     """Assemble the template params for one row of params/sweep_C26.yaml.
 
@@ -186,14 +215,20 @@ def build_C26_3d_params(
                'SQUARE_DPVM'); default geometry.yaml ``des_interp_scheme``.
                SQUARE_DPVM also writes DES_INTERP_WIDTH =
                ``des_interp_width_cells`` * dx.
+    axis_on_face : grid layout; default geometry.yaml ``axis_on_cell_face``.
+               False: odd cell count, axis at a cell centre, one-cell point
+               source.  True: C26's layout, even count with the axis on the
+               edge of the four central cells, point source over those 2 x 2
+               cells.
 
     Geometry (bed_C26, spouted_bed_C26_3d):
       - vessel: cone from a closed throat (r = R_t, y = 0) to the column
         (r = R_c), column up to the pressure outlet at y = H_dom;
-      - uniform mesh dx = D_c / n_cells_across_D (2.1 mm); an ODD number of
-        cells across the box so the vessel axis is a cell centre;
-      - gas enters through ONE point-source cell centred on the axis in the
-        first fluid row above the cap (C26 2.2.1).  ps_v_g is 0 for the
+      - uniform mesh dx = D_c / n_cells_across_D (2.1 mm); by default an ODD
+        number of cells across the box so the vessel axis is a cell centre;
+      - gas enters through a point source centred on the axis in the first
+        fluid row above the cap (C26 2.2.1): the axis cell, or the 2 x 2
+        cells around the axis with ``axis_on_face``.  ps_v_g is 0 for the
         default mass-only source, or the nozzle exit velocity (momentum flux
         m_dot * U_nozzle) with ``ps_momentum``.
     """
@@ -253,8 +288,10 @@ def build_C26_3d_params(
     if h_cone_m >= H_dom_m:
         raise ValueError(f"cone height {h_cone_m} m exceeds H_dom {H_dom_m} m")
 
-    # Odd cell count across the box -> axis at a cell centre.
-    n_xz = n_across + 2 * n_margin_xz + (1 if n_across % 2 == 0 else 0)
+    # Odd count -> axis at a cell centre; even (axis_on_face) -> axis on the
+    # edge shared by the four central cells.
+    axis_on_face = bool(mesh["axis_on_cell_face"] if axis_on_face is None else axis_on_face)
+    n_xz = _n_cells_xz(mesh, axis_on_face)
     x_half_m = 0.5 * n_xz * dx_m
     dx_m_list = _uniform_axis(dx_m, 2.0 * x_half_m)
     dz_m_list = _uniform_axis(dx_m, 2.0 * x_half_m)
@@ -291,7 +328,10 @@ def build_C26_3d_params(
             f"(imax={imax}, jmax={jmax}, kmax={kmax})"
         )
 
-    # Point-source cell (one cell, centred on the axis).
+    # Point-source cells, centred on the axis: the axis cell, or the 2 x 2
+    # cells that share the axis edge.
+    ps_cells = 2 if axis_on_face else 1
+    ps_half_m = 0.5 * ps_cells * dx_m
     ps_row = int(mesh["ps_row_offset_cells"])
     if ps_row < 0:
         raise ValueError("ps_row_offset_cells must be >= 0")
@@ -310,7 +350,7 @@ def build_C26_3d_params(
     A_nozzle = math.pi * R_n_m ** 2
     U_nozzle = Q_actual / A_nozzle
     U_sup = Q_actual / (math.pi * R_c_m ** 2)
-    U_ps_cell = Q_actual / (dx_m * dx_m)   # mean velocity over the PS cell face
+    U_ps_cell = Q_actual / (2.0 * ps_half_m) ** 2   # mean velocity over the PS footprint
 
     # ---- time step: the paper's step, capped by recipe Rule 9 per case ----
     dt_max_paper_s = float(numerics["dt_max_paper_s"])
@@ -357,7 +397,6 @@ def build_C26_3d_params(
     piv_t_end = tstop_s
     piv_t_start = max(0.0, tstop_s - piv_n * piv_dt)
 
-    half = 0.5 * dx_m
     stage_txt = particle["coating_stage"] or "bare"
     return {
         "case_id": case_id,
@@ -380,6 +419,7 @@ def build_C26_3d_params(
         "gridmap": None if gridmap is None else {
             "i": gridmap[0], "j": gridmap[1], "k": gridmap[2]},
         # mesh
+        "axis_on_cell_face": axis_on_face,
         "imax": imax, "jmax": jmax, "kmax": kmax,
         "n_cells_total": imax * jmax * kmax,
         "dx_m": dx_m,
@@ -397,9 +437,10 @@ def build_C26_3d_params(
         "top_extend_m": float(mesh["top_extend_m"]),
         # point source
         "ps_x_m": 0.0, "ps_y_m": ps_y_m, "ps_z_m": 0.0,
-        "ps_cell_x_w_m": -half, "ps_cell_x_e_m": half,
+        "ps_cell_x_w_m": -ps_half_m, "ps_cell_x_e_m": ps_half_m,
         "ps_cell_y_s_m": ps_y_s_m, "ps_cell_y_n_m": ps_y_n_m,
-        "ps_cell_z_b_m": -half, "ps_cell_z_t_m": half,
+        "ps_cell_z_b_m": -ps_half_m, "ps_cell_z_t_m": ps_half_m,
+        "ps_footprint_cells": ps_cells,   # PS cells along x and along z
         "ps_row_offset_cells": ps_row,
         "r_cone_at_ps_top_m": r_cone_at_ps_top,
         "ps_massflow_g_kg_s": m_dot,

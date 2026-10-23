@@ -636,12 +636,34 @@ spouted_bed_C26_3d:
   n_cells_vertical: 100    # cells from the cone bottom (y = 0) to the
                            # outlet [-]; H_dom = 100 dx = 0.210 m
                            # source: C26 p.3 (2.2.1).
-  n_margin_cells_xz: 1     # whole cells of clearance outside D_c on each
-                           # side in x and z [-].  The box adds a further
-                           # half cell each side so the cell count is ODD
-                           # (24 + 2*1 + 1 = 27) and the vessel axis sits at
-                           # a cell centre (single-cell point source).
+  n_margin_cells_xz: 0     # whole cells of clearance outside D_c on each
+                           # side in x and z [-].  With axis_on_cell_face
+                           # false the box adds a further half cell each side
+                           # so the cell count is ODD (24 + 2*1 + 1 = 27) and
+                           # the vessel axis sits at a cell centre
+                           # (single-cell point source).
                            # source: assumed (notes/c26_conry2026_case.md).
+                           # 2026-10-22: margin 0 and axis_on_cell_face true
+                           # -> exactly 24 cells across the box = D_c, as
+                           # C26 p.3 states; the STL column wall touches the
+                           # box faces.  Earlier runs: 27 (margin 1, odd) and
+                           # 26 (margin 1, axis on face).  User decision.
+  axis_on_cell_face: true  # grid layout around the axis [-].
+                           # false: odd cell count (27), axis at a cell
+                           # centre, point source = that one cell.  Every run
+                           # to 2026-10-20 used this.
+                           # true: C26's layout.  24 cells across D put the
+                           # axis on the edge shared by the four central
+                           # cells; the box is 24 + 2*1 = 26 cells and the
+                           # point source covers those 2 x 2 cells, which is
+                           # where a nozzle-sized PS region (D_n = 2.38 mm)
+                           # snaps on that grid.  The cone wall then closes
+                           # most of the source's side faces in the first
+                           # row (notes "Grid-layout A/B").
+                           # source: C26 p.3 (2.2.1, 24 cells across the
+                           # reactor diameter); the 2 x 2 footprint is
+                           # assumed (C26 gives no PS region; a zero-width
+                           # point would land in one off-axis cell instead).
   n_margin_cells_below: 4  # blocked cell rows below the y = 0 cone cap [-].
                            # Keeps the cap off the box face (cf. recipe
                            # Rule 19) and makes jmax = 104 = 8 x 13 for DMP.

@@ -12,6 +12,7 @@ from src.make_case_c26 import (
     build_C26_3d_params,
     load_sweep,
     resolve_particle,
+    default_gridmap,
     slpm_to_mass_flow,
     write_gridmap,
 )
@@ -54,6 +55,12 @@ def all_params() -> dict:
 @pytest.fixture(scope="module")
 def p01() -> dict:
     return build_C26_3d_params(_case("c01"))
+
+
+@pytest.fixture(scope="module")
+def p01_odd() -> dict:
+    """The pre-2026-10-22 odd layout: axis at a cell centre, one-cell source."""
+    return build_C26_3d_params(_case("c01"), axis_on_face=False)
 
 
 def _keywords(text: str) -> set[str]:
@@ -114,14 +121,20 @@ def test_mesh_matches_c26(p01):
     assert p01["dx_m"] == pytest.approx(2.1e-3)
     assert p01["D_c_m"] / p01["dx_m"] == pytest.approx(24.0)
     assert p01["H_dom_m"] == pytest.approx(0.210)
-    assert (p01["imax"], p01["jmax"], p01["kmax"]) == (27, 104, 27)
-    assert len(p01["dx_m_list"]) == 27 and len(p01["dy_m_list"]) == 104
+    # 2026-10-22: no margin cells, so the box is exactly 24 cells = D_c wide
+    # and the axis is a cell corner (geometry.yaml n_margin_cells_xz 0,
+    # axis_on_cell_face true).
+    assert (p01["imax"], p01["jmax"], p01["kmax"]) == (24, 104, 24)
+    assert len(p01["dx_m_list"]) == 24 and len(p01["dy_m_list"]) == 104
+    assert p01["x_min_m"] == pytest.approx(-p01["R_c_m"]) and p01["x_max_m"] == pytest.approx(p01["R_c_m"])
 
 
-def test_axis_is_a_cell_centre(p01):
-    # Odd cell count: the vessel axis x = 0 is the centre of cell imax // 2.
-    i_axis = p01["imax"] // 2
-    x_centre = p01["x_min_m"] + (i_axis + 0.5) * p01["dx_m"]
+def test_axis_is_a_cell_centre(p01_odd):
+    # Odd layout (24 + 1 = 25 cells): the vessel axis x = 0 is the centre of
+    # cell imax // 2.
+    assert (p01_odd["imax"], p01_odd["kmax"]) == (25, 25)
+    i_axis = p01_odd["imax"] // 2
+    x_centre = p01_odd["x_min_m"] + (i_axis + 0.5) * p01_odd["dx_m"]
     assert x_centre == pytest.approx(0.0, abs=1e-12)
 
 
@@ -155,7 +168,7 @@ def test_bed_heights_and_paper_annotation(p01):
 
 def test_nodes_must_divide_mesh():
     with pytest.raises(ValueError):
-        build_C26_3d_params(_case("c01"), nodes=(2, 1, 1))   # 27 is odd
+        build_C26_3d_params(_case("c01"), nodes=(2, 1, 1), axis_on_face=False)   # 25 is odd
     p = build_C26_3d_params(_case("c01"), nodes=(3, 8, 3))
     assert p["nranks"] == 72
 
@@ -412,11 +425,13 @@ def test_deck_mesh_lines(tmp_path):
     assert len(re.findall(r"^\s*dz\(\d+\)", text, flags=re.M)) == p["kmax"]
 
 
-def test_deck_point_source_is_one_axis_cell_box(tmp_path, p01):
-    """A zero-width PS at a cell centre rounds to a face and lands in a
-    corner cut cell (c01 smoke, 2026-10-16).  The region must be the axis
-    cell's faces: width dx in x and z, centred on 0, one row in y."""
-    text, _ = _render(tmp_path, "c01")
+def test_deck_point_source_is_one_axis_cell_box(tmp_path, p01_odd):
+    """Odd layout: a zero-width PS at a cell centre rounds to a face and lands
+    in a corner cut cell (c01 smoke, 2026-10-16).  The region must be the axis
+    cell's faces: width dx in x and z, centred on 0, one row in y.  (The
+    default 24-cell layout's 2x2 source is covered by test_axis_on_face_deck.)"""
+    p01 = p01_odd
+    text, _ = _render(tmp_path, "c01", axis_on_face=False)
     v = {k: float(x) for k, x in re.findall(
         r"^\s*(ps_[xyz]_[wesnbt])\(1\)\s*=\s*(\S+)", text, flags=re.M)}
     dx = p01["dx_m"]
@@ -444,28 +459,29 @@ def test_deck_keywords_are_verified(tmp_path):
 
 # ---------------- non-uniform DMP partition (gridmap.dat) ----------------
 
-GRIDMAP_5x1x5 = ([9, 3, 3, 3, 9], [], [9, 3, 3, 3, 9])
+GRIDMAP_5x1x5 = ([6, 3, 3, 3, 9], [], [6, 3, 3, 3, 9])
 
 
 def test_gridmap_sets_nodes_and_skips_divisor_check():
     p = build_C26_3d_params(_case("c01"), gridmap=GRIDMAP_5x1x5)
-    # 5 does not divide 27: allowed only because gridmap gives exact sizes.
+    # 5 does not divide 24: allowed only because gridmap gives exact sizes.
     assert (p["nodes_i"], p["nodes_j"], p["nodes_k"], p["nranks"]) == (5, 1, 5, 25)
-    assert p["gridmap"] == {"i": [9, 3, 3, 3, 9], "j": [104], "k": [9, 3, 3, 3, 9]}
+    assert p["gridmap"] == {"i": [6, 3, 3, 3, 9], "j": [104], "k": [6, 3, 3, 3, 9]}
     assert build_C26_3d_params(_case("c01"))["gridmap"] is None
 
 
 def test_gridmap_validation():
     with pytest.raises(ValueError, match="sum to"):
-        build_C26_3d_params(_case("c01"), gridmap=([9, 3, 3, 3, 8], [], [27]))
+        build_C26_3d_params(_case("c01"), gridmap=([6, 3, 3, 3, 8], [], [24]))
     with pytest.raises(ValueError, match=">= 3 cells"):
-        build_C26_3d_params(_case("c01"), gridmap=([10, 2, 3, 3, 9], [], [27]))
+        build_C26_3d_params(_case("c01"), gridmap=([7, 2, 3, 3, 9], [], [24]))
     with pytest.raises(ValueError, match="conflicts"):
         build_C26_3d_params(_case("c01"), nodes=(3, 1, 3), gridmap=GRIDMAP_5x1x5)
 
 
 def test_gridmap_central_slab_holds_the_axis(p01):
-    # The narrow slabs must straddle the vessel axis (cell imax // 2).
+    # The narrow slabs must hold the first cell east of the axis corner
+    # (cell imax // 2) in an interior slab.
     sizes = GRIDMAP_5x1x5[0]
     i_axis = p01["imax"] // 2
     edges = [sum(sizes[:n]) for n in range(len(sizes) + 1)]
@@ -479,6 +495,63 @@ def test_write_gridmap_format(tmp_path):
     p = build_C26_3d_params(_case("c01"), gridmap=GRIDMAP_5x1x5)
     lines = write_gridmap(tmp_path, p["gridmap"]).read_text().split("\n")
     assert lines[0] == "5 1 5"
-    assert lines[1:6] == ["0 9", "1 3", "2 3", "3 3", "4 9"]
+    assert lines[1:6] == ["0 6", "1 3", "2 3", "3 3", "4 9"]
     assert lines[6] == "0 104"
-    assert lines[7:12] == ["0 9", "1 3", "2 3", "3 3", "4 9"]
+    assert lines[7:12] == ["0 6", "1 3", "2 3", "3 3", "4 9"]
+
+
+# ---------------- grid layout: axis on a cell face (C26's 24-cell mesh) ----------------
+
+@pytest.fixture(scope="module")
+def p01_face() -> dict:
+    return build_C26_3d_params(_case("c01"), axis_on_face=True)
+
+
+def test_default_layout_is_axis_on_face(p01, p01_odd):
+    # geometry.yaml axis_on_cell_face true since 2026-10-22.
+    assert p01["axis_on_cell_face"] is True and p01["ps_footprint_cells"] == 2
+    assert p01_odd["axis_on_cell_face"] is False and p01_odd["ps_footprint_cells"] == 1
+
+
+def test_axis_on_face_mesh(p01_face, p01_odd):
+    # Exactly 24 cells across D (no margin cells), no half cells.
+    assert (p01_face["imax"], p01_face["jmax"], p01_face["kmax"]) == (24, 104, 24)
+    assert p01_face["dx_m"] == p01_odd["dx_m"] and p01_face["H_dom_m"] == p01_odd["H_dom_m"]
+    # the axis x = 0 is the face between cells imax/2 - 1 and imax/2
+    i_face = p01_face["imax"] // 2
+    assert p01_face["x_min_m"] + i_face * p01_face["dx_m"] == pytest.approx(0.0, abs=1e-12)
+    assert p01_face["z_min_m"] + i_face * p01_face["dx_m"] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_axis_on_face_point_source_is_the_2x2_axis_cells(p01_face):
+    dx = p01_face["dx_m"]
+    assert p01_face["ps_footprint_cells"] == 2
+    assert (p01_face["ps_cell_x_w_m"], p01_face["ps_cell_x_e_m"]) == pytest.approx((-dx, dx))
+    assert (p01_face["ps_cell_z_b_m"], p01_face["ps_cell_z_t_m"]) == pytest.approx((-dx, dx))
+    assert (p01_face["ps_cell_y_s_m"], p01_face["ps_cell_y_n_m"]) == pytest.approx((0.0, dx))
+    # same gas, spread over a footprint four times the axis cell's
+    p01 = build_C26_3d_params(_case("c01"), axis_on_face=False)
+    assert p01_face["ps_massflow_g_kg_s"] == p01["ps_massflow_g_kg_s"]
+    assert p01_face["U_ps_cell_m_s"] == pytest.approx(p01["U_ps_cell_m_s"] / 4.0)
+
+
+def test_axis_on_face_deck(tmp_path, p01_face):
+    text, p = _render(tmp_path, "c01", axis_on_face=True)
+    assert len(re.findall(r"^\s*dx\(\d+\)", text, flags=re.M)) == 24
+    v = {k: float(x) for k, x in re.findall(
+        r"^\s*(ps_[xyz]_[wesnbt])\(1\)\s*=\s*(\S+)", text, flags=re.M)}
+    dx = p["dx_m"]
+    assert (v["ps_x_w"], v["ps_x_e"], v["ps_z_b"], v["ps_z_t"]) == pytest.approx((-dx, dx, -dx, dx))
+    for key, origin in (("ps_x_w", p["x_min_m"]), ("ps_x_e", p["x_min_m"]),
+                        ("ps_z_b", p["z_min_m"]), ("ps_z_t", p["z_min_m"])):
+        n = (v[key] - origin) / dx
+        assert n == pytest.approx(round(n), abs=1e-6)       # on grid lines
+    allowed = _keywords(V3D_DEM_TEMPLATE.read_text()) | C26_NEW_KEYWORDS
+    assert not (_keywords(text) - allowed)
+
+
+def test_default_gridmap_halves_the_box():
+    assert default_gridmap(False) == ([12, 13], [], [12, 13])
+    assert default_gridmap(True) == ([12, 12], [], [12, 12])
+    p = build_C26_3d_params(_case("c01"), axis_on_face=True, gridmap=default_gridmap(True))
+    assert p["nranks"] == 4 and p["gridmap"] == {"i": [12, 12], "j": [104], "k": [12, 12]}

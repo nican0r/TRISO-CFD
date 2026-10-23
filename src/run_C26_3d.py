@@ -19,13 +19,16 @@ Examples:
   .venv/bin/python -m src.run_C26_3d --case c04 --run-dir-suffix _massonly
   .venv/bin/python -m src.run_C26_3d --case c02 --tstop 0.3 --run-dir-suffix _smoke_r2
   .venv/bin/python -m src.run_C26_3d --case all --dry-run
+  # C26's grid layout (axis on a cell face, 2x2-cell point source)
+  .venv/bin/python -m src.run_C26_3d --case c01 --axis-on-face --run-dir-suffix _massonly_axisface
   # non-uniform partition: narrow slabs over the cone, where the parcels are
   .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9 \
       --run-dir-suffix _gridmap_test
 
-With neither --nodes nor --gridmap-*, cases get DEFAULT_GRIDMAP: 4 ranks
-(2x1x2, i = k = [13,14]), the laptop split and the best throughput per vCPU on
-AWS (notes/c26_conry2026_case.md, "AWS run cost"). The manifest's aws_vcpu
+With neither --nodes nor --gridmap-*, cases get default_gridmap(): 4 ranks
+(2x1x2, i = k = [13,14] on the 27-cell box, [13,13] with --axis-on-face), the
+laptop split and the best throughput per vCPU on AWS
+(notes/c26_conry2026_case.md, "AWS run cost"). The manifest's aws_vcpu
 (= nranks) and aws_memory_mb (src/aws/config.py C26_MEMORY_MB) size the Batch
 job; src/aws/submit.py reads them when --vcpu/--memory are omitted.
 """
@@ -39,17 +42,13 @@ import shutil
 from pathlib import Path
 
 from src.make_case import REPO_ROOT, render_case
-from src.make_case_c26 import build_C26_3d_params, load_sweep, write_gridmap
+from src.make_case_c26 import build_C26_3d_params, default_gridmap, load_sweep, write_gridmap
 from src.make_stl import build_cone_column_stl_implicit
 from src.run_V_3d_day10 import _parse_nodes, write_runner
 from src.aws.config import C26_MEMORY_MB
 
 TEMPLATE = REPO_ROOT / "cases" / "C26_3d" / "template_dem.mfx.j2"
 OUT_ROOT = REPO_ROOT / "cases" / "C26_3d"
-
-# Default DMP partition (cells per rank along i, j, k): 2x1x2 = 4 ranks.
-# 27 cells do not split evenly in two, hence a gridmap rather than --nodes.
-DEFAULT_GRIDMAP = ([13, 14], [104], [13, 14])
 
 # Parcel count of the c01 memory probe behind C26_MEMORY_MB (src/aws/config.py,
 # results/run_log.csv 2026-10-19 "c01 memory probe").
@@ -111,9 +110,9 @@ def main() -> None:
     p.add_argument("--tstop", type=float, default=None,
                    help="override simulated end time [s] (default: sweep base.tstop_s)")
     p.add_argument("--nodes", type=_parse_nodes, default=None, metavar="NI,NJ,NK",
-                   help="DMP decomposition; must divide imax/jmax/kmax (27/104/27). "
-                        "Default (no --nodes, no --gridmap-*): DEFAULT_GRIDMAP, 4 ranks; "
-                        "1,1,1 for serial")
+                   help="DMP decomposition; must divide imax/jmax/kmax (27/104/27, "
+                        "26/104/26 with --axis-on-face). Default (no --nodes, no "
+                        "--gridmap-*): default_gridmap(), 4 ranks; 1,1,1 for serial")
     for axis in "ijk":
         p.add_argument(f"--gridmap-{axis}", type=_parse_sizes, default=None, metavar="N,N,...",
                        help=f"non-uniform DMP partition: cells per rank along {axis} "
@@ -135,6 +134,11 @@ def main() -> None:
     p.add_argument("--interp-scheme", choices=("LINEAR_HAT", "SQUARE_DPVM"), default=None,
                    help="DES_INTERP_SCHEME override; SQUARE_DPVM also writes "
                         "DES_INTERP_WIDTH (geometry.yaml des_interp_width_cells * dx)")
+    p.add_argument("--axis-on-face", action="store_true",
+                   help="C26's grid layout: an even cell count (26) with the axis on "
+                        "the edge of the four central cells, and the point source over "
+                        "those 2x2 cells (geometry.yaml axis_on_cell_face); default "
+                        "is the odd 27-cell box with a one-cell source on the axis")
     p.add_argument("--flow-slpm", type=float, default=None, metavar="Q",
                    help="override the case's gas flow [slpm] for a one-off check "
                         "outside the sweep matrix (e.g. c07 spout check); "
@@ -156,7 +160,7 @@ def main() -> None:
     if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
         gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
     elif args.nodes is None:
-        gridmap = DEFAULT_GRIDMAP
+        gridmap = default_gridmap(True if args.axis_on_face else None)
     nodes = args.nodes or (1, 1, 1)
     stl_cache: Path | None = None
     facet_count = None
@@ -172,6 +176,7 @@ def main() -> None:
             ps_momentum=True if args.ps_momentum else (False if args.ps_mass_only else None),
             epg_clip=args.epg_clip,
             interp_scheme=args.interp_scheme,
+            axis_on_face=True if args.axis_on_face else None,
         )
         run_dir = args.out_root / f"{case['id']}{name_suffix}"
         mfx_path = run_dir / f"{params['run_name']}.mfx"
