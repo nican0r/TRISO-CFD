@@ -81,6 +81,33 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 3. **Baseline runs c01–c03** (tstop 3 s). Log each in `results/run_log.csv`.
    Status: c01 with the momentum source reached 3 s (health GO; step-3
    A/B PASS, C1/D FAIL); c01–c03_massonly were submitted 2026-10-19.
+   c01–c03_massonly reached 3 s on 2026-10-20 (22.7–23.5 h).
+   - Health: GO for c01 and c02. c03 is NO-GO on P3ii because its spout is
+     off-centre.
+   - Step 3: C1 PASS and D FAIL in all three; A fails for c01 only; C2 fails
+     at y = 10 mm in all three.
+   - All mass-only runs have the spout leaning towards −x. Gas-only tests
+     show the bias exists without a bed and is not the domain split or the
+     STL. The likely cause is MFiX 26.1.2's unlimited U interpolation factor
+     (`get_alpha.f`); the patched-solver test has not been run.
+   - Details: notes, "c01–c03 mass-only 3 s results".
+   - C26 grid layout (`--axis-on-face`), c01–c03_massonly_axisface, reached
+     3 s on 2026-10-21. A, B, C1 and C2 pass at all three flows. D still
+     fails, and changes by −20 / −4 / 0 %. The PIV map gives NO MATCH at all
+     three flows. Health is GO for c01 and c02; c03 is NO-GO on S6 (ΔP
+     3.09 W/A). Details: notes, "Axis-face 3 s results".
+   - First-principles review of the velocity gap (2026-10-22; notes,
+     "First-principles review of the velocity gap"). The "missing retarding
+     force in the fountain" hypothesis is not supported: drag is ≤ 5 % of
+     weight on fountain parcels and descending parcels decelerate relative
+     to free fall. The mass-only runs are in a bubbling regime (jet at
+     1/3–1/4 of the nozzle momentum flux); the 27-cell momentum c01
+     over-drives the spout. The default layout is now exactly 24 cells
+     across (`geometry.yaml` margin 0, axis on the cell corner, 2 × 2
+     source; no physics change against 26 cells with a blocked margin).
+     c01–c09_momentum24 (momentum source on the 24-cell layout) were
+     submitted 2026-10-22; c05 and c07 reached 3 s on 2026-10-23 (14–16 h),
+     the rest were still running. Not pulled or scored yet.
    Spout check, over the last 0.6 s (C26's PIV window): at 10 slpm C26 calls
    the regime "near minimum spouting" with "approximately 10 spouting events
    every 0.5 s" (§3.1, §2.2.2), so expect a pulsed spout, not a steady one.
@@ -90,15 +117,33 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      0.5 m/s on the axis and ~0 at the walls (C26 Fig. 7, model).
    - Mean downward wall velocity of order 1e-3 m/s (C26 Fig. 6d: experiment
      0.93e-3, their model 3.3e-3).
-   Batch jobs carry no timeout (no `attemptDurationSeconds`); budget
-   ~17–21 h per case at 4 ranks from the smoke's s/step (C26 needed 167 h
-   for 3 s at W = 10, Table 5).
-4. **Synthetic PIV post-processor** (`src/post/piv_c26.py`, not written yet):
-   project `Particles_PIV` frames onto the camera plane, render them, run the
-   same windowed cross-correlation as PIVlab (~4 mm windows, C26 Fig. 1c),
-   time-average 300 frames, and compute CC, SSI and MSE against the
-   experimental maps. Digitize C26 Fig. 4 maps and wall v(t) into
-   `data/digitized/`.
+   Batch jobs carry no timeout (no `attemptDurationSeconds`). Budget
+   ~23–24 h per case at 4 ranks, as measured on c01–c03_massonly (the
+   momentum24 c05 / c07 took 16.3 / 14.3 h). The
+   earlier 17–21 h, taken from a 10 ms window, was too low. (C26 needed
+   167 h for 3 s at W = 10, Table 5.)
+4. **Synthetic PIV** (`src/post/piv_c26.py`, written 2026-10-20). It
+   renders `PARTICLES_PIV` frames as a side-view camera image and runs
+   multi-pass FFT cross-correlation on consecutive frames. It writes:
+   - the time-averaged map above the bed, scored with CC, SSI and MSE against
+     the digitized C26 Fig. 4a;
+   - the wall velocity in C26 Fig. 1c's 4 mm box, compared with Fig. 6d.
+
+   Settings and sources are in `params/piv_c26.yaml`. C26 gives no PIV
+   settings, so they are assumed. The "~4 mm" in Fig. 1c is the wall
+   sampling box, not the PIV window (this step's earlier text said
+   otherwise). The Fig. 4 maps come from `src/post/digitize_c26_fig4.py`
+   (`data/digitized/c26_fig4_*.csv`). Fig. 6 time series are not digitized;
+   the Fig. 6d means are given in the text (p.7).
+
+   Run: `MPLBACKEND=Agg .venv/bin/python -m src.post.piv_c26 <run_dir>`
+   (about 2 min per run). Report each run next to Table 3 **and** next to
+   C26's own model scored through the same pipeline (Fig. 4b vs 4a): the
+   digitized figure does not reproduce Table 3 (notes, "Synthetic PIV").
+   Status (2026-10-20): c01 (momentum) and c01–c03_massonly are scored
+   (notes, "Synthetic PIV"). The map placement and the handling of empty
+   windows are assumptions that move CC a lot. For the mass-only runs, SSI
+   and MSE stay far from C26's model under every variant tested.
 5. **Coating-stage / charge sweep c04–c09** (one factor at a time around c02:
    YSZ, 60 g, 12 slpm, W = 10). It replaces C26's wall-friction,
    statistical-weight and steel cases.
@@ -110,8 +155,17 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      `notes/smoke_validate_c26.py`.
    - **Full runs:** 3 s runs only after the smokes pass. Then run
      `notes/c26_sweep_summary.py --suffix _massonly` over the last 0.6 s.
-   - Status: smokes done (notes "Local smokes and criteria changes");
-     c04–c09_massonly submitted 2026-10-19/20.
+   - Status: smokes done (notes "Local smokes and criteria changes").
+     c04–c09_massonly and c04/c05/c06/c08_massonly_axisface reached 3 s
+     and were scored on 2026-10-22; c07/c09_massonly_axisface were still
+     running. Results are in the notes, "Coating-stage / charge 3 s
+     results":
+     - The charge block (c08, c09) spouts. Its wall velocity has the same
+       gap to C26 as c02.
+     - Coated beds stop spouting at 12 slpm from c05 on. c04 spouts weakly.
+     - c06 shows an unexplained bed expansion.
+     - c05 and c06 are health NO-GO on P2, because losses before the PIV
+       window cannot be traced.
    - **Reporting:** there is no experiment for c04–c09, so results are
      relative sensitivities. A bed that doesn't spout at 12 slpm is reported
      as is.
@@ -120,10 +174,12 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 
 - c01 smoke passes the step-2 checks, and the result is recorded in
   `results/run_log.csv`. (Done: c01_smoke_r3, 2026-10-17.)
-- c01–c03 reach t = 3.0 s without `DT < DT_MIN`.
+- c01–c03 reach t = 3.0 s without `DT < DT_MIN`. (Done: c01–c03_massonly,
+  2026-10-20; min dt 6.6e-6 s.)
 - CC, SSI and MSE for c01–c03 are reported next to C26 Table 3
-  (0.68/0.82/0.83, 0.61/0.77/0.77, 0.0068/0.0042/0.0049 m²/s²) with the
-  averaging window stated (CLAUDE.md rule 6). No tuning to match.
+  (0.68/0.82/0.83, 0.61/0.77/0.77, 0.0068/0.0042/0.0049 m²/s²) and next to
+  C26's model scored through the same pipeline, with the averaging window
+  stated (CLAUDE.md rule 6). No tuning to match.
 - The settled-bed-height discrepancy (35 vs ~25 mm) is stated plainly, with the
   cone-angle implication. (Done: notes, "Geometry decisions" item 3.)
 - All tests pass.

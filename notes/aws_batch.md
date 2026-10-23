@@ -41,6 +41,7 @@ Pieces, with their file / resource name:
 | Job definition | `triso-cfd-mfix-26-1-2` | provisioned by `src/aws/provision.py` |
 | Submit script | `.venv/bin/python -m src.aws.submit` | `src/aws/submit.py` |
 | Poll script | `.venv/bin/python -m src.aws.poll` | `src/aws/poll.py` |
+| CLI wrappers | `aws batch submit-job` / `describe-jobs` via subprocess | `src/aws/cli.py` (used by submit, poll and `notes/c26_watch_post.py`) |
 | Shared config | `src/aws/config.py` | all names, region, instance types |
 | Run manifest | `results/run_log.csv` (one 'submitted' row per job, carries `aws_job_id`) | appended by `src/aws/submit.py::append_run_log_row` |
 
@@ -61,7 +62,8 @@ gets reclaimed mid-flight (Day 11-12's 20-60 h CFD-DEM run is the reason).
 
 1. Install Docker (already present on this laptop) and configure the AWS CLI
    with credentials that can create S3 buckets, IAM roles, ECR repos, and
-   Batch resources.
+   Batch resources. Since 2026-10-22 the credentials come from `aws login`;
+   see "Credentials" below for what that means for the Python tooling.
 2. Provision the stack and build + push the image:
 
    ```bash
@@ -76,6 +78,42 @@ gets reclaimed mid-flight (Day 11-12's 20-60 h CFD-DEM run is the reason).
    ```bash
    .venv/bin/python -m src.aws.provision --status
    ```
+
+## Credentials: `aws login` and the CLI wrappers (2026-10-22)
+
+Since 2026-10-22 the laptop authenticates with the AWS CLI v2 `aws login`
+provider (CLI 2.38.4, universal build, reinstalled after the macOS 27 upgrade
+broke the x86-only install and the old access key stopped working). boto3 in
+`.venv` cannot read that provider without the optional `botocore[crt]`
+package. User decision (2026-10-22): do not add the dependency; shell out to
+the CLI instead.
+
+- `src/aws/cli.py` runs `aws <service> <op> --region <REGION> --output json`
+  and parses stdout. `batch_submit_job(payload)` passes the same API payload
+  boto3's `submit_job(**payload)` took, as `--cli-input-json`;
+  `batch_describe_jobs(ids)` returns the `jobs` list. A non-zero exit raises
+  `RuntimeError` with the CLI's stderr.
+- `src/aws/submit.py`, `src/aws/poll.py` and `notes/c26_watch_post.py` use
+  the wrappers and no longer import boto3. `tests/test_aws_cli.py` mocks
+  `subprocess.run` and checks the command shape, the JSON handling, the
+  error path and that submit / poll stay boto3-free.
+- `src/aws/provision.py` (one-off stack setup) still uses boto3. It will
+  fail under `aws login` until it is converted the same way;
+  `requirements.txt` keeps boto3 / botocore pinned for it. Do not install
+  `awscrt` / `botocore[crt]` into `.venv` to work around this.
+- Sessions expire after some hours. Every wrapper then fails with
+
+  ```
+  aws: [ERROR]: Your session has expired. Please reauthenticate using 'aws login'.
+  ```
+
+  Run `aws login` (it opens a browser) and retry the command. Jobs already
+  on Batch are unaffected; only the laptop-side calls stop.
+- The first `aws s3 sync` of a submit has failed once with exit 1 and passed
+  on retry (2026-10-22); treat one sync failure as transient before
+  debugging.
+- Verified 2026-10-22: nine C26 `c0X_momentum24` jobs submitted through the
+  CLI path; `poll` and the watcher read their status.
 
 ## Per-run workflow
 
@@ -171,8 +209,10 @@ and all expected output files appeared.
 Explicit flags win. Manifests without `aws_vcpu`, which covers every V_3d case,
 keep the old defaults (16 vCPU / 30000 MB).
 
-C26 (`src/run_C26_3d.py`) writes 4 vCPU, 4 ranks (2×1×2, gridmap
-i = k = [13,14]) and 6000 MB, scaled up by parcel count (c09: 8000 MB). The
+C26 (`src/run_C26_3d.py`) writes 4 vCPU, 4 ranks (2×1×2; gridmap
+i = k = [12,12] on the 24-cell layout that is the default since 2026-10-22,
+[13,13] on the 26-cell axis-face layout, [13,14] on the old 27-cell layout)
+and 6000 MB, scaled up by parcel count (c09: 8000 MB). The
 account quota is 32 vCPU, so 8 C26 jobs run at once, packed 4 per
 c7a.4xlarge. The basis is in `src/aws/config.py` (`C26_MEMORY_MB`) and
 `notes/c26_conry2026_case.md` ("AWS run cost").
