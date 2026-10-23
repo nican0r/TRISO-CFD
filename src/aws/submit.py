@@ -45,9 +45,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import boto3
-
 from src.aws import config as C
+from src.aws.cli import batch_submit_job
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 RUN_LOG = REPO_ROOT / "results" / "run_log.csv"
@@ -113,16 +112,15 @@ def manifest_sizing(case_dir: Path) -> dict:
     return out
 
 
-def submit_single(sess, case_name: str, mfx: str, job_name: str,
+def submit_single(case_name: str, mfx: str, job_name: str,
                    vcpu: int, memory: int, nranks: int,
                    extra_args: str,
                    nodes: tuple[int, int, int] | None = None) -> str:
     bucket = C.S3_BUCKET
     case_s3 = f"s3://{bucket}/cases/{case_name}/"
     results_s3 = f"s3://{bucket}/results/{case_name}/"
-    batch = sess.client("batch")
     _log(f"submit {job_name} (single)")
-    resp = batch.submit_job(
+    return batch_submit_job(dict(
         jobName=job_name, jobQueue=C.JOB_QUEUE,
         jobDefinition=C.JOB_DEFINITION,
         containerOverrides={
@@ -139,20 +137,18 @@ def submit_single(sess, case_name: str, mfx: str, job_name: str,
                 *_nodes_env(nodes),
             ],
         },
-    )
-    return resp["jobId"]
+    ))
 
 
-def submit_array(sess, case_name: str, mfx: str, job_name: str, size: int,
+def submit_array(case_name: str, mfx: str, job_name: str, size: int,
                   vcpu: int, memory: int, nranks: int,
                   extra_args: str,
                   nodes: tuple[int, int, int] | None = None) -> str:
     bucket = C.S3_BUCKET
     case_s3 = f"s3://{bucket}/sweep/{case_name}/"
     results_s3 = f"s3://{bucket}/sweep/{case_name}/results/"
-    batch = sess.client("batch")
     _log(f"submit {job_name} (array size={size})")
-    resp = batch.submit_job(
+    return batch_submit_job(dict(
         jobName=job_name, jobQueue=C.JOB_QUEUE,
         jobDefinition=C.JOB_DEFINITION,
         arrayProperties={"size": size},
@@ -170,8 +166,7 @@ def submit_array(sess, case_name: str, mfx: str, job_name: str, size: int,
                 *_nodes_env(nodes),
             ],
         },
-    )
-    return resp["jobId"]
+    ))
 
 
 def main() -> None:
@@ -205,7 +200,6 @@ def main() -> None:
                      help="skip s3 sync + batch submit; print the plan")
     args = p.parse_args()
 
-    sess = boto3.Session(region_name=C.REGION)
     root = args.case_dir if args.case_dir else args.array_root / "case_00"
     sizing = manifest_sizing(root)
     if sizing:
@@ -238,7 +232,7 @@ def main() -> None:
         if args.dry_run:
             return
         s3_sync(args.case_dir, f"s3://{C.S3_BUCKET}/cases/{case_name}/")
-        job_id = submit_single(sess, case_name, args.mfx, args.job_name,
+        job_id = submit_single(case_name, args.mfx, args.job_name,
                                 args.vcpu, args.memory, nranks,
                                 args.extra_mfix_args, nodes)
         s3_prefix = f"s3://{C.S3_BUCKET}/results/{case_name}/"
@@ -260,7 +254,7 @@ def main() -> None:
         for i in range(args.array_size):
             sub = args.array_root / f"case_{i:02d}"
             s3_sync(sub, f"s3://{C.S3_BUCKET}/sweep/{case_name}/case_{i:02d}/")
-        job_id = submit_array(sess, case_name, args.mfx, args.job_name,
+        job_id = submit_array(case_name, args.mfx, args.job_name,
                                 args.array_size, args.vcpu, args.memory,
                                 nranks, args.extra_mfix_args, nodes)
         s3_prefix = f"s3://{C.S3_BUCKET}/sweep/{case_name}/results/"

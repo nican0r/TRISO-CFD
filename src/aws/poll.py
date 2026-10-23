@@ -22,9 +22,8 @@ import sys
 import time
 from pathlib import Path
 
-import boto3
-
 from src.aws import config as C
+from src.aws.cli import batch_describe_jobs
 
 
 TERMINAL = {"SUCCEEDED", "FAILED"}
@@ -34,8 +33,8 @@ def _log(msg: str) -> None:
     print(f"[poll] {msg}", flush=True)
 
 
-def describe(sess, job_id: str) -> dict:
-    jobs = sess.client("batch").describe_jobs(jobs=[job_id])["jobs"]
+def describe(job_id: str) -> dict:
+    jobs = batch_describe_jobs([job_id])
     if not jobs:
         sys.exit(f"job not found: {job_id}")
     return jobs[0]
@@ -86,10 +85,8 @@ def main() -> None:
                      help="on success, s3 sync results into this directory")
     args = p.parse_args()
 
-    sess = boto3.Session(region_name=C.REGION)
-
     while True:
-        j = describe(sess, args.job_id)
+        j = describe(args.job_id)
         s = summary(j)
         print(json.dumps(s, indent=2, default=str))
         if not args.watch:
