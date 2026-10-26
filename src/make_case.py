@@ -400,7 +400,6 @@ def build_V_3d_params(
     R_c_m = 0.5 * D_c_m
     R_i_m = 0.5 * D_i_m
     H_dom_m = float(v3d["H_dom_m"])
-    theta_segments = int(v3d["theta_segments"])
     L_stub_m = float(v3d.get("L_stub_m", 0.0))
     dx_sample_m = float(v3d.get("dx_sample_m", 1.0e-3))
     dx_uniform_m = float(v3d["dx_uniform_m"])
@@ -560,7 +559,6 @@ def build_V_3d_params(
         "cone_half_angle_deg": cone_half_angle_deg,
         "cone_apex_y_m": cone_apex_y_m,
         "cone_top_y_m": cone_top_y_m,
-        "theta_segments": theta_segments,
         "dx_sample_m": dx_sample_m,
         "dx_uniform_m": dx_uniform_m,
         # Day-10 R1: MI spans the FULL box bottom face (x_min..x_max,

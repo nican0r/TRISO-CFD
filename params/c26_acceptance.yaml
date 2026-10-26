@@ -56,3 +56,671 @@ grid_layout_ab:
                                    # otherwise inconclusive.
   fwhm_probe_y_m: 20.0e-3          # height of the reported spout FWHM [m]
                                    # (same pre-registration).
+
+interp_ab:
+  # Interpolation A/B (notes "Interpolation A/B: c02_momentum24_nointerp"),
+  # pre-registered 2026-10-23 before the run was submitted.  Hypothesis: the
+  # LINEAR_HAT drag/void interpolation (des_interp_on, des_interp_mean_fields;
+  # not in C26 Table 1, not MFiX's default) feeds spout gas and lift into the
+  # annulus, which fluidizes it and drives the fast wall layer.  Test run:
+  # c02 with des_interp_scheme NONE and both flags false, otherwise identical
+  # to c02_momentum24 (24-cell box, momentum point source, W = 10, 60 g,
+  # 12 slpm).  Baselines are c02_momentum24 over t = 2.4-3.0 s
+  # (notes/c26_annulus_metrics.py; step-3 D from c26_compare_momentum24.csv).
+  baseline: c02_momentum24
+  spout_share_20mm_baseline: 0.60   # gas flux in cells with v_g,y > 2 m/s at
+                                    # y = 20 mm over Q [-]
+  spout_share_20mm_support: 0.75    # >= this supports the hypothesis
+  bed_epg_baseline: 0.56            # bed mean EP_G, y in [2 mm, surface - 3 mm] [-]
+  bed_epg_support: 0.50             # <= this supports (packed bed ~0.42-0.45)
+  D_baseline_m_s: 2.64e-2           # step-3 D (wall layer, y < H_static) [m/s]
+  D_substantial_drop_frac: 0.30     # D falls >= 30 % -> supports (as grid_layout_ab)
+  D_no_effect_frac: 0.15            # |change| < 15 % -> no effect
+  CC_baseline: 0.825                # synthetic-PIV CC vs C26 Fig. 4a under the
+                                    # 'interpolate' convention and the annulus
+                                    # bed surface (piv_c26.yaml, both
+                                    # 2026-10-23); from the regenerated
+                                    # c26_piv_c02_momentum24.csv, still before
+                                    # any result of the test run (it was 0.851
+                                    # under the all-parcel surface earlier the
+                                    # same day; the map bottom moved 4.1 mm
+                                    # down, notes "Map bottom moved to the
+                                    # annulus surface")
+  CC_guard_drop: 0.05               # CC must stay >= baseline - this (guard,
+                                    # not a support criterion: filled on
+                                    # 2026-10-23 before any result, the
+                                    # baseline under the new convention is
+                                    # already at C26's own level, 0.85 vs
+                                    # 0.87, so CC cannot discriminate; the
+                                    # 2026-10-23 draft's "baseline + 0.10"
+                                    # was replaced by this guard the same
+                                    # day, before submission)
+  verdict:                          # supported: D substantial AND >= 1 of
+                                    #   spout share / bed EP_G, with the CC
+                                    #   guard met; refuted: D no effect AND
+                                    #   spout share within 0.05 AND bed EP_G
+                                    #   within 0.02 of baseline; else
+                                    #   inconclusive.  Health must be GO on
+                                    #   inlet/numerics; the dP band (S6) is
+                                    #   excluded for momentum-source decks
+                                    #   (the P_inlet probe sits in the source
+                                    #   cells and reads the momentum-source
+                                    #   depression, notes 2026-10-23).
+    spout_share_tol: 0.05
+    bed_epg_tol: 0.02
+
+  result_2026_10_25:
+    aws_job: e7395c56-e6a9-41c2-b434-ffcb8d17886e   # c26-c02-momentum24-nointerp, SUCCEEDED,
+                                                    # exit 0, 84872 s wall (23.57 h), MFiX 26.1.2
+    window_s: [2.4, 3.0]
+    health: "reached 3.0 s; parcel count constant 27778; check_smoke NO-GO only
+             on the excluded S6 dP band (0.42 W/A, momentum-source probe)"
+    D_wall_m_s: 0.0133               # baseline 0.0264 -> -50 %: substantial
+    spout_share_20mm: 0.600          # baseline 0.60 -> no support (needs >= 0.75), within tol
+    bed_epg_mean: 0.536              # baseline 0.56 -> no support (needs <= 0.50); |delta|
+                                     # 0.024 just outside the 0.02 tol
+    bed_void_frac_epg_gt_0p7: 0.162  # baseline 0.20-0.25
+    CC: 0.783                        # guard >= 0.775 met by 0.008; below the Table 3 floor
+                                     # 0.817 -> map NO MATCH (CC); SSI 0.842, MSE 0.0036
+    map_mean_m_s: 0.170              # baseline 0.142 (0.93x C26 model)
+    wall_piv_m_s: 0.0169             # baseline 0.0329 (9.2x exp, 3.3x C26 model)
+                                     # (wall box y_center_frac 0.5; at 0.64 since
+                                     # 2026-10-25: 0.0139 vs 0.0289)
+    axis_vp_20mm_m_s: 0.762          # baseline 0.672; FWHM 5.7 vs 7.0 mm
+    psd_peak_hz: 15.0                # baseline 11.7
+    verdict: "INCONCLUSIVE by the pre-registered rule: D is substantial but
+              neither annulus metric supports (spout share and bed EP_G
+              unchanged), and D did not fall by the no-effect margin either.
+              Reading: dropping LINEAR_HAT halves the wall-layer velocity
+              without defluidizing the annulus, and costs CC (0.783); the
+              annulus state is not set by the interpolation"
+
+interp_ab_smoke:
+  # Early read of the interpolation A/B from a 0.3 s AWS smoke of the same
+  # deck (c02_momentum24_nointerp_smoke03: tstop 0.3 s, gas VTK every 5 ms,
+  # PIV particle frames 0-0.3 s at 2 ms), pre-registered 2026-10-23 before
+  # submission (job ee8632a4-6e12-4b30-98da-11961ce1f44d).  Only the
+  # fluidization metrics are scored: in c02_momentum24 the annulus state is
+  # set by t = 0.1-0.15 s and never drifts (scratch annulus_vs_time, gas
+  # frames every 50 ms: bed EP_G 0.571 over 0.15-0.30 s, 0.549 over
+  # 2.4-3.0 s, heave band 0.48-0.62 on every window).  The wall D is NOT
+  # scored on the smoke: it is a 0.02-0.03 m/s drift under a +-0.1 m/s heave
+  # and two heave cycles give -0.039 vs -0.024 m/s in the baseline.
+  run: c02_momentum24_nointerp_smoke03
+  window_s: [0.15, 0.30]            # average over this window at 5 ms cadence
+  bed_epg_baseline: 0.571           # c02_momentum24, 0.15-0.30 s (4 frames at 50 ms)
+  bed_epg_support: 0.50             # <= this on the window mean supports
+                                    # (a packed annulus reads 0.42-0.45 at every
+                                    # heave phase, outside the 0.48-0.62 band,
+                                    # so the cadence difference cannot fake it)
+  bed_void_baseline: 0.25           # fraction of bed cells with EP_G > 0.7
+  bed_void_support: 0.10            # <= this supports
+  spout_share_20mm_baseline: 0.87   # 0.15-0.30 s; already above the 3 s
+                                    # support level (0.75), so the spout share
+                                    # is reported, not scored, on the smoke
+  verdict:                          # supports: bed EP_G AND void fraction at
+                                    #   or below their support levels;
+                                    # no effect: both within 0.03 / 0.05 of
+                                    #   baseline; else inconclusive.  Any
+                                    #   verdict here is provisional until the
+                                    #   3 s job is scored under interp_ab.
+
+apex_smoke:
+  # Closed-apex parametric STL (notes "Closed apex, parametric STL
+  # (2026-10-24)"): the cone is extended to its virtual apex at y = -R_t/tan30
+  # = -2.062 mm and the mass-only point source moves to the tip row
+  # y in [-2.1, 0] mm, whose top opening is the nozzle area (4.45 mm^2), so the
+  # tip cells carry the nozzle velocity (44.9 m/s at 12 slpm) by continuity.
+  # Pre-registered 2026-10-24 BEFORE the local smoke and before any AWS job.
+  # Prediction written down first: on the even 24-cell grid the four-cell
+  # column above the tip can carry at most Q / A_open(y = 2.1 mm) = 11-14 m/s,
+  # the same as the 2 x 2 momentum source (c02_momentum24: ps_v_g 44.91 m/s,
+  # source-row max 14 m/s), because the excess momentum flux turns into
+  # pressure in both arrangements.  If that prediction holds, the apex is a
+  # null on this grid and the lever is the grid layout (axis-centred cell),
+  # not the apex.  The smoke decides; no result is read before the window.
+  baseline_run: c02_momentum24_nointerp_smoke03   # 5 ms gas frames; LINEAR_HAT
+                                                  # vs NONE was "no effect"
+  # Jet criterion J (gate for the AWS smoke): on-axis max v_g,y [m/s], window
+  # mean over all 5 ms frames in the window (scratch jet_profile.py: max over
+  # cells with r < 1.6 dx in the row).  Baseline over 0.15-0.30 s (30 frames);
+  # the same rows over 0.02-0.05 s are used for the local 0.05 s smoke, read
+  # from the same baseline run.
+  jet_baseline_m_s: {y_1mm: 14.8, y_3mm: 14.0, y_5mm: 12.3, y_10mm: 8.2, y_21mm: 4.4}
+  jet_improved_factor: 1.5      # J improved: >= 1.5 x baseline at BOTH 5 and 10 mm
+  jet_no_effect_band: 0.20      # J no effect: within +-20 % at 5 and 10 mm
+  # Fountain criterion F (AWS smoke only, PIV particle frames at 2 ms):
+  fountain_top_baseline_mm: 32.9    # 99th pct parcel y above the annulus
+                                    # surface, mean over 0.15-0.30 s
+  fountain_top_improved_mm: 38.0    # C26 model ~40 mm at 12 slpm
+  exit_vp_baseline_m_s: 0.303       # parcels r < 3 mm at the annulus surface
+  exit_vp_improved_m_s: 0.38        # +25 %
+  # Annulus criterion A (AWS smoke only, 5 ms gas frames):
+  bed_epg_baseline: 0.571
+  bed_epg_improved: 0.54            # toward a packed annulus (0.42-0.45)
+  # Health H: exit 0, reaches tstop, parcel count constant, no validator FAIL
+  # beyond the known momentum-deck artefacts (S3 exit ratio, P4), dP within
+  # 0.5-1.5 W/A.
+  decision:
+    aws_smoke: "run only if the local smoke gives J improved; if J no effect,
+                stop and report (prediction confirmed); if in between, run"
+    full_3s_run: "H pass AND J improved AND (F improved OR A improved) on the
+                  AWS 0.3 s smoke; otherwise report, do not launch"
+  result_2026_10_24:
+    aws_job: 51bb89b1-6917-4562-8bbf-823cee2ab9cb   # c26-c02-apex-smoke03, 0.3 s, 5249 s wall, exit 0
+    window_s: [0.15, 0.30]                          # 30 gas frames
+    jet_m_s: {y_1mm: 24.7, y_3mm: 21.8, y_5mm: 18.6, y_10mm: 10.4, y_21mm: 5.7}
+    jet_ratio: {y_5mm: 1.51, y_10mm: 1.27}          # J improved needs >= 1.5 at BOTH: NOT MET
+    fountain_top_mm: 30.7                           # F: not improved (>= 38)
+    exit_vp_m_s: 0.523                              # F: improved (>= 0.38)
+    bed_epg: 0.545                                  # A: not improved (<= 0.54), by 0.005
+    health: "solver pass (dt held 1e-5 s, NIT 2, 27759 parcels, 0 facets ignored);
+             check_smoke S6 dP 4.8 kPa = 10.7 W/A explained by the tip dynamic
+             head (P_INLET monitor sits in the 70 m/s tip cells); S3/S4 exit
+             layer = known artefacts"
+    piv_0p15_0p30: {map_mean_m_s: 0.265, baseline_map_mean_m_s: 0.170, CC: 0.37, SSI: 0.71, MSE_m2_s2: 0.0177}
+    spout_offset_mm: 1.2                            # flux centroid (+0.9, +0.9) mm, one quadrant cell,
+                                                    # 5-31.5 mm; local smoke of the same deck chose (+x, -z)
+    verdict: "gate not met (J at 10 mm 1.27x); full_3s_run NOT launched. The
+              particle-velocity measures improved (+56 % PIV map mean, +73 %
+              exit v_p) and the jet gain is the same flux concentrated into
+              one quadrant cell (4-cell mean unchanged)"
+    odd_grid_check: "closed apex on the odd 25-cell box fails at setup (PS
+                     volume zero: the single tip cell has no fluid corner node
+                     and is blocked); the even layout is the only one that can
+                     hold a nozzle-sized tip at dx = 2.1 mm"
+
+apex_3s:
+  # Full 3 s closed-apex run, user decision 2026-10-24 ("run the 3s run, but
+  # using the new mfix 23.2 environment"): cases/C26_3d/c02_apex_v232, the
+  # c02_apex deck re-rendered for MFiX 23.2 (C26's release; the four
+  # 26.1.2-only keywords left out, notes "MFiX 23.2 decks and AWS image").
+  # Launched although the apex_smoke gate was not met (J at 10 mm 1.27x);
+  # the smoke's particle-velocity gains (+56 % map mean, +73 % exit v_p)
+  # are the reason.  Two things change at once against c02_momentum24
+  # (26.1.2, momentum 2x2 source): the inlet arrangement and the MFiX
+  # release; the 23.2 seeding and drag checks (same notes) found no
+  # difference in what they measured, so a difference is read as the inlet
+  # unless the 23.2 c02 control run says otherwise.
+  # Pre-registered BEFORE submission (2026-10-24), scored at 2.4-3.0 s with
+  # src/post/piv_c26.py and notes/c26_annulus_metrics.py:
+  predictions:
+    map_mean_vs_c26_model: [0.9, 1.2]   # synthetic PIV map mean / C26 model map
+                                        # mean; c02_momentum24 (26.1.2) gave 0.72
+    cc_not_below_momentum24: true       # CC against C26's map >= c02_momentum24's
+                                        # (the quadrant column may lower it)
+    bed_epg_change_max: 0.02            # annulus unchanged: |bed EP_G - 0.571| <= 0.02
+                                        # (the apex is not the annulus lever)
+  health: "exit 0, reaches 3.0 s, parcel count constant, dt 1e-5 held;
+           P_INLET dP is the tip dynamic head (~4-5 kPa), not a bed dP"
+  reading:
+    all_three: "inlet arrangement closes the velocity gap; next lever is the
+                annulus (void floor, drag, wall contact), geometry settled"
+    map_mean_below_0p9: "inlet cleared as the cause; the gap is in drag or
+                         particle-wall contact"
+    map_mean_above_1p2: "one-cell column over-concentrates the jet on this
+                         grid; compare against the 23.2 c02 control"
+
+  result_2026_10_25:
+    aws_job: 38c9dc92-1b36-4026-bacc-ec8487156502   # c26-c02-apex-v232, SUCCEEDED, exit 0,
+                                                    # 46576 s wall (12.94 h), 4 vCPU, MFiX 23.2
+    window_s: [2.4, 3.0]
+    health: "reached 3.0 s; dt 1e-5 held (median NIT 2 in every 0.5 s block);
+             0 parcels below the orifice plane; S6 dP +4376 Pa = 9.8 W/A is the
+             tip dynamic head (excluded as pre-registered); S3/S4 exit layer has
+             no cells (closed apex).  Parcel count NOT constant: 27765 -> 27698
+             (-67, 0.24 %, ~22/s).  All 14 losses inside the PIV frames happen
+             at one cut-cell corner (y 27.3 mm, r 16.5 mm, 0.5 mm inside the
+             cone wall, four diagonal azimuths, |v| < 0.1 m/s; x, y, z all on
+             cell faces).  Same corner and rate in the 23.2 point-source smokes
+             on this STL; the 26.1.2 run on this STL (c02_apex_smoke03) loses
+             none -> 23.2 check_cell_movement.f deletes a DEM particle in a
+             non-fluid cell (REMOVE_ROGUE_PARTICLES default .T.); 26.1.2 keeps
+             particles in SMALL_CELL_AT cut cells, 23.2 has no such guard; no
+             warning in run.log; not the inlet; negligible for the metrics"
+    piv:                               # src/post/piv_c26.py, 300 pairs; baseline = c02_momentum24
+      map_mean_m_s: 0.1776             # baseline 0.1420
+      c26_model_map_mean_m_s: 0.1817   # digitized Fig. 4b, 12 slpm (notes: model 0.182)
+      c26_exp_map_mean_m_s: 0.1778     # digitized Fig. 4a, 12 slpm
+      map_mean_vs_c26_model: 0.978     # prediction [0.9, 1.2]: MET
+      map_mean_vs_c26_exp: 0.999
+      baseline_map_mean_vs_c26_model: 0.78   # the "0.72" quoted above does not
+                                       # reproduce (0.1420 / 0.1817 = 0.78); a
+                                       # model mean of 0.197 would give 0.72 and
+                                       # then the apex ratio is 0.90, still inside
+      CC: 0.914                        # baseline 0.825 -> prediction MET; C26 model
+                                       # vs exp through the same pipeline 0.872; Table 3 0.817
+      SSI: 0.883                       # 0.848; 0.740; 0.769
+      MSE_m2_s2: 0.00152               # 0.00430; 0.00220; 0.0042
+      map_vs_c26_model: MATCH          # first c02 run to clear all three floors
+      wall_piv_m_s: 0.0198             # baseline 0.0329; exp 0.00183; C26 model 0.00505
+                                       # (10.8x exp, 3.9x model; was 18x / 6.5x)
+                                       # (wall box y_center_frac 0.5; at 0.64 since
+                                       # 2026-10-25: 0.0146 vs 0.0289, 8.0x / 2.9x)
+      empty_window_frac: 0.627         # 0.713
+    annulus:                           # notes/c26_annulus_metrics.py, 13 gas frames
+      bed_epg_mean: 0.561              # baseline 0.56 same window, 0.571 at 0.15-0.30 s
+                                       # -> |delta| 0.01 <= 0.02: prediction MET
+      bed_void_frac_epg_gt_0p7: 0.235  # baseline 0.20 (score_smoke) / 0.25
+      spout_share_10_20_30mm: [0.81, 0.55, 0.38]   # baseline 0.78 / 0.62 / 0.37
+    step3_other_session:               # results/c26_compare_apex_v232.csv (c26_watch_post)
+      D_wall_m_s: 0.0210               # baseline 0.0264 (-28 %, inconclusive by the grid-A/B rule)
+      axis_vp_20mm_m_s: 0.433          # baseline 0.672: the |z| < d_cg line probe misses
+                                       # the off-axis quadrant column; the side-view PIV
+                                       # map (projection along z) is the primary metric
+      psd_peak_hz: 11.7                # baseline 11.7
+    gas_jet_2p4_3p0:                   # scratch jet_profile.py; per-cell max v_g,y
+      vgy_max_5mm_m_s: [18.5, 11.0]    # [apex, baseline] -> 1.68x
+      vgy_max_10mm_m_s: [11.1, 8.0]    # 1.39x; 4-axis-cell mean unchanged (4.4 vs 4.3; 3.3 vs 3.7)
+    fountain_top_mm: [17.6, 15.0]      # 99th pct parcel y above the annulus surface
+    exit_vp_m_s: [0.55, 0.53]          # the smoke's +73 % was a startup contrast: the
+                                       # baseline reads 0.30 at 0.15-0.30 s and 0.53 at 2.4-3.0 s
+    verdict: "all three predictions MET -> reading all_three.  The inlet
+              arrangement closes the PIV-map velocity gap: map mean 0.98x C26's
+              model and 1.00x the experiment, CC / SSI / MSE better than C26's
+              own model scores against the experiment.  The wall layer is still
+              3.9x C26's model (down 40 %) and the annulus is unchanged (EP_G
+              0.56, 23 % bubble cells), so the next lever is the annulus.  The
+              confound stands (23.2 and the inlet changed together); the 23.2
+              c02 2x2 control remains the discriminating run"
+
+ps_point_smoke:
+  # One-cell point source (notes "Why our model does not match C26's model:
+  # the point-source footprint (2026-10-24)").  C26 p.4 places "a point
+  # source centered with the reactor"; in MFiX 23.2 a point region maps to
+  # ONE cell (get_ps.f / calc_cell.f; dry run ps_point_dry put it in the -x/-z
+  # tip cell, 4.865e-10 m3), while our decks use the 2 x 2 axis cells.  On
+  # our runs the annulus state follows the jet in the lower cone: the only
+  # packed, non-breathing annulus is the 27-cell single-cell momentum run
+  # (c01: axis v_g 22 / 19 m/s at 9.4 / 11.5 mm, mid-annulus EP_G 0.435 /
+  # 0.443 closed / open, 18.3 Hz); every 2 x 2 source heaves at ~10-12 Hz.
+  # Hypothesis: the one-cell source keeps the spout base clear and gives
+  # C26's state (packed annulus, ~20 Hz events).
+  # Pre-registered 2026-10-24 BEFORE rendering the decks or any run.
+  cases:
+    a: c02_point_v232_smoke05       # run_C26_3d --case c02 --axis-on-face
+                                    # --stl-builder parametric_apex --ps-point
+                                    # --ps-mass-only --tstop 0.5
+                                    # --vtk-dt-background 0.005
+    b: c02_point_mom_v232_smoke05   # the same with --ps-momentum
+                                    # (ps_v_g = U_nozzle = 44.9 m/s)
+  control: c02_apex_v232            # 23.2, same apex STL, 2 x 2 tip source,
+                                    # mass-only; 3 s, running.  One variable
+                                    # (footprint) for a; footprint + momentum
+                                    # for b.
+  window_s: [0.10, 0.50]            # 80 gas frames at 5 ms, ~4-5 cycles
+  # Metrics: notes/c26_spout_cycle.py (cycle, jet, lattice).  Baselines =
+  # the 2 x 2 apex smoke c02_apex_smoke03 (26.1.2) over 0.10-0.30 s, the
+  # only 5 ms 2 x 2 apex record; the control's 3 s 50 ms frames are scored
+  # too when it lands (no frequency from 50 ms frames).
+  baseline_2x2_apex:
+    jet_axis_vmax_m_s: {y_9p4mm: 13.1, y_11p5mm: 11.2}
+    epg_mid_closed_open: [0.478, 0.585]   # breathing 0.107
+    d20: 0.33
+    s_mid_freq_hz: 10.0                   # resolution 5 Hz
+  reference_c01_27cell_single_cell_momentum:
+    jet_axis_vmax_m_s: {y_9p4mm: 22.0, y_11p5mm: 19.0}
+    epg_mid_closed_open: [0.435, 0.443]   # breathing 0.008
+    d20: 0.24                             # 50 ms frames
+    psd_peak_hz: 18.3
+  criteria:
+    B_no_breathing: "|EP_G_mid closed - open| <= 0.03 AND EP_G_mid (all
+                     frames) <= 0.46"
+    F_frequency: "S_mid dominant frequency >= 15 Hz (resolution 2.5 Hz)"
+    D20_duty: "d20 <= 0.25"
+    J10_jet: "axis v_g max >= 1.3 x baseline at both 9.4 and 11.5 mm
+              (>= 17.0 and >= 14.6 m/s); mechanism check, not a verdict input"
+  verdict:
+    supports: "B AND (F OR D20)"
+    null: "breathing >= 0.07 AND frequency <= 12.5 Hz (2 x 2-like)"
+    partial: "anything else"
+  prediction_written_first: "a (mass-only point): NULL -- the tip cell is
+    open to the other three tip cells, so the gas should spread over the
+    2 x 2 tip as now.  b (momentum point): uncertain -- the c01-27 analogue
+    had open side faces; this cell is closed by the cone on its outer
+    sides, and on the 2 x 2 source momentum went into pressure."
+  also_report: "fountain top and exit v_p (PIV frames), bed EP_G, wall-layer
+    parcel v_y, spout lean (upward-flux centroid offset; C26 maps symmetric
+    to <= 0.5 mm, the source cell centre is 1.5 mm off the axis), lattice
+    kept at 0.5 s"
+  health: "exit 0, reaches 0.5 s, parcels retained (top-outlet loss only),
+    dt held >= dt_min, no Error 1100 / PS_VOLUME; check_smoke S6 dP is not a
+    bed dP here (P_INLET sits in the source cell)"
+  decision: "SUPPORTS in either case -> propose a 3 s run of that variant at
+    10 / 12 / 14 slpm scored against C26 Table 3 and Fig. 6d (user decision);
+    both NULL -> the footprint is closed as the cause of the model gap"
+  result_2026_10_24:
+    # Scored after both jobs finished, against the criteria above unchanged.
+    # notes "Point-source smoke results (2026-10-24)".  Window 0.10-0.50 s,
+    # 80 gas frames; baseline = c02_apex_smoke03 (26.1.2) over 0.10-0.30 s.
+    aws_jobs:
+      a: d4fe6230-ec30-4945-8b0c-b2f207410367   # 8333 s wall, exit 0
+      b: 01cceb1a-defe-4c5d-bc49-7b68ea9ff610   # 8806 s wall, exit 0
+    epg_mid_closed_open: {a: [0.475, 0.521], b: [0.461, 0.503]}
+    breathing: {a: 0.046, b: 0.042, baseline: 0.107}
+    epg_mid_all_frames: {a: 0.508, b: 0.493, baseline: 0.550}
+    s_mid_freq_hz_fft: {a: 15.0, b: 15.0}       # resolution 2.5 Hz
+    s_mid_freq_hz_period: {a: 14.0, b: 15.2, baseline: 11.8}  # mean S_mid
+                                                # peak spacing, 4 / 5 / 1 periods
+    d20: {a: 0.28, b: 0.23}
+    jet_axis_vmax_m_s: {a: [11.5, 9.2], b: [17.3, 14.0]}      # at 9.4 / 11.5 mm
+    criteria:
+      a: {B: fail, F: "pass on the FFT bin (15.0); the period gives 14.0",
+          D20: fail, J10: fail}
+      b: {B: fail, F: pass, D20: pass, J10: "fail (14.0 < 14.6 at 11.5 mm)"}
+    verdict: {a: PARTIAL, b: PARTIAL}           # prediction was a NULL, b uncertain
+    also_report:
+      source_up_share: {a: 0.27, b: 0.58, baseline: 1.00}     # rest leaves sideways
+      spout_offset_mm: {a: 2.4, b: 2.4, baseline: 1.3}        # flux centroid 9-18 mm;
+                                                # a on the opposite diagonal to the source
+                                                # cell, b on the source cell; C26 <= 0.5
+      fountain_top_mm: {a: 22.5, b: 28.1, baseline: 28.3}
+      exit_vp_m_s: {a: 0.43, b: 0.53, baseline: 0.52}
+      wall_layer_vy_m_s: {a: -0.016, b: -0.019, baseline: -0.014}
+      bed_epg: {a: 0.543, b: 0.604, baseline: 0.537}
+      lattice_keep_all: {t_0p25: {a: 0.37, b: 0.38, baseline: 0.33}, t_0p50: {a: 0.16, b: 0.16}}
+    health: "exit 0, 0.5 s reached, dt >= 5.3e-6 s (dt_min 1e-7), no errors
+             or warnings.  Parcels NOT retained as written: a lost 8, b 7,
+             none through the outlet: deleted silently at the cone wall at
+             y = 27.3 mm, at eight symmetric grid nodes (x, z = +-12.6 /
+             +-10.5 mm).  The 23.2 2 x 2 control loses parcels too (27765 ->
+             27725 by t = 1.91 s); 26.1.2 c02_apex_smoke03 lost none in 0.3 s.
+             0.03 % of the inventory; not a cause of the metrics above"
+    decision: "neither SUPPORTS nor both NULL, so the pre-registered rule
+               names no action; reported for a user decision"
+
+point_3s:
+  # 3 s runs of the two point-source variants.  User request 2026-10-24:
+  # "once the results are downloaded perform an analysis on them.  if it
+  # makes sense start 3s runs for the other varied parameters to determine
+  # if they resolve the issues with fountain height and wall speed".
+  # Pre-registered 2026-10-24 ~23:30 EDT, BEFORE the control c02_apex_v232
+  # landed (it was at t = 1.91 s) and before any 3 s point run.
+  cases:
+    a: c02_point_v232               # the c02_point_v232_smoke05 deck at tstop 3 s
+                                    # with the control's output (gas VTK 50 ms,
+                                    # PIV frames 2.4-3.0 s)
+    b: c02_point_mom_v232           # c02_point_mom_v232_smoke05 likewise
+  control: c02_apex_v232
+  launch_gate:
+    # Decided on the control's result alone.
+    H_control: "exit 0, reaches 3.0 s, parcel loss <= 0.5 % of the inventory
+                (<= 139 of 27765); otherwise diagnose the 23.2 wall loss first"
+    R_already_resolved: "the control meets fountain_resolved AND wall_resolved
+                         below -> the variants are not needed; do not launch"
+    attribution:
+      # breathing = |EP_G_mid closed - open| (notes/c26_spout_cycle.py cycle)
+      # of the control over 0.5-3.0 s at its 50 ms frames (~51 phase-random
+      # frames).  Calibration, same window and cadence: 26.1.2 c02_momentum24
+      # (2 x 2) 0.094 (0.498 / 0.592).  Smokes over 0.10-0.50 s at 5 ms:
+      # a 0.046, b 0.042; 26.1.2 2 x 2 apex smoke 0.107.
+      launch: "control breathing >= 0.07: 23.2 with the 2 x 2 source breathes
+               like 26.1.2, so the smokes' halving is the footprint"
+      do_not_launch: "control breathing <= 0.05: the halving is the release; the
+                      smokes showed no fountain or wall-layer gain over the
+                      2 x 2 source either, so 3 s point runs are not expected
+                      to differ from the control"
+      in_between: "launch both: no attribution possible, the 3 s runs are the
+                   direct test"
+  window_s: [2.4, 3.0]              # PIV window, as every C26 3 s score
+  metrics:
+    fountain_reach: "height of the highest synthetic-PIV map row whose max |v|
+                     >= 0.2 m/s, as a fraction of the map height (39.8 mm at
+                     12 slpm).  C26 Fig. 4, 12 slpm: exp 0.91, model 0.97.
+                     Ours: c02_massonly_axisface 0.45, c02_momentum24 0.44
+                     (computed 2026-10-24 when this block was written)"
+    wall_speed: "wall_piv_m_s (src/post/piv_c26.py wall box, downward +).
+                 C26 Fig. 6d, 12 slpm: model 5.05e-3, exp 1.83e-3
+                 (params/piv_c26.yaml wall_targets).  Ours:
+                 c02_massonly_axisface 0.0355, c02_momentum24 0.0329
+                 (box at y_center_frac 0.5; at 0.64 since 2026-10-25:
+                 0.0286 and 0.0289)"
+  criteria:
+    fountain_resolved: "reach >= 0.85"
+    fountain_improved: "reach >= control reach + 0.15"
+    wall_resolved: "wall_piv <= 2 x C26 model (<= 1.01e-2 m/s)"
+    wall_improved: "wall_piv <= 0.7 x control (a drop of >= 30 %, as grid_layout_ab)"
+    wall_no_effect: "|wall_piv change vs control| < 15 %"
+  verdict:
+    resolves: "fountain_resolved AND wall_resolved"
+    improves: "fountain_improved OR wall_improved, and not resolves"
+    no_effect: "neither improved"
+  also_report: "map mean / C26 model map mean, CC / SSI / MSE against Fig. 4a,
+                step-3 D, breathing and d20 over 0.5-3.0 s, spout offset,
+                fountain top, parcel inventory"
+  gate_result_2026_10_25:
+    # Scored ~04:15 EDT 2026-10-25 on the control c02_apex_v232 (job 38c9dc92),
+    # rules above unchanged.
+    H_control: PASS                  # exit 0, t = 3.0 s, 27765 -> 27698 parcels
+                                     # (-67, 0.24 % <= 0.5 %)
+    control_fountain_reach: 0.69     # results/c26_piv_map_c02_apex_v232.csv, 2.4-3.0 s
+                                     # (row centres; reproduces momentum24 0.44,
+                                     # massonly_axisface 0.45) -> < 0.85, not resolved
+    control_wall_piv_m_s: 0.0198     # 3.9x C26 model -> > 1.01e-2, not resolved
+                                     # (box 0.5; 0.0146 at 0.64, 2.9x, still not)
+    R_already_resolved: "no (neither)"
+    control_breathing: 0.071         # notes/c26_spout_cycle.py cycle, 51 gas frames
+                                     # 0.5-3.0 s: EP_G_mid closed 0.488 / open 0.559;
+                                     # d20 0.31 (16/51).  Strictly t <= 3.0 drops
+                                     # the t = 3.0000001 frame: 50 frames, 0.488 /
+                                     # 0.557 = 0.069, d20 0.32 -> in_between.
+    attribution: "launch (0.071 >= 0.07); in_between on the 50-frame reading;
+                  both branches launch.  The value sits at the threshold, so the
+                  footprint-vs-release attribution is weak: 23.2 2x2 breathes
+                  0.071 vs 26.1.2 2x2 0.094"
+    decision: LAUNCH
+    jobs:
+      a: b019f90d-203c-4871-a85d-bb22abdd3475   # c26-c02-point-v232
+      b: bdefff36-75bd-4710-97e4-4f281aad08bf   # c26-c02-point-mom-v232
+    control_reference_for_scoring:   # the "control" values the criteria compare to
+      fountain_reach: 0.69           # fountain_improved needs >= 0.84
+      wall_piv_m_s: 0.0146           # wall_improved needs <= 0.0102;
+                                     # no_effect band 0.0124-0.0168.
+                                     # Re-measured 2026-10-25 when the wall box
+                                     # moved from y_center_frac 0.5 to 0.64
+                                     # (params/piv_c26.yaml wall_roi; notes
+                                     # "Conry et al. 2025 PIV method"), BEFORE
+                                     # either point run was pulled or scored,
+                                     # so test and control use the same box.
+                                     # The rules are unchanged.  At 0.5 the
+                                     # control was 0.0198 (<= 0.0139; band
+                                     # 0.0168-0.0228); wall_resolved stays
+                                     # <= 1.01e-2 and the control still misses it
+      map_mean_vs_c26_model: 0.978
+      CC_SSI_MSE: [0.914, 0.883, 0.00152]
+      step3_D_wall_m_s: 0.0210
+      spout_offset_mm: 1.3           # upward-flux centroid at y = 17.8 mm
+                                     # (notes/c26_source_split.py)
+      fountain_top_mm: 17.6          # score_smoke, 2.4-3.0 s
+    metric_caveat:
+      # Found 2026-10-25 after the gate was scored; criteria above unchanged.
+      # fountain_reach is threshold-fragile at 12 slpm: the experiment's own
+      # row-max |v| in the upper map (0.70-0.95 of the height) averages
+      # 0.209 m/s, right at the 0.2 m/s threshold.  Same band, row-max mean
+      # relative to the experiment: C26 model 1.17x, control 0.85x,
+      # c02_momentum24 0.61x.  So reach 0.69 vs 0.91 is a ~15 % speed
+      # shortfall in the upper fountain (C26's model is ~17 % over), not a
+      # fountain 25 % shorter.  The 3 s point runs will also report this
+      # band ratio next to reach.
+      upper_band_rowmax_vs_exp: {c26_model: 1.17, control: 0.85, momentum24: 0.61}
+  result_2026_10_25:
+    # Scored ~18:50 EDT 2026-10-25, PIV window 2.4-3.0 s, criteria and the
+    # control reference above unchanged (wall box at y_center_frac 0.64 for
+    # all three runs).  Band ratios: rows 0.70-0.95 / 0.5-0.7 / < 0.5 of the
+    # map height, row-max |v| mean over the experiment's; this script
+    # reproduces the registered exp 0.209 m/s, C26 model 1.17, control 0.85,
+    # momentum24 0.61.
+    a_c02_point_v232:
+      health: "SUCCEEDED, t = 3.0 s, 27758 -> 27713 parcels (-45, 0.16 %)"
+      fountain_reach: 0.68           # control 0.69: no gain
+      wall_piv_m_s: 0.0249           # +70 % vs control 0.0146 (worse; 4.9x C26 model)
+      verdict: no_effect             # neither improved; the wall got worse
+      band_vs_exp: {upper: 0.87, mid: 0.86, low: 1.11}
+      map_mean_vs_c26_model: 1.06
+      CC_SSI_MSE: [0.737, 0.813, 0.0048]   # NO MATCH (CC, MSE)
+      step3_D_wall_m_s: 0.0197
+      breathing: 0.031               # EP_G_mid closed 0.481 / open 0.512, 51 frames
+                                     # 0.49-3.01 s; d20 0.27 (14/51)
+      spout_offset_mm: 2.5           # upward-flux centroid at y = 17.8 mm
+      up_share: 0.27                 # source gas leaving through the cell top
+      fountain_top_mm: 18.3
+      piv_note: "the run wrote the t = 3.0 s PIV frame twice (identical
+                 files); the dt = 0 pair made the first map all-NaN.
+                 src/post/piv_c26.py piv_frames now drops a frame whose time
+                 does not advance; the control and b have no repeat, so their
+                 scores are unchanged"
+    b_c02_point_mom_v232:
+      health: "SUCCEEDED, t = 3.0 s, 27752 -> 27709 parcels (-43, 0.15 %)"
+      fountain_reach: 0.99           # >= 0.85: fountain_resolved (C26 exp 0.91,
+                                     # model 0.97)
+      wall_piv_m_s: 0.0128           # -12 % vs control: inside the no_effect band
+                                     # 0.0124-0.0168; > 1.01e-2, not resolved;
+                                     # 7.0x exp, 2.5x C26 model
+      verdict: improves              # fountain resolved, wall not
+      band_vs_exp: {upper: 1.12, mid: 1.16, low: 1.38}   # C26 model 1.17 / 1.11 / 1.01
+      map_mean_vs_c26_model: 1.16
+      CC_SSI_MSE: [0.913, 0.842, 0.0044]   # NO MATCH (MSE > 0.0042): the lower
+                                           # map is too fast
+      step3_D_wall_m_s: 0.0185
+      breathing: 0.024               # 0.474 / 0.498; d20 0.24 (12/51)
+      spout_offset_mm: 2.5
+      up_share: 0.58
+      fountain_top_mm: 24.0          # control 17.6
+      dt: "23 % of DT lines below 1e-5 (control 2.7 %), min 5.3e-6"
+    attribution: "a shows no fountain gain and b does, from the same one-cell
+                  footprint: the fountain gain is the source momentum, not
+                  the footprint.  Neither moves the wall speed toward C26
+                  (b -12 %, a +70 %)"
+
+point_mom_followup:
+  # User instruction 2026-10-25 ~05:00 EDT: "wait for the point_mom run before
+  # deciding, then if it's positive run the momentum check with the 2x2 grid,
+  # if not queue all the remaining jobs which this project tests from
+  # c01-c09, excluding what the control already tests if it's a valid one of
+  # the cases".  Pre-registered before either point_3s run landed.
+  decided_on: "c02_point_mom_v232 (point_3s case b), PIV window 2.4-3.0 s"
+  health_gate: "job SUCCEEDED, reached 3.0 s, parcel loss <= 0.5 % of the
+                inventory; otherwise no decision: report and ask"
+  positive: "point_3s verdict for b is improves or resolves (criteria
+             unchanged: reach >= 0.84 or wall_piv <= 0.0102 m/s against the
+             control; 0.0139 before the 2026-10-25 wall-box move, see
+             point_3s control_reference_for_scoring), OR its upper-band row-max ratio to the experiment
+             (rows 0.70-0.95 of the map height) >= 0.95 (control 0.85; see
+             point_3s gate_result metric_caveat: reach is threshold-fragile)"
+  if_positive: "c02_apex_mom_v232: the control deck with --ps-momentum
+                (ps_v_g 44.91 m/s on the 2x2 tip cells), MFiX 23.2, 3 s.
+                Nothing else queued"
+  if_not_positive: "the c01-c09 sweep (params/sweep_C26.yaml) in the control
+                    configuration: run_C26_3d --axis-on-face --stl-builder
+                    parametric_apex (2x2 mass-only tip source, MFiX 23.2, 3 s),
+                    suffix _apex_v232.  c02 is excluded: the control
+                    c02_apex_v232 is that case.  Submit order c01, c03, c04,
+                    c05, c06, c08, c09, c07 (c07, the earlier non-spouting
+                    case, last, as the 2026-10-20 queue order)"
+  also_report: "case a (c02_point_v232) verdict and band ratio.  If a improves
+                as much as b, the gain is the one-cell footprint, not the
+                momentum: reported, does not change the action"
+  result_2026_10_25:
+    # Applied ~18:50 EDT 2026-10-25 as written above.
+    health_gate: PASS                # b: SUCCEEDED, t = 3.0 s, -43 parcels (0.15 %)
+    positive: true                   # point_3s verdict improves (reach 0.99 >= 0.84),
+                                     # and upper-band ratio 1.12 >= 0.95; the wall
+                                     # leg did not fire (0.0128 > 0.0102)
+    action: "submitted c02_apex_mom_v232 (job 59e19756-189e-4882-8657-e5c92007403f,
+             c26-c02-apex-mom-v232) ~18:48 EDT; the c01-c09 sweep decks stay
+             rendered and unsubmitted"
+    also_report: "a: no_effect (reach 0.68, wall +70 %), band 0.87; a did not
+                  improve as b did, so the gain is the momentum"
+
+sweep_source_choice:
+  # User instruction 2026-10-25 ~19:30 EDT: "prepare the jobs to be queued
+  # based on the results.  For the given setup (2x2 or single cell) you should
+  # run the job once the results are in and the one that more closely matches
+  # c26 based on the conditions you provided".  Conditions as proposed in the
+  # reply before it: use the 2x2 momentum setup if c02_apex_mom_v232 reaches
+  # fountain reach >= 0.85 and runs less fast in the lower map than
+  # c02_point_mom_v232; otherwise the one-cell momentum setup.
+  # Pre-registered ~19:40 EDT, before c02_apex_mom_v232 (job 59e19756) ran.
+  # Applied by notes/c26_sweep_source_choice.py.
+  decided_on: "c02_apex_mom_v232, PIV window 2.4-3.0 s, wall box
+               y_center_frac 0.64, same pipeline as c02_point_mom_v232"
+  health_gate: "job SUCCEEDED, reached 3.0 s, parcel loss <= 0.5 % of the
+                inventory, PIV map finite.  A run that fails it does not
+                qualify: the one-cell branch is chosen and the failure
+                reported"
+  metrics:
+    fountain_reach: "as point_3s metrics.fountain_reach (row-max |v| >=
+                     0.2 m/s, highest row centre / map height)"
+    lower_map_ratio: "mean |v| over the map rows whose centre lies below 0.40
+                      of the map height (32 of 79 rows), over the same mean
+                      of C26 Fig. 4b (model, 12 slpm, digitized, unsmoothed)"
+  reference_c02_point_mom_v232: {fountain_reach: 0.99, lower_map_ratio: 1.297}
+  # for scale (same definition): control c02_apex_v232 1.059, experiment
+  # 1.060, c02_point_v232 1.192
+  choose_2x2: "health_gate passes AND fountain_reach >= 0.85 AND
+               lower_map_ratio < 1.297"
+  otherwise: one-cell                 # ties go to one-cell; the lower-map test uses
+                                      # the unrounded reference 1.2969 recomputed
+                                      # from the c02_point_mom_v232 map
+  branches:
+    2x2: "cases/C26_3d/c0X_apex_mom_v232: run_C26_3d --axis-on-face
+          --stl-builder parametric_apex --ps-momentum --run-dir-suffix
+          _apex_mom_v232 (2x2 tip source, ps_v_g = nozzle velocity)"
+    one-cell: "cases/C26_3d/c0X_point_mom_v232: run_C26_3d --axis-on-face
+               --stl-builder parametric_apex --ps-point --ps-momentum
+               --run-dir-suffix _point_mom_v232 (one -x/-z tip cell,
+               ps_v_g = nozzle velocity)"
+  # ps_v_g = Q / (pi D_n^2 / 4): c01 37.42 m/s (10 slpm), c03 52.39 (14),
+  # others 44.91 (12).  Both c02 decks re-render byte-identically from these
+  # flags; each c0X deck differs from c0X_apex_v232 exactly as c02 does.
+  submit: "the chosen branch's c01, c03, c04, c05, c06, c08, c09, c07 (c02 is
+           already run in both branches; c07 last, as point_mom_followup),
+           MFiX 23.2, 3 s, job names c26-c0X-apex-mom-v232 or
+           c26-c0X-point-mom-v232; announced in one line before submitting"
+  also_report: "wall PIV, map CC / SSI / MSE vs the experiment and vs C26's
+                model, band ratios, spout offset, breathing, parcel loss"
+  result_2026_10_26:
+    run: "c02_apex_mom_v232, job 59e19756, SUCCEEDED 07:42 EDT, 12.89 h"
+    health_gate: "PASS: t = 3.0 s, parcels 27754 -> 27673 (0.29 % lost), map finite"
+    fountain_reach: 0.51               # < 0.85: does not qualify
+    lower_map_ratio: 0.960             # < 1.2969
+    choice: one-cell
+    also_report: "wall PIV 0.0215 m/s (control 0.0146); map vs exp CC / SSI /
+                  MSE 0.850 / 0.864 / 0.0030; vs C26 model (sigma 2) CC 0.849,
+                  MSE 0.0025; bands 0.66 / 0.70 / 0.95; breathing 0.087,
+                  d20 0.25; DT cut 3.2 %; fountain top 16.9 mm (control
+                  17.6, one-cell 24.0); spout offset 0.97 mm (control 1.34,
+                  one-cell 2.52); in the map the one-cell spout peak is 5.3 mm
+                  off centre in the bottom fifth vs C26 model 0.5 mm"
+    action: "submitted c0X_point_mom_v232 (c01, c03, c04, c05, c06, c08,
+             c09, c07) 2026-10-26 ~10:45 EDT"
+  decision_2026_10_26:
+    # User decision 2026-10-26 ~11:00 EDT, after the rule above had been
+    # applied: "cancel the one cell jobs and run the c01-c09 sweep in the
+    # control configuration".  The rule compared only the two momentum
+    # branches (the 2026-10-25 instruction named "2x2 or single cell"); with
+    # the mass-only control admitted as a candidate it is the closest match
+    # to C26's model.  Notes: "Sweep source choice", Decision.
+    choice: control                    # 2x2 mass-only tip source, c0X_apex_v232
+    why:
+      # 2.4-3.0 s, c02, map vs C26 Fig. 4b model (sigma 2), offsets in the
+      # bottom fifth of the map (C26 model 0.5 mm), reach (C26 model 0.97)
+      control_vs_c26_model:  {CC: 0.907, MSE: 0.0015, map_mean: 0.98, spout_offset_mm: 1.7, fountain_reach: 0.69, dt_cut_pct: 2.7}
+      one_cell_vs_c26_model: {CC: 0.879, MSE: 0.0058, map_mean: 1.16, spout_offset_mm: 5.3, fountain_reach: 0.99, dt_cut_pct: 23}
+      two_by_two_mom_vs_c26_model: {CC: 0.849, MSE: 0.0025, map_mean: 0.86, spout_offset_mm: 2.7, fountain_reach: 0.51, dt_cut_pct: 3.2}
+      note: "the one-cell source wins only the fountain height, and its 0.99
+             is clipped at the map ceiling; it runs 30 % fast over the lower
+             40 % of the map and its lean follows a source cell 1.5 mm off the
+             axis (grid artifact).  The 2x2 momentum source is last on every
+             metric.  Neither momentum branch moves the wall velocity
+             (2.5-4.3x C26 model), so the choice does not bear on the wall gap"
+    cancelled: "c0X_point_mom_v232 c01, c03, c04, c05, c06, c08, c09, c07
+                terminated ~11:04 EDT (aws batch terminate-job), ~20 min into
+                their runs; not pulled; run_log rows marked terminated"
+    submitted: "c0X_apex_v232 c01, c03, c04, c05, c06, c08, c09, c07 as
+                c26-c0X-apex-v232, ~11:08 EDT, MFiX 23.2, 3 s, 4 vCPU; each
+                deck dry-run 2026-10-25; c02 is the control c02_apex_v232"
+    scoring: "same pipeline as the control (notes/c26_watch_post.py, baseline
+              suffix _apex_v232), PIV window 2.4-3.0 s, wall box 0.64"
+    supersedes: "result_2026_10_26.action; notes/c26_sweep_source_choice.py
+                 --submit refuses"

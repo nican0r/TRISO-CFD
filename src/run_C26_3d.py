@@ -5,14 +5,21 @@ For each selected case in params/sweep_C26.yaml, writes:
   cases/C26_3d/<id>/C26_<id>.mfx      rendered deck (cases/C26_3d/template_dem.mfx.j2)
   cases/C26_3d/<id>/geometry_0001.stl closed cone + column STL (gitignored)
   cases/C26_3d/<id>/manifest.json     run provenance
-  cases/C26_3d/<id>/run.sh            MFiX runner (serial or DMP)
+  cases/C26_3d/<id>/run.sh            MFiX runner (serial or DMP; for an MFiX
+                                      release with no local DMP install, i.e.
+                                      the 23.2 default, it runs the AWS image
+                                      locally with docker)
 
 It does NOT launch MFiX.  Per CLAUDE.md rules 11 and 13, smoke-run a case
 locally and validate it with notes/smoke_validate_c26.py before submitting
 its long run.
 
-Use a fresh --run-dir-suffix for new runs: the unsuffixed c01-c03 dirs and
-the existing *_smoke dirs are run provenance (results/run_log.csv).
+Decks are for MFiX 23.2 by default (user decision 2026-10-24: all new runs;
+numerics.yaml mfix_version); --mfix-version 26.1.2 re-renders the earlier
+runs' release.  Use a fresh --run-dir-suffix for new runs: the unsuffixed
+c01-c03 dirs and the existing *_smoke dirs are run provenance
+(results/run_log.csv), and a run dir holding a case for another release is
+never overwritten.
 
 Examples:
 
@@ -24,6 +31,8 @@ Examples:
   # non-uniform partition: narrow slabs over the cone, where the parcels are
   .venv/bin/python -m src.run_C26_3d --case c01 --gridmap-i 9,3,3,3,9 --gridmap-k 9,3,3,3,9 \
       --run-dir-suffix _gridmap_test
+  # an MFiX 26.1.2 deck, as for the runs before 2026-10-24 (local native solver)
+  .venv/bin/python -m src.run_C26_3d --case c01 --mfix-version 26.1.2 --run-dir-suffix _v26
 
 With neither --nodes nor --gridmap-*, cases get default_gridmap(): 4 ranks
 (2x1x2, i = k = [13,14] on the 27-cell box, [13,13] with --axis-on-face), the
@@ -36,19 +45,29 @@ job; src/aws/submit.py reads them when --vcpu/--memory are omitted.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import shutil
 from pathlib import Path
 
 from src.make_case import REPO_ROOT, render_case
-from src.make_case_c26 import build_C26_3d_params, default_gridmap, load_sweep, write_gridmap
+from src.make_case_c26 import (
+    MFIX_VERSIONS, STL_BUILDERS, build_C26_3d_params, default_gridmap, load_sweep,
+    write_gridmap,
+)
 from src.make_stl import build_cone_column_stl_implicit
+from src.make_stl_c26_apex import build_cone_column_stl_apex
 from src.run_V_3d_day10 import _parse_nodes, write_runner
-from src.aws.config import C26_MEMORY_MB
+from src.aws.config import C26_MEMORY_MB, PROJECT
+from src.aws.submit import manifest_mfix_version
 
 TEMPLATE = REPO_ROOT / "cases" / "C26_3d" / "template_dem.mfx.j2"
 OUT_ROOT = REPO_ROOT / "cases" / "C26_3d"
+
+# The release behind the laptop's mamba env (src/run_V_3d_day10.py
+# MFIX_SOLVER_*); any other release runs from its Docker image.
+LOCAL_MFIX_VERSION = "26.1.2"
 
 # Parcel count of the c01 memory probe behind C26_MEMORY_MB (src/aws/config.py,
 # results/run_log.csv 2026-10-19 "c01 memory probe").
@@ -88,18 +107,88 @@ def _select(cases: list[dict], spec: str) -> list[dict]:
     return [by_id[w] for w in wanted]
 
 
-def _build_stl(params: dict, path: Path) -> int:
-    build_cone_column_stl_implicit(
-        R_c_m=params["R_c_m"],
-        R_t_m=params["R_t_m"],
-        cone_half_angle_deg=params["cone_half_angle_deg"],
-        H_dom_m=params["H_dom_m"],
-        dx_sample_m=params["dx_sample_m"],
-        out_path=path,
-        top_extend_m=params["top_extend_m"],
-    )
-    with path.open("r") as f:
-        return sum(1 for ln in f if "facet normal" in ln)
+def _md5(path: Path) -> str:
+    return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def check_run_dir_release(run_dir: Path, mfix_version: str) -> None:
+    """Refuse to render into a run dir that holds a case for another MFiX
+    release (manifest ``mfix_version``; none = 26.1.2): those dirs are run
+    provenance, and the 23.2 default must not overwrite the 26.1.2 ones."""
+    if not (run_dir / "manifest.json").is_file():
+        return
+    old = manifest_mfix_version(run_dir)
+    if old != mfix_version:
+        raise SystemExit(f"{run_dir} holds an MFiX {old} case (run provenance); render "
+                         f"the MFiX {mfix_version} deck under a new --run-dir-suffix")
+
+
+def write_docker_runner(run_dir: Path, mfx_name: str, params: dict) -> Path:
+    """run.sh for a release with no local DMP install: runs the AWS image
+    ``triso-cfd/mfix:<mfix_version>`` (docker/) on the run dir in the
+    entrypoint's LOCAL_SMOKE mode, with the deck's own DMP decomposition.
+    The entrypoint writes run.log itself (tee), so stdout is discarded."""
+    image = f"{PROJECT}/mfix:{params['mfix_version']}"
+    script = run_dir / "run.sh"
+    lines = [
+        "#!/usr/bin/env bash",
+        "# Auto-generated by src/run_C26_3d.py",
+        f"# MFiX {params['mfix_version']} (no local DMP install): image {image}, "
+        "built by src.aws.provision --build",
+        f"# nranks = {params['nranks']}",
+        "set -euo pipefail",
+        f'cd "{run_dir.resolve()}"',
+        f'docker run --rm --platform=linux/amd64 -e LOCAL_SMOKE=1 -e MFX_FILE="{mfx_name}" '
+        f'-e NP={params["nranks"]} -e NODESI={params["nodes_i"]} '
+        f'-e NODESJ={params["nodes_j"]} -e NODESK={params["nodes_k"]} '
+        f'-v "$PWD":/work {image} > /dev/null',
+        "",
+    ]
+    script.write_text("\n".join(lines))
+    script.chmod(0o755)
+    return script
+
+
+# Facts of the apex builder carried into the manifest (src/make_stl_c26_apex.py).
+_APEX_FACTS = ("n_theta", "sagitta_Rc_m", "sagitta_Rt_m", "n_bands_cone", "n_bands_column",
+               "open_area_y0_m2", "tip_volume_m3")
+
+
+def _build_stl(params: dict, path: Path) -> dict:
+    """Write the vessel STL for ``params['stl_builder']``; return manifest facts
+    (facet_count, stl_md5, and the apex builder's geometry numbers)."""
+    builder = params["stl_builder"]
+    if builder == "implicit":
+        build_cone_column_stl_implicit(
+            R_c_m=params["R_c_m"],
+            R_t_m=params["R_t_m"],
+            cone_half_angle_deg=params["cone_half_angle_deg"],
+            H_dom_m=params["H_dom_m"],
+            dx_sample_m=params["dx_sample_m"],
+            out_path=path,
+            top_extend_m=params["top_extend_m"],
+        )
+        with path.open("r") as f:
+            facts = {"facet_count": sum(1 for ln in f if "facet normal" in ln)}
+    elif builder == "parametric_apex":
+        _, apex = build_cone_column_stl_apex(
+            R_c_m=params["R_c_m"],
+            R_t_m=params["R_t_m"],
+            cone_half_angle_deg=params["cone_half_angle_deg"],
+            H_dom_m=params["H_dom_m"],
+            out_path=path,
+            top_extend_m=params["top_extend_m"],
+            sagitta_max_m=params["stl_apex_sagitta_max_m"],
+            band_height_m=params["stl_apex_band_height_m"],
+        )
+        if abs(apex["y_apex_m"] - params["y_apex_m"]) > 1e-12:
+            raise AssertionError("apex height differs between builder and params")
+        facts = {"facet_count": apex["facet_count"]}
+        facts.update({f"stl_{k}": apex[k] for k in _APEX_FACTS})
+    else:
+        raise ValueError(f"unknown stl_builder {builder!r}")
+    facts["stl_md5"] = _md5(path)
+    return facts
 
 
 def main() -> None:
@@ -118,9 +207,14 @@ def main() -> None:
                        help=f"non-uniform DMP partition: cells per rank along {axis} "
                             "(writes gridmap.dat; overrides --nodes; an omitted axis is "
                             "one rank)")
+    p.add_argument("--stl-builder", choices=STL_BUILDERS, default=None,
+                   help="vessel STL builder (default geometry.yaml stl_builder = implicit). "
+                        "parametric_apex: analytic cone closed at its apex y = -R_t/tan30 "
+                        "(src/make_stl_c26_apex.py) with the point source in the tip row "
+                        "y in [-dx, 0]; the deck is otherwise unchanged")
     p.add_argument("--stl-sample-fraction", type=float, default=None, metavar="F",
-                   help="STL SDF sampling step as a fraction of dx (default: "
-                        "geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
+                   help="implicit builder: STL SDF sampling step as a fraction of dx "
+                        "(default: geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
     ps = p.add_mutually_exclusive_group()
     ps.add_argument("--ps-mass-only", action="store_true",
                     help="point source adds gas mass only (ps_v_g = 0); the "
@@ -128,12 +222,21 @@ def main() -> None:
     ps.add_argument("--ps-momentum", action="store_true",
                     help="point source carries the nozzle momentum "
                          "(ps_v_g = U_nozzle), for A/Bs against the default")
+    p.add_argument("--ps-point", action="store_true",
+                   help="write the point source as a point on the axis (C26 p.4), "
+                        "which MFiX maps to ONE cell (the -x/-z cell of the source "
+                        "row) instead of the 2x2 axis cells; needs --axis-on-face "
+                        "(geometry.yaml ps_point)")
     p.add_argument("--epg-clip", type=float, default=None, metavar="EPG",
                    help="DES_EPG_CLIP override (gas-fraction floor); default "
                         "geometry.yaml des_epg_clip")
-    p.add_argument("--interp-scheme", choices=("LINEAR_HAT", "SQUARE_DPVM"), default=None,
+    p.add_argument("--interp-scheme", choices=("LINEAR_HAT", "SQUARE_DPVM", "NONE"), default=None,
                    help="DES_INTERP_SCHEME override; SQUARE_DPVM also writes "
-                        "DES_INTERP_WIDTH (geometry.yaml des_interp_width_cells * dx)")
+                        "DES_INTERP_WIDTH (geometry.yaml des_interp_width_cells * dx); "
+                        "NONE is MFiX's default (no interpolation: des_interp_on and "
+                        "des_interp_mean_fields are then written .False.)")
+    p.add_argument("--vtk-dt-background", type=float, default=None, metavar="DT",
+                   help="cell-field VTK interval [s] (default numerics.yaml vtk_dt_background_s)")
     p.add_argument("--axis-on-face", action="store_true",
                    help="C26's grid layout: an even cell count (26) with the axis on "
                         "the edge of the four central cells, and the point source over "
@@ -143,6 +246,12 @@ def main() -> None:
                    help="override the case's gas flow [slpm] for a one-off check "
                         "outside the sweep matrix (e.g. c07 spout check); "
                         "requires --run-dir-suffix")
+    p.add_argument("--mfix-version", choices=MFIX_VERSIONS, default=None,
+                   help="MFiX release the deck is for (default numerics.yaml "
+                        "mfix_version = 23.2, the AWS image; its run.sh runs "
+                        "the image with docker). 26.1.2 re-renders the earlier "
+                        "runs' release (the four 26.1.2-only keywords, local "
+                        "native run.sh)")
     p.add_argument("--out-root", type=Path, default=OUT_ROOT)
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
@@ -163,7 +272,7 @@ def main() -> None:
         gridmap = default_gridmap(True if args.axis_on_face else None)
     nodes = args.nodes or (1, 1, 1)
     stl_cache: Path | None = None
-    facet_count = None
+    stl_facts: dict | None = None
 
     for case in selected:
         name_suffix = args.run_dir_suffix
@@ -174,11 +283,16 @@ def main() -> None:
             nodes=nodes, gridmap=gridmap,
             dx_sample_fraction=args.stl_sample_fraction,
             ps_momentum=True if args.ps_momentum else (False if args.ps_mass_only else None),
+            ps_point=True if args.ps_point else None,
             epg_clip=args.epg_clip,
             interp_scheme=args.interp_scheme,
             axis_on_face=True if args.axis_on_face else None,
+            vtk_dt_background_s=args.vtk_dt_background,
+            stl_builder=args.stl_builder,
+            mfix_version=args.mfix_version,
         )
         run_dir = args.out_root / f"{case['id']}{name_suffix}"
+        check_run_dir_release(run_dir, params["mfix_version"])
         mfx_path = run_dir / f"{params['run_name']}.mfx"
         manifest = {k: v for k, v in params.items() if k not in _MANIFEST_SKIP}
         manifest.update({
@@ -204,11 +318,11 @@ def main() -> None:
         if not args.no_stl:
             # Geometry is identical for every case: build once, then copy.
             if stl_cache is None:
-                facet_count = _build_stl(params, stl_path)
+                stl_facts = _build_stl(params, stl_path)
                 stl_cache = stl_path
             else:
                 shutil.copy2(stl_cache, stl_path)
-            manifest["facet_count"] = facet_count
+            manifest.update(stl_facts)
         render_case(TEMPLATE, params, mfx_path)
         gridmap_path = run_dir / "gridmap.dat"
         if params["gridmap"] is not None:
@@ -217,7 +331,10 @@ def main() -> None:
             # MFiX reads any gridmap.dat in the run dir; never leave a stale one.
             gridmap_path.unlink()
         (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-        write_runner(run_dir, mfx_path.name, params["nranks"])
+        if params["mfix_version"] == LOCAL_MFIX_VERSION:
+            write_runner(run_dir, mfx_path.name, params["nranks"])
+        else:
+            write_docker_runner(run_dir, mfx_path.name, params)
         print(f"wrote {run_dir}")
 
 

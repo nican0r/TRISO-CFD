@@ -8,7 +8,11 @@ Usage:
                                                                # into PATH
 
 On terminal state (SUCCEEDED / FAILED), optionally pulls results and prints
-log stream handles. Does not touch results/run_log.csv - the submit step
+log stream handles.  In --watch mode a failing ``aws batch describe-jobs``
+call (expired ``aws login`` session, network blip) is logged and retried at
+the next interval instead of ending the watch: an overnight watcher must
+survive a credential expiry and resume once ``aws login`` is run again
+(2026-10-24: a watcher died ~1 h into a 15 h job for exactly this reason). Does not touch results/run_log.csv - the submit step
 already appended a 'submitted' row; marking a run done is a manual review
 step.
 """
@@ -86,7 +90,14 @@ def main() -> None:
     args = p.parse_args()
 
     while True:
-        j = describe(args.job_id)
+        try:
+            j = describe(args.job_id)
+        except RuntimeError as e:          # aws CLI failed (creds, network)
+            if not args.watch:
+                raise
+            _log(f"describe-jobs failed, retrying in {args.interval} s: {e}")
+            time.sleep(args.interval)
+            continue
         s = summary(j)
         print(json.dumps(s, indent=2, default=str))
         if not args.watch:

@@ -38,7 +38,8 @@ from pathlib import Path
 
 import numpy as np
 import yaml
-from scipy import ndimage
+from scipy import ndimage, sparse
+from scipy.sparse.linalg import spsolve
 from scipy.interpolate import RegularGridInterpolator
 
 REPO = Path(__file__).resolve().parents[2]
@@ -171,6 +172,38 @@ def median_test(dr, dc, valid, threshold, eps):
     return out, meds[0], meds[1]
 
 
+def inpaint_nans(a):
+    """Fill the NaNs of a 2-D field by solving the discrete Laplace equation
+    with the valid values as boundary conditions (PIVlab's "interpolate
+    missing data", inpaint_nans).  Harmonic fields (e.g. a linear ramp) are
+    recovered exactly; an all-NaN field is returned unchanged."""
+    a = np.asarray(a, float)
+    bad = np.isnan(a)
+    if not bad.any() or bad.all():
+        return a.copy()
+    ny, nx = a.shape
+    pos = np.full(a.shape, -1, int)
+    pos[bad] = np.arange(bad.sum())
+    rows, cols, vals = [], [], []
+    rhs = np.zeros(bad.sum())
+    for k, (i, j) in enumerate(zip(*np.nonzero(bad))):
+        nb = [(i + di, j + dj) for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1))
+              if 0 <= i + di < ny and 0 <= j + dj < nx]
+        rows.append(k); cols.append(k); vals.append(float(len(nb)))
+        for ii, jj in nb:
+            if bad[ii, jj]:
+                rows.append(k); cols.append(pos[ii, jj]); vals.append(-1.0)
+            else:
+                rhs[k] += a[ii, jj]
+    lap = sparse.csc_matrix((vals, (rows, cols)), shape=(rhs.size, rhs.size))
+    out = a.copy()
+    out[bad] = spsolve(lap, rhs)
+    return out
+
+
+EMPTY_WINDOW_MODES = ("zero", "skip", "interpolate")
+
+
 def piv_pair(a, b, rows, cols, windows_px, min_std, uod_threshold, uod_eps):
     """Displacement field [px] from image a to image b.
 
@@ -230,6 +263,19 @@ class View:
     @property
     def y(self):
         return self.y0 + (self.rows[:, 0] + 0.5) * self.pixel_m
+
+
+def bed_surface(xyz, percentile, r_min):
+    """Bed-surface height [m] from one parcel frame: the given percentile of
+    parcel y over the annulus parcels, those at least r_min from the axis
+    (x = z = 0).  The fountain parcels standing above the spout are left
+    out, as C26 masks the annular bed surface (Fig. 4 caption).  Falls back
+    to all parcels when none is outside r_min."""
+    xyz = np.asarray(xyz, float)
+    sel = np.hypot(xyz[:, 0], xyz[:, 2]) >= r_min
+    if not sel.any():
+        sel = np.ones(len(xyz), bool)
+    return float(np.percentile(xyz[sel, 1], percentile))
 
 
 def make_view(x_lo, x_hi, y_lo, y_hi, pixel_m, margin_px, step_px):
@@ -301,7 +347,13 @@ def _vtk_readers():
 def piv_frames(run, manifest):
     read_pvd, _ = _vtk_readers()
     t0, t1 = float(manifest["piv_t_start_s"]), float(manifest["tstop_s"]) + 1e-4
-    return [(t, run / f) for t, f in read_pvd(run / "PARTICLES_PIV.pvd") if t0 <= t <= t1]
+    frames = []
+    for t, f in read_pvd(run / "PARTICLES_PIV.pvd"):
+        # MFiX 23.2 can write the tstop frame twice (same time, identical file,
+        # c02_point_v232); a pair with dt = 0 would put inf into the map.
+        if t0 <= t <= t1 and not (frames and t <= frames[-1][0]):
+            frames.append((t, run / f))
+    return frames
 
 
 def analyse_run(run, params=None, stride=1, max_frames=None):
@@ -322,9 +374,12 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
 
     # line of sight: camera along z sees (x, y); along x it sees (z, y)
     cols_xyz = {"z": [0, 1, 2], "x": [2, 1, 0]}[cam["view_axis"]]
-    # bed surface: time-median of the percentile of parcel y
-    y_s = float(np.median([np.percentile(read_vtk_xml(f)["coordinates"][:, 1],
-                                         sm["bed_surface_percentile"]) for _, f in frames]))
+    # bed surface: time-median over the frames of the percentile of parcel y
+    # over the annulus parcels (r >= bed_surface_annulus_r_min_m), outside the
+    # spout / fountain footprint; C26 masks "the bed annular surface".
+    r_min = float(sm["bed_surface_annulus_r_min_m"])
+    y_s = float(np.median([bed_surface(read_vtk_xml(f)["coordinates"], sm["bed_surface_percentile"], r_min)
+                           for _, f in frames]))
     y_map = y_s + float(sm["bottom_offset_m"])
     # comparison grid: the digitized experiment panel of the nearest flow
     panels = sorted(p["fig4"]["panels_exp"])
@@ -344,9 +399,13 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
 
     kw = dict(windows_px=wins, min_std=float(piv["min_window_std"]),
               uod_threshold=float(piv["uod_threshold"]), uod_eps=float(piv["uod_eps_px"]))
+    mode = str(sm["empty_windows"])
+    if mode not in EMPTY_WINDOW_MODES:
+        raise ValueError(f"spout_map.empty_windows must be one of {EMPTY_WINDOW_MODES}, got {mode!r}")
     su = np.zeros(spout.rows.shape)
     sv = np.zeros(spout.rows.shape)
     n_full = np.zeros(spout.rows.shape)        # pairs in which a window had particles
+    n_any = 0                                  # pairs with particles in any window
     t_pair, wall_piv, wall_vis, empty_frac = [], [], [], []
     prev = None
     for t, f in frames:
@@ -358,6 +417,17 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
             tp, ps, pw, own_p, vel_p = prev
             dt = t - tp
             dr, dc, emp = piv_pair(ps, img_s, spout.rows, spout.cols, **kw)
+            if mode == "interpolate":
+                # PIVlab-like: a window without particles gets no vector of
+                # its own and is filled from its neighbours in this pair, so
+                # every window carries a vector in every pair that has any
+                # particles.  A pair with none anywhere contributes nothing.
+                if emp.all():
+                    dr = dc = np.zeros(spout.rows.shape)
+                else:
+                    dr = inpaint_nans(np.where(emp, np.nan, dr))
+                    dc = inpaint_nans(np.where(emp, np.nan, dc))
+                    n_any += 1
             su += dc * px / dt
             sv += dr * px / dt
             empty_frac.append(emp.mean())
@@ -372,8 +442,9 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
 
     n = len(t_pair)
     # empty windows add 0 to su, sv: 'zero' averages over all pairs, 'skip'
-    # over the pairs in which the window had particles
-    n_avg = {"zero": n, "skip": np.maximum(n_full, 1)}[sm["empty_windows"]]
+    # over the pairs in which the window had particles, 'interpolate' (filled
+    # per pair, see above) over the pairs with particles anywhere
+    n_avg = {"zero": n, "skip": np.maximum(n_full, 1), "interpolate": max(n_any, 1)}[mode]
     mean_map = np.hypot(su / n_avg, sv / n_avg)        # |time mean vector| [m/s]
     gy, gx = spout.y - y_map, spout.x
     ci = (np.arange(nrow) + 0.5) * H / nrow
@@ -385,7 +456,7 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
         "case": str(m["case_id"]), "run_dir": str(run), "flow_slpm": flow,
         "window_t0_s": frames[0][0], "window_t1_s": frames[-1][0], "n_pairs": n,
         "bed_surface_m": y_s, "map_bottom_m": y_map, "map_height_m": H, "panel_flow_slpm": pflow,
-        "view_axis": cam["view_axis"], "empty_windows": sm["empty_windows"],
+        "view_axis": cam["view_axis"], "empty_windows": mode,
         "pixel_m": px, "windows_px": wins, "step_px": step,
         "empty_window_frac": float(np.mean(empty_frac)),
         "map_piv_grid": mean_map, "map": grid_map,

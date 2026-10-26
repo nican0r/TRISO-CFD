@@ -17,6 +17,18 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 - Builder `src/make_case_c26.py`, STL `src/make_stl.py::build_cone_column_stl_implicit`,
   template `cases/C26_3d/template_dem.mfx.j2`, driver `src/run_C26_3d.py`.
 - Tests: `tests/test_make_case_c26.py`, `tests/test_make_stl_c26.py`.
+- Closed-apex parametric STL (2026-10-24): `src/make_stl_c26_apex.py`
+  (analytic surface of revolution, cone continued to its apex at
+  y = −R_t/tan 30° = −2.062 mm, 8,480 facets, inward normals checked per
+  facet), selected with `run_C26_3d --stl-builder parametric_apex`
+  (`geometry.yaml stl_builder`, default `implicit` unchanged); the point
+  source then fills the tip row y ∈ [−dx, 0]. Tests
+  `tests/test_make_stl_c26_apex.py`; 1 ms dry run c02_apex_dry scored
+  against five pre-registered criteria in the notes ("Closed apex,
+  parametric STL"): 3 pass, 2 fail on the literal numbers with the cause
+  identified (MFiX's polyhedral cut-cell volume of the tip, 1.95e-9 m³ vs
+  the 3.06e-9 m³ cone; 8 sliver cells of 1.01 % cell volume under the 1 %
+  small-cell cutoff). Not a production default; no AWS submission.
 - Checks: `notes/smoke_validate_c26.py` (step 2), `notes/c26_step3_checks.py`
   (step 3), `notes/c26_sweep_summary.py` (step 5).
 
@@ -108,6 +120,34 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      c01–c09_momentum24 (momentum source on the 24-cell layout) were
      submitted 2026-10-22; c05 and c07 reached 3 s on 2026-10-23 (14–16 h),
      the rest were still running. Not pulled or scored yet.
+   - 2026-10-23: c01–c03_momentum24 scored. The momentum source changed
+     nothing but the pressure on the 24-cell grid (the four source cells
+     are enclosed, so continuity sets the 11–13 m/s jet; the source type
+     is closed as a candidate). The PIV convention was changed to C26's
+     (`piv_c26.yaml empty_windows: interpolate`, PIVlab-like per-frame
+     fill) and every `results/c26_piv_*` output was regenerated: c02 now
+     MATCHES C26's model (CC 0.85, SSI 0.84, MSE 0.0037); c03 is close on
+     SSI; c01 does not match. D is unchanged (0.016–0.03 m/s, 5–7× C26's
+     model): a fluidized, internally circulating annulus. Interpolation
+     A/B `c02_momentum24_nointerp` (des_interp_scheme NONE) submitted
+     2026-10-23 with pre-registered criteria (`c26_acceptance.yaml`
+     interp_ab). Details: notes, "momentum24 c01–c03 results" and
+     "Interpolation A/B".
+   - 2026-10-23 (later): map bottom moved to the annulus surface
+     (`piv_c26.yaml bed_surface_annulus_r_min_m: 15 mm`; C26 masks the
+     annular bed surface and the all-parcel percentile was fountain-inflated
+     by 1.6–6.3 mm). All `results/c26_piv_*` regenerated again: c01 now at
+     the CC floor (match), c02 misses the MSE floor by 0.0001 (CC 0.83, SSI
+     0.85), c03 unchanged (no match). A 0.3 s AWS smoke of the no-interp
+     deck (`c02_momentum24_nointerp_smoke03`, gas VTK every 5 ms) was
+     submitted to read the annulus-fluidization metrics early; criteria in
+     `c26_acceptance.yaml interp_ab_smoke`. Details: notes, "Map bottom
+     moved to the annulus surface" and "Interpolation A/B, 0.3 s smoke".
+   - 2026-10-24: smoke pulled and scored: NO EFFECT (bed EP_G 0.571 vs
+     0.571 baseline, void fraction 0.228 vs 0.25; heave persists; jet
+     above the bed no stronger). Interpolation is not what fluidizes the
+     annulus; the 3 s job (e7395c56…) still to be scored under
+     `interp_ab` for the wall D. c08_momentum24 SUCCEEDED, not pulled.
    Spout check, over the last 0.6 s (C26's PIV window): at 10 slpm C26 calls
    the regime "near minimum spouting" with "approximately 10 spouting events
    every 0.5 s" (§3.1, §2.2.2), so expect a pulsed spout, not a steady one.
@@ -130,7 +170,11 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
    - the wall velocity in C26 Fig. 1c's 4 mm box, compared with Fig. 6d.
 
    Settings and sources are in `params/piv_c26.yaml`. C26 gives no PIV
-   settings, so they are assumed. The "~4 mm" in Fig. 1c is the wall
+   settings, so they are assumed. Conry et al. 2025 (CES 306:121197), which
+   C26 cites for the process, gives the processing steps but no PIVlab
+   settings either; the comparison is in `notes/c26_conry2026_case.md`
+   ("Conry et al. 2025 PIV method"). The wall box sits at 0.64 of the bed
+   height (C26 Fig. 1c, measured 2026-10-25). The "~4 mm" in Fig. 1c is the wall
    sampling box, not the PIV window (this step's earlier text said
    otherwise). The Fig. 4 maps come from `src/post/digitize_c26_fig4.py`
    (`data/digitized/c26_fig4_*.csv`). Fig. 6 time series are not digitized;
@@ -183,3 +227,11 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
 - The settled-bed-height discrepancy (35 vs ~25 mm) is stated plainly, with the
   cone-angle implication. (Done: notes, "Geometry decisions" item 3.)
 - All tests pass.
+- 2026-10-24: closed-apex local 0.05 s smoke passed gate J (jet 2.2–2.5× the 2 × 2 momentum source at 5–10 mm; column asymmetric, one quadrant cell); AWS 0.3 s smoke c26-c02-apex-smoke03 submitted (job 51bb89b1); 3 s decision per params/c26_acceptance.yaml apex_smoke.
+- 2026-10-24: AWS 0.3 s apex smoke pulled and scored (notes "AWS smoke result and decision"): gate NOT met (J 1.51× at 5 mm, 1.27× at 10 mm; exit v_p +73 %, PIV map mean +56 %, bed EP_G 0.545); the spout runs up one quadrant cell (a bistable selection, different quadrant locally and on AWS); 3 s run c02_apex generated but NOT launched. Odd-grid (axis-centred) closed apex fails at setup: the single tip cell has no fluid corner node and is blocked.
+- 2026-10-24: user decision: 3 s closed-apex run launched on MFiX 23.2 (c02_apex_v232, job 38c9dc92, c26-c02-apex-v232) after a 1 ms 23.2 docker dry run (mesh identical to 26.1.2); predictions pre-registered in params/c26_acceptance.yaml apex_3s; score at 2.4–3.0 s when pulled.
+- 2026-10-25: c02_apex_v232 scored at 2.4–3.0 s: all three `apex_3s` predictions met (map mean 0.98× C26 model, CC 0.914, bed EP_G 0.561); first c02 map to MATCH all three C26 floors; wall PIV 0.0198 m/s (3.9× C26 model). Caveat: MFiX 23.2 deletes slow wall parcels at one cut-cell corner (−67 of 27 765; absent under 26.1.2 on the same STL). Next lever: the annulus.
+- 2026-10-25: interp_ab (c02_momentum24_nointerp, 3 s) scored: D wall −50 %, annulus metrics unchanged, CC 0.783 → INCONCLUSIVE by the pre-registered rule.
+- 2026-10-25/26: source A/B on the closed-apex 23.2 layout (notes "Point-source 3 s results", "Sweep source choice"): control (2×2 mass-only) map vs C26 model CC 0.907 / MSE 0.0015, reach 0.69; one-cell + momentum 0.879 / 0.0058, reach 0.99 but 30 % fast in the lower map and 5 mm lean; 2×2 + momentum 0.849 / 0.0025, reach 0.51. The pre-registered rule (momentum branches only) picked one-cell and its sweep was submitted 10:45 EDT.
+- 2026-10-26: user decision: the c01–c09 sweep runs in the control configuration. The eight one-cell jobs were terminated ~11:04 EDT (not pulled); c0X_apex_v232 (c01, c03, c04, c05, c06, c08, c09, c07; MFiX 23.2, 3 s) submitted ~11:08 EDT as c26-c0X-apex-v232. Score at 2.4–3.0 s through the c02_apex_v232 pipeline. Rule record: params/c26_acceptance.yaml sweep_source_choice.decision_2026_10_26.
+- 2026-10-24: `src/aws/poll.py --watch` and `notes/c26_watch_post.py` retry a failing describe-jobs call (expired `aws login` session killed the first watcher); `tests/test_aws_poll.py`.

@@ -59,3 +59,11 @@ spouted_bed_C26_3d_numerics:
                               #         sampled every 0.002 s").
   piv_n_frames: 300           # frames in the PIV window [-] (0.6 s)
                               # source: C26 p.3 (2.2.2).
+  mfix_version: "23.2"        # MFiX release the deck is written for (one of
+                              # src/make_case_c26.py MFIX_VERSIONS; "23.2"
+                              # leaves out four 26.1.2-only keywords).
+                              # source: user decision 2026-10-24, all new
+                              #         runs on 23.2 (C26's release,
+                              #         notes/c26_conry2026_case.md intro;
+                              #         the AWS image).  "26.1.2" re-renders
+                              #         the runs before that date.

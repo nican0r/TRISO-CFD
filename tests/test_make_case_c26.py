@@ -226,6 +226,27 @@ def test_interp_scheme_switch_writes_width(p01, tmp_path):
         build_C26_3d_params(_case("c01"), interp_scheme="GARG_2012")
 
 
+def test_interp_scheme_none_turns_interpolation_off(p01, tmp_path):
+    """NONE (MFiX's default) must come with des_interp_on and
+    des_interp_mean_fields false, or MFiX stops at the input check."""
+    assert p01["des_interp_on"] and p01["des_interp_mean_fields"]
+    out = tmp_path / "default.mfx"
+    render_case(C26_TEMPLATE, p01, out)
+    txt = out.read_text()
+    assert re.search(r"^\s*des_interp_on\s*=\s*\.True\.\s*$", txt, re.M)
+    assert re.search(r"^\s*des_interp_mean_fields\s*=\s*\.True\.\s*$", txt, re.M)
+    p = build_C26_3d_params(_case("c01"), interp_scheme="NONE")
+    assert not p["des_interp_on"] and not p["des_interp_mean_fields"]
+    assert p["des_interp_width_m"] is None
+    out = tmp_path / "none.mfx"
+    render_case(C26_TEMPLATE, p, out)
+    txt = out.read_text()
+    assert re.search(r"des_interp_scheme\s*=\s*'NONE'", txt)
+    assert re.search(r"^\s*des_interp_on\s*=\s*\.False\.\s*$", txt, re.M)
+    assert re.search(r"^\s*des_interp_mean_fields\s*=\s*\.False\.\s*$", txt, re.M)
+    assert not re.search(r"^\s*des_interp_width\s*=", txt, re.M)
+
+
 
 def test_dt_max_is_paper_step_capped_by_rule9(p01, all_params):
     # C26 p.9: 0.01 ms; recipe Rule 9: 0.5 dx / U_nozzle (2.8e-5 s at c01).
@@ -555,3 +576,161 @@ def test_default_gridmap_halves_the_box():
     assert default_gridmap(True) == ([12, 12], [], [12, 12])
     p = build_C26_3d_params(_case("c01"), axis_on_face=True, gridmap=default_gridmap(True))
     assert p["nranks"] == 4 and p["gridmap"] == {"i": [12, 12], "j": [104], "k": [12, 12]}
+
+
+# ---------------- MFiX 23.2 decks ----------------
+
+# Keywords the 26.1.2 deck sets that do not exist in MFiX 23.2 (no hit
+# anywhere in the mfix-src 23.2 package, 2026-10-24; 23.2 aborts on unknown
+# keywords with Error 2000).  notes/c26_conry2026_case.md "MFiX 23.2 decks
+# and AWS image".
+KEYWORDS_NOT_IN_23_2 = {"mu_g_model", "ic_des_abort_on_failed_seeding",
+                        "ic_des_tight_boundary_spacing", "bc_default_walls"}
+
+
+def _assignments(text: str) -> list[str]:
+    return [ln.strip() for ln in text.splitlines()
+            if "=" in ln and not ln.strip().startswith(("#", "!"))]
+
+
+def _name(line: str) -> str:
+    return re.sub(r"\(.*$", "", line.split("=", 1)[0]).strip().lower()
+
+
+def test_default_mfix_version_is_23_2(p01):
+    # User decision 2026-10-24: all new runs on 23.2, the AWS image.
+    assert p01["mfix_version"] == "23.2"
+
+
+def test_unknown_mfix_version_rejected():
+    with pytest.raises(ValueError, match="mfix_version"):
+        build_C26_3d_params(_case("c01"), mfix_version="25.1")
+
+
+def test_mfix_232_deck_drops_only_the_26_keywords(tmp_path):
+    for cid in ("c01", "c09"):
+        text_26, _ = _render(tmp_path, cid, mfix_version="26.1.2")
+        text_23, p = _render(tmp_path, cid)
+        assert p["mfix_version"] == "23.2"
+        assert KEYWORDS_NOT_IN_23_2 <= _keywords(text_26)
+        assert not (_keywords(text_23) & KEYWORDS_NOT_IN_23_2)
+        # every other assignment is unchanged, in order
+        kept = [ln for ln in _assignments(text_26) if _name(ln) not in KEYWORDS_NOT_IN_23_2]
+        assert _assignments(text_23) == kept
+
+
+def test_docker_runner_for_232(tmp_path):
+    from src.run_C26_3d import write_docker_runner
+    p = build_C26_3d_params(_case("c01"), mfix_version="23.2", nodes=(2, 1, 2))
+    script = write_docker_runner(tmp_path, "C26_c01_v232.mfx", p).read_text()
+    assert "triso-cfd/mfix:23.2" in script
+    assert "-e LOCAL_SMOKE=1" in script and '-e MFX_FILE="C26_c01_v232.mfx"' in script
+    assert "-e NP=4 -e NODESI=2 -e NODESJ=1 -e NODESK=2" in script
+
+
+def test_run_dir_of_another_release_is_never_overwritten(tmp_path):
+    import json
+    from src.run_C26_3d import check_run_dir_release
+    old = tmp_path / "c01_massonly"
+    old.mkdir()
+    (old / "manifest.json").write_text(json.dumps({"aws_vcpu": 4}))  # pre-2026-10-24: 26.1.2
+    with pytest.raises(SystemExit, match="MFiX 26.1.2 case"):
+        check_run_dir_release(old, "23.2")
+    check_run_dir_release(old, "26.1.2")                  # same release: re-render allowed
+    check_run_dir_release(tmp_path / "c01_new", "23.2")   # new dir: allowed
+
+
+# ---------------- point source written as a point (ps_point) ----------------
+
+def _calc_cell(rmin: float, loc: float, d: list[float]) -> int:
+    """Python mirror of MFiX calc_cell.f (23.2 and 26.1.2): the 1-based index
+    (interior cells 2..n+1) of the cell whose end face is nearest to loc."""
+    start = rmin
+    dd = [0.0, 0.0] + list(d) + [d[-1], d[-1]]          # D_DIR(0:N+3)
+    for lc in range(2, len(d) + 2):
+        end = start + dd[lc]
+        if loc <= start + 0.5 * dd[lc]:
+            return lc - 1
+        if loc <= end + 0.5 * dd[lc + 1]:
+            return lc
+        start = end
+    return -1
+
+
+def _cell_bounds(rmin: float, d: list[float], idx: int) -> tuple[float, float]:
+    lo = rmin + sum(d[: idx - 2])
+    return lo, lo + d[idx - 2]
+
+
+@pytest.mark.parametrize("builder", ["implicit", "parametric_apex"])
+def test_ps_point_maps_to_one_cell(builder):
+    p2 = build_C26_3d_params(_case("c02"), axis_on_face=True, stl_builder=builder)
+    p = build_C26_3d_params(_case("c02"), axis_on_face=True, stl_builder=builder, ps_point=True)
+    dx = p["dx_m"]
+    assert p["ps_point"] is True and p2["ps_point"] is False   # geometry.yaml default
+    assert p["ps_footprint_cells"] == 1
+    # a point on the axis, y inside the same source row as the 2 x 2 source
+    assert p["ps_region_x_w_m"] == p["ps_region_x_e_m"] == 0.0
+    assert p["ps_region_z_b_m"] == p["ps_region_z_t_m"] == 0.0
+    assert p["ps_region_y_s_m"] == p["ps_region_y_n_m"]
+    assert (p["ps_cell_y_s_m"], p["ps_cell_y_n_m"]) == (p2["ps_cell_y_s_m"], p2["ps_cell_y_n_m"])
+    # MFiX's get_ps.f: I_W = I_E = CALC_CELL(x) for a point; mirror it
+    i = _calc_cell(p["x_min_m"], 0.0, p["dx_m_list"])
+    j = _calc_cell(p["y_min_m"], p["ps_region_y_s_m"], p["dy_m_list"])
+    k = _calc_cell(p["z_min_m"], 0.0, p["dz_m_list"])
+    assert _cell_bounds(p["x_min_m"], p["dx_m_list"], i) == pytest.approx((-dx, 0.0), abs=1e-12)
+    assert _cell_bounds(p["z_min_m"], p["dz_m_list"], k) == pytest.approx((-dx, 0.0), abs=1e-12)
+    assert _cell_bounds(p["y_min_m"], p["dy_m_list"], j) == pytest.approx(
+        (p["ps_cell_y_s_m"], p["ps_cell_y_n_m"]), abs=1e-12)
+    # the manifest's ps_cell_* is that one cell; same gas over a quarter of the area
+    assert (p["ps_cell_x_w_m"], p["ps_cell_x_e_m"]) == pytest.approx((-dx, 0.0))
+    assert (p["ps_cell_z_b_m"], p["ps_cell_z_t_m"]) == pytest.approx((-dx, 0.0))
+    assert p["ps_massflow_g_kg_s"] == p2["ps_massflow_g_kg_s"]
+    assert p["U_ps_cell_m_s"] == pytest.approx(4.0 * p2["U_ps_cell_m_s"])
+
+
+def test_ps_point_y_is_clear_of_the_mid_row_tie():
+    # CALC_CELL returns the cell whose north face is nearest, so the lower
+    # half of the row maps to the row below and mid-row is a round-off tie.
+    # ps_region_y sits a quarter cell below the north face, clear of both.
+    p = build_C26_3d_params(_case("c02"), axis_on_face=True,
+                            stl_builder="parametric_apex", ps_point=True)
+    dx = p["dx_m"]
+    j_pt = _calc_cell(p["y_min_m"], p["ps_region_y_s_m"], p["dy_m_list"])
+    j_low = _calc_cell(p["y_min_m"], p["ps_cell_y_s_m"] + 0.25 * dx, p["dy_m_list"])
+    assert j_low == j_pt - 1
+    assert p["ps_region_y_s_m"] - p["ps_cell_y_s_m"] == pytest.approx(0.75 * dx)
+
+
+def test_ps_point_needs_axis_on_face():
+    with pytest.raises(ValueError, match="axis_on_face"):
+        build_C26_3d_params(_case("c02"), axis_on_face=False, ps_point=True)
+
+
+def test_ps_point_deck(tmp_path):
+    text, p = _render(tmp_path, "c02", axis_on_face=True,
+                      stl_builder="parametric_apex", ps_point=True, ps_momentum=True)
+    y = p["ps_region_y_s_m"]
+    for kw, val in (("ps_x_w", 0.0), ("ps_x_e", 0.0), ("ps_z_b", 0.0), ("ps_z_t", 0.0),
+                    ("ps_y_s", y), ("ps_y_n", y)):
+        m = re.search(rf"{kw}\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+        assert m and float(m.group(1)) == pytest.approx(val, abs=1e-12), kw
+    assert "POINT region" in text
+    m = re.search(r"ps_v_g\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(p["U_nozzle_m_s"], rel=1e-5)
+    # the inlet-pressure monitor stays on the one source cell
+    m = re.search(r"monitor_x_w\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(-p["dx_m"])
+    m = re.search(r"monitor_x_e\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+    assert m and float(m.group(1)) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_ps_point_off_leaves_the_deck_unchanged(tmp_path):
+    # The default writes the PS region from the same cell bounds as before.
+    text, p = _render(tmp_path, "c02", axis_on_face=True)
+    assert "POINT region" not in text
+    for kw, key in (("ps_x_w", "ps_cell_x_w_m"), ("ps_x_e", "ps_cell_x_e_m"),
+                    ("ps_y_s", "ps_cell_y_s_m"), ("ps_y_n", "ps_cell_y_n_m"),
+                    ("ps_z_b", "ps_cell_z_b_m"), ("ps_z_t", "ps_cell_z_t_m")):
+        m = re.search(rf"{kw}\(1\)\s*=\s*([0-9.eE+\-]+)", text)
+        assert m and float(m.group(1)) == pytest.approx(p[key], abs=1e-12), kw

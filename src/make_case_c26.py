@@ -5,7 +5,8 @@ Case C26 reproduces the MFiX CFD-CGDEM model of
     Conry, Dal Forno Chuahy, Oyedeji, Finney, Heldt, Lopez-Honorato (2026),
     Nucl. Eng. Des. 456: 115009 ("C26"),
 
-on the project's MFiX 26.1.2.  It is a separate case from Case V (different
+on MFiX 23.2, C26's own release and the project default since 2026-10-24
+(26.1.2 before; see MFIX_VERSIONS).  It is a separate case from Case V (different
 rig, gas, particles, inlet and validation data); see
 notes/c26_conry2026_case.md for the design and for every deliberate
 deviation from .claude/skills/mfix-spouted-bed-recipe.
@@ -37,6 +38,18 @@ from src.make_case import (
 )
 
 SLPM_TO_M3_S = 1.0e-3 / 60.0   # unit conversion only: 1 L/min in m^3/s
+
+# Vessel STL builders (geometry.yaml spouted_bed_C26_3d ``stl_builder``).
+STL_BUILDERS = ("implicit", "parametric_apex")
+
+# MFiX releases the template can write for (numerics.yaml
+# spouted_bed_C26_3d_numerics ``mfix_version``).  23.2 (C26's release; the
+# AWS image and the default for new runs since 2026-10-24) lacks four
+# keywords the 26.1.2 deck sets:
+# mu_g_model, ic_des_abort_on_failed_seeding, ic_des_tight_boundary_spacing
+# and bc_default_walls (none in the 23.2 source; unknown keywords abort with
+# Error 2000).  The template leaves them out for 23.2.
+MFIX_VERSIONS = ("26.1.2", "23.2")
 
 
 def load_sweep() -> dict:
@@ -177,9 +190,13 @@ def build_C26_3d_params(
     gridmap: tuple[Sequence[int], Sequence[int], Sequence[int]] | None = None,
     dx_sample_fraction: float | None = None,
     ps_momentum: bool | None = None,
+    ps_point: bool | None = None,
     epg_clip: float | None = None,
     interp_scheme: str | None = None,
     axis_on_face: bool | None = None,
+    vtk_dt_background_s: float | None = None,
+    stl_builder: str | None = None,
+    mfix_version: str | None = None,
 ) -> dict:
     """Assemble the template params for one row of params/sweep_C26.yaml.
 
@@ -192,6 +209,9 @@ def build_C26_3d_params(
                bound sweep ``base.stat_wt`` = 10).  The
                particle-wall friction factor is geometry.yaml ``mew_w``.
     tstop_s  : simulated end time [s]; default sweep ``base.tstop_s``.
+    vtk_dt_background_s : cell-field VTK interval [s]; default
+               numerics.yaml ``vtk_dt_background_s`` (0.05 s).  Short smokes
+               that must resolve the ~12 Hz bed heave use 0.005 s.
     run_name : MFiX run_name; default ``C26_<id>``.
     nodes    : DMP decomposition (NI, NJ, NK); each must divide its axis.
     gridmap  : optional non-uniform DMP partition, as cell counts per rank
@@ -206,20 +226,34 @@ def build_C26_3d_params(
     ps_momentum : True gives the point source ps_v_g = U_nozzle (momentum
                flux m_dot * U_nozzle); False gives ps_v_g = 0, a mass-only
                source.  Default geometry.yaml ``ps_momentum``.
-    epg_clip : DES_EPG_CLIP override (gas-fraction floor, 0-1); default
+    ps_point : True writes the point source as a point on the axis (C26
+               p.4, "a point source centered with the reactor"), which MFiX
+               maps to the single -x / -z cell of the source row; False the
+               2 x 2 axis cells (or the axis cell).  Axis-on-face only.
+               Default geometry.yaml ``ps_point``.
+    epg_clip :DES_EPG_CLIP override (gas-fraction floor, 0-1); default
                geometry.yaml ``des_epg_clip``.  Omitting the keyword (MFiX's
                default, no floor) is not offered: on this mesh it fails with
                Error 1100 in sliver cut cells under both LINEAR_HAT and
                SQUARE_DPVM (run_log 2026-10-19, c01_smoke_r5_*).
-    interp_scheme : DES_INTERP_SCHEME override ('LINEAR_HAT' or
-               'SQUARE_DPVM'); default geometry.yaml ``des_interp_scheme``.
+    interp_scheme : DES_INTERP_SCHEME override ('LINEAR_HAT', 'SQUARE_DPVM'
+               or 'NONE'); default geometry.yaml ``des_interp_scheme``.
                SQUARE_DPVM also writes DES_INTERP_WIDTH =
-               ``des_interp_width_cells`` * dx.
+               ``des_interp_width_cells`` * dx.  NONE is MFiX's default (cell
+               -centred, no filter); it requires des_interp_on and
+               des_interp_mean_fields false (check_solids_common_discrete.f
+               "Cannot use interpolation when no scheme is selected"), which
+               the deck then writes.
     axis_on_face : grid layout; default geometry.yaml ``axis_on_cell_face``.
                False: odd cell count, axis at a cell centre, one-cell point
                source.  True: C26's layout, even count with the axis on the
                edge of the four central cells, point source over those 2 x 2
                cells.
+    mfix_version : MFiX release the deck is for, one of MFIX_VERSIONS;
+               default numerics.yaml ``mfix_version`` (23.2).  '23.2' leaves out
+               the four 26.1.2-only keywords.  Three map exactly onto 23.2's
+               fixed behaviour; the lattice keeps a one-radius margin in
+               the IC box (= ic_des_tight_boundary_spacing .False.).
 
     Geometry (bed_C26, spouted_bed_C26_3d):
       - vessel: cone from a closed throat (r = R_t, y = 0) to the column
@@ -231,6 +265,13 @@ def build_C26_3d_params(
         cells around the axis with ``axis_on_face``.  ps_v_g is 0 for the
         default mass-only source, or the nozzle exit velocity (momentum flux
         m_dot * U_nozzle) with ``ps_momentum``.
+      - stl_builder 'implicit' (default, geometry.yaml ``stl_builder``): the
+        marching-cubes STL with a flat cap at y = 0 and the point source
+        ``ps_row_offset_cells`` rows above it.  'parametric_apex':
+        src/make_stl_c26_apex.py continues the cone to its apex at
+        y = -R_t / tan(theta); the point source moves to the tip row
+        ``ps_tip_row_offset_cells`` (y in [-dx, 0]), whose open top face is
+        pi R_t^2.  Nothing else in the deck changes.
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
@@ -244,8 +285,11 @@ def build_C26_3d_params(
     scheme = str(interp_scheme or dem["des_interp_scheme"])
     if epg_clip is not None and not 0.0 < float(epg_clip) < 1.0:
         raise ValueError(f"epg_clip must be in (0, 1), got {epg_clip}")
-    if scheme not in ("LINEAR_HAT", "SQUARE_DPVM"):
-        raise ValueError(f"interp_scheme must be LINEAR_HAT or SQUARE_DPVM, got {scheme!r}")
+    if scheme not in ("LINEAR_HAT", "SQUARE_DPVM", "NONE"):
+        raise ValueError(f"interp_scheme must be LINEAR_HAT, SQUARE_DPVM or NONE, got {scheme!r}")
+    mfix_version = str(numerics["mfix_version"] if mfix_version is None else mfix_version)
+    if mfix_version not in MFIX_VERSIONS:
+        raise ValueError(f"mfix_version must be one of {MFIX_VERSIONS}, got {mfix_version!r}")
     base = sweep["base"]
 
     case_id = str(case["id"])
@@ -329,15 +373,45 @@ def build_C26_3d_params(
         )
 
     # Point-source cells, centred on the axis: the axis cell, or the 2 x 2
-    # cells that share the axis edge.
-    ps_cells = 2 if axis_on_face else 1
-    ps_half_m = 0.5 * ps_cells * dx_m
+    # cells that share the axis edge.  With ps_point the deck writes a point
+    # on the axis instead, which MFiX maps to ONE cell (get_ps.f: I_W = I_E =
+    # CALC_CELL(x); CALC_CELL snaps to the nearest face, so a point on the
+    # axis face lands in the -x / -z cell).  At a cell centre (odd layout)
+    # CALC_CELL ties and returns the neighbour, hence axis-on-face only.
+    ps_point = bool(mesh["ps_point"] if ps_point is None else ps_point)
+    if ps_point and not axis_on_face:
+        raise ValueError("ps_point needs axis_on_face: a point at a cell centre "
+                         "maps to the neighbouring cell (calc_cell.f)")
+    if ps_point:
+        ps_cells = 1
+        ps_cell_x = (-dx_m, 0.0)          # the -x / -z cell MFiX picks
+    else:
+        ps_cells = 2 if axis_on_face else 1
+        ps_cell_x = (-0.5 * ps_cells * dx_m, 0.5 * ps_cells * dx_m)
     ps_row = int(mesh["ps_row_offset_cells"])
     if ps_row < 0:
         raise ValueError("ps_row_offset_cells must be >= 0")
+    stl_builder = str(mesh["stl_builder"] if stl_builder is None else stl_builder)
+    if stl_builder not in STL_BUILDERS:
+        raise ValueError(f"stl_builder must be one of {STL_BUILDERS}, got {stl_builder!r}")
+    y_apex_m = None
+    if stl_builder == "parametric_apex":
+        # The cone's virtual apex; the source fills the grid row holding it.
+        y_apex_m = -R_t_m / tan_t
+        ps_row = int(mesh["ps_tip_row_offset_cells"])
+        if ps_row < -n_below:
+            raise ValueError("ps_tip_row_offset_cells lies below the box")
+        if not (ps_row * dx_m <= y_apex_m < (ps_row + 1) * dx_m):
+            raise ValueError(
+                f"tip row {ps_row} (y in [{ps_row * dx_m:.4e}, {(ps_row + 1) * dx_m:.4e}] m) "
+                f"does not contain the apex y = {y_apex_m:.4e} m")
     ps_y_s_m = ps_row * dx_m
     ps_y_n_m = (ps_row + 1) * dx_m
     ps_y_m = 0.5 * (ps_y_s_m + ps_y_n_m)
+    # A point's y must lie within half a cell of the row's north face for
+    # CALC_CELL to return this row; the lower half maps to the row below and
+    # mid-row is a tie decided by round-off, so sit a quarter cell below.
+    ps_point_y_m = ps_y_n_m - 0.25 * dx_m
     r_cone_at_ps_top = R_t_m + ps_y_n_m * tan_t
 
     # ---- gas and operating point ----------------------------------------
@@ -350,7 +424,11 @@ def build_C26_3d_params(
     A_nozzle = math.pi * R_n_m ** 2
     U_nozzle = Q_actual / A_nozzle
     U_sup = Q_actual / (math.pi * R_c_m ** 2)
-    U_ps_cell = Q_actual / (2.0 * ps_half_m) ** 2   # mean velocity over the PS footprint
+    U_ps_cell = Q_actual / (ps_cell_x[1] - ps_cell_x[0]) ** 2   # mean velocity over the PS footprint
+    # Open cross-section at the top of the source row and the mean velocity
+    # through it: with the apex STL it is pi R_t^2 = A_nozzle, so U_nozzle.
+    ps_open_area = math.pi * r_cone_at_ps_top ** 2
+    U_ps_exit = Q_actual / ps_open_area
 
     # ---- time step: the paper's step, capped by recipe Rule 9 per case ----
     dt_max_paper_s = float(numerics["dt_max_paper_s"])
@@ -408,6 +486,7 @@ def build_C26_3d_params(
             f"{flow_slpm:g} slpm Ar (Conry et al. 2026 model)"
         ),
         "run_name": run_name,
+        "mfix_version": mfix_version,
         "run_type": "new",
         "tstop_s": tstop_s,
         "dt_s": dt_s,
@@ -435,14 +514,28 @@ def build_C26_3d_params(
         "dx_sample_m": float(mesh["dx_sample_fraction"] if dx_sample_fraction is None
                              else dx_sample_fraction) * dx_m,
         "top_extend_m": float(mesh["top_extend_m"]),
+        "stl_builder": stl_builder,
+        "y_apex_m": y_apex_m,
+        "stl_apex_sagitta_max_m": float(mesh["stl_apex_sagitta_max_m"]),
+        "stl_apex_band_height_m": float(mesh["stl_apex_band_height_cells"]) * dx_m,
         # point source
         "ps_x_m": 0.0, "ps_y_m": ps_y_m, "ps_z_m": 0.0,
-        "ps_cell_x_w_m": -ps_half_m, "ps_cell_x_e_m": ps_half_m,
+        "ps_cell_x_w_m": ps_cell_x[0], "ps_cell_x_e_m": ps_cell_x[1],
         "ps_cell_y_s_m": ps_y_s_m, "ps_cell_y_n_m": ps_y_n_m,
-        "ps_cell_z_b_m": -ps_half_m, "ps_cell_z_t_m": ps_half_m,
+        "ps_cell_z_b_m": ps_cell_x[0], "ps_cell_z_t_m": ps_cell_x[1],
         "ps_footprint_cells": ps_cells,   # PS cells along x and along z
+        # The PS region the deck writes: the cells above, or a point on the
+        # axis that MFiX maps to the one ps_cell_* cell (monitors keep the cell).
+        "ps_point": ps_point,
+        "ps_region_x_w_m": 0.0 if ps_point else ps_cell_x[0],
+        "ps_region_x_e_m": 0.0 if ps_point else ps_cell_x[1],
+        "ps_region_y_s_m": ps_point_y_m if ps_point else ps_y_s_m,
+        "ps_region_y_n_m": ps_point_y_m if ps_point else ps_y_n_m,
+        "ps_region_z_b_m": 0.0 if ps_point else ps_cell_x[0],
+        "ps_region_z_t_m": 0.0 if ps_point else ps_cell_x[1],
         "ps_row_offset_cells": ps_row,
         "r_cone_at_ps_top_m": r_cone_at_ps_top,
+        "ps_open_area_m2": ps_open_area,
         "ps_massflow_g_kg_s": m_dot,
         "ps_momentum": bool(mesh["ps_momentum"] if ps_momentum is None else ps_momentum),
         "ps_v_g_m_s": U_nozzle if (mesh["ps_momentum"] if ps_momentum is None else ps_momentum)
@@ -453,6 +546,7 @@ def build_C26_3d_params(
         "U_nozzle_m_s": U_nozzle,
         "U_sup_m_s": U_sup,
         "U_ps_cell_m_s": U_ps_cell,
+        "U_ps_exit_m_s": U_ps_exit,
         "rho_g_kg_m3": float(rho_g), "mu_g_pa_s": float(mu_g),
         "rho_ref_kg_m3": float(rho_ref),
         "gas_case": str(base["gas_case"]),
@@ -488,12 +582,15 @@ def build_C26_3d_params(
         "des_etat_fac": float(dem["des_etat_fac"]),
         "des_etat_w_fac": float(dem["des_etat_w_fac"]),
         "des_interp_scheme": scheme,
+        "des_interp_on": scheme != "NONE",
+        "des_interp_mean_fields": scheme != "NONE",
         "des_interp_width_m": (float(dem["des_interp_width_cells"]) * dx_m
                                if scheme == "SQUARE_DPVM" else None),
         "des_epg_clip": float(dem["des_epg_clip"] if epg_clip is None else epg_clip),
         # output
         "monitor_dt_s": float(numerics["monitor_dt_s"]),
-        "vtk_dt_background_s": float(numerics["vtk_dt_background_s"]),
+        "vtk_dt_background_s": float(numerics["vtk_dt_background_s"]
+                                     if vtk_dt_background_s is None else vtk_dt_background_s),
         "vtk_dt_particles_s": float(numerics["vtk_dt_particles_s"]),
         "piv_frame_dt_s": piv_dt,
         "piv_n_frames": piv_n,

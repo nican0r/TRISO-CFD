@@ -16,6 +16,9 @@ Usage:
     .venv/bin/python -m src.aws.provision          # provision everything
     .venv/bin/python -m src.aws.provision --build  # also docker build+push
     .venv/bin/python -m src.aws.provision --status # show current state
+    # new image / MFiX release on the existing stack, AWS CLI only
+    # (works under `aws login`, which boto3 here cannot use):
+    .venv/bin/python -m src.aws.provision --image-only --build
 """
 
 from __future__ import annotations
@@ -223,10 +226,10 @@ def provision_job_queue(sess, ce_arn: str) -> str:
     return resp["jobQueueArn"]
 
 
-def provision_job_definition(sess, image_uri: str, roles: dict) -> str:
-    batch = sess.client("batch")
-    _log(f"registering job definition {C.JOB_DEFINITION} -> {image_uri}")
-    resp = batch.register_job_definition(
+def job_definition_payload(image_uri: str, roles: dict) -> dict:
+    """register_job_definition arguments (API field names), shared by the
+    boto3 and AWS CLI paths."""
+    return dict(
         jobDefinitionName=C.JOB_DEFINITION,
         type="container",
         retryStrategy={"attempts": 1},
@@ -242,6 +245,37 @@ def provision_job_definition(sess, image_uri: str, roles: dict) -> str:
         propagateTags=True,
         tags={"Project": C.PROJECT},
     )
+
+
+def provision_job_definition(sess, image_uri: str, roles: dict) -> str:
+    batch = sess.client("batch")
+    _log(f"registering job definition {C.JOB_DEFINITION} -> {image_uri}")
+    resp = batch.register_job_definition(**job_definition_payload(image_uri, roles))
+    return resp["jobDefinitionArn"]
+
+
+def update_image_cli(build: bool) -> str:
+    """New image or MFiX release on the existing stack, via the AWS CLI only
+    (src/aws/cli.py), so it works under ``aws login`` where boto3 cannot.
+
+    Optionally builds and pushes <ecr>/<repo>:<IMAGE_TAG>, then registers
+    C.JOB_DEFINITION for it.  Roles, bucket, repo, compute env and queue
+    must already exist (the full boto3 provisioning made them).
+    """
+    from src.aws.cli import aws_json
+
+    repo = aws_json("ecr", "describe-repositories", "--repository-names", C.ECR_REPO)
+    uri = repo["repositories"][0]["repositoryUri"]
+    _log(f"ecr repo {C.ECR_REPO} ({uri})")
+    if build:
+        docker_build_and_push(uri)
+    roles = {key: aws_json("iam", "get-role", "--role-name", name)["Role"]["Arn"]
+             for key, name in (("job", C.JOB_ROLE), ("execution", C.EXECUTION_ROLE))}
+    image_uri = f"{uri}:{C.IMAGE_TAG}"
+    _log(f"registering job definition {C.JOB_DEFINITION} -> {image_uri}")
+    resp = aws_json("batch", "register-job-definition", "--cli-input-json",
+                    json.dumps(job_definition_payload(image_uri, roles)))
+    _log(f"registered {resp['jobDefinitionArn']}")
     return resp["jobDefinitionArn"]
 
 
@@ -274,7 +308,15 @@ def main() -> None:
                      help="also build and push the Docker image to ECR")
     p.add_argument("--status", action="store_true",
                      help="print state of the stack and exit")
+    p.add_argument("--image-only", action="store_true",
+                     help="AWS CLI only (works under `aws login`): register the "
+                          "job definition for IMAGE_TAG on the existing stack; "
+                          "with --build, build and push the image first")
     args = p.parse_args()
+
+    if args.image_only:
+        update_image_cli(args.build)
+        return
 
     sess = boto3.Session(region_name=C.REGION)
 

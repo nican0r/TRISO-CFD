@@ -105,11 +105,6 @@ spouted_bed_V_3d:
   H_dom_m: 0.20              # axial domain extent above the orifice [m]
                               # ~3x H_static (0.032 m) + fountain headroom.
                               # source: implementation-steps/day-10.md
-  theta_segments: 60         # angular facets (retained for API symmetry with
-                              # the legacy surface-of-revolution writer; the
-                              # Day-10 R1 driver uses build_spouted_bed_stl_
-                              # implicit which ignores it)
-                              # source: assumed (unused in R1)
   dx_uniform_m: 1.0e-3        # uniform Cartesian cell size (dx = dy = dz) [m]
                               # Day-10 R4 (2026-10-11): 1 mm (was 2 mm under
                               # R1-R3).  4 cells span the 4 mm orifice diameter,
@@ -690,12 +685,85 @@ spouted_bed_C26_3d:
                            # in cases/C26_3d/c0X and the c02/c07/c09 smokes.
                            # Momentum for A/Bs: run_C26_3d --ps-momentum.
                            # source: assumed.
+  ps_point: false          # write the point source as a literal point [-]:
+                           # true -> ps_x_w = ps_x_e = 0, ps_z_b = ps_z_t = 0,
+                           # ps_y_s = ps_y_n inside the source row, which
+                           # MFiX maps to ONE cell (get_ps.f: I_W = I_E =
+                           # CALC_CELL(x); CALC_CELL snaps to the nearest
+                           # face, so on the axis-on-face grid the -x/-z
+                           # cell); false -> the 2 x 2 cells around the
+                           # axis (axis_on_cell_face) or the axis cell.
+                           # Axis-on-face only: at a cell centre CALC_CELL
+                           # ties and picks the neighbour.  C26 p.4: "a point
+                           # source centered with the reactor"; dry run
+                           # ps_point_dry (run_log 2026-10-24) put it in one
+                           # cell of 4.865e-10 m3.  A/B: run_C26_3d --ps-point.
+                           # source: assumed (C26 does not state the region).
   ps_row_offset_cells: 0   # point-source cell row above the cap [-]
                            # (0 = first fluid row, y in [0, dx]).  C26 2.2.1:
                            # point source "centered with the reactor and
                            # placed at the bottom of the cone".  Fallback 1
                            # if the apex cut cell is blocked in the smoke.
                            # source: C26 p.3 (2.2.1); fallback assumed.
+  stl_builder: implicit    # vessel STL builder [-], one of:
+                           # 'implicit' -- SDF + marching cubes
+                           #   (src/make_stl.py build_cone_column_stl_implicit):
+                           #   cone closed by a flat cap at y = 0, point
+                           #   source in the row ps_row_offset_cells above it.
+                           # 'parametric_apex' -- analytic surface of
+                           #   revolution (src/make_stl_c26_apex.py): the
+                           #   same 30 deg wall continued below y = 0 to its
+                           #   apex at y = -R_t / tan 30 = -2.062 mm, so the
+                           #   open area at y = 0 is pi R_t^2 = the nozzle
+                           #   area; the point source sits in the tip row
+                           #   (ps_tip_row_offset_cells) and a mass-only
+                           #   source gives the nozzle velocity at y = 0 by
+                           #   continuity.  Watertight, 8,480 facets.
+                           # Default 'implicit' so every existing deck
+                           # regenerates unchanged; select the other with
+                           # run_C26_3d --stl-builder parametric_apex.
+                           # The apex is an ASSUMPTION: C26 reports neither
+                           # the throat nor the nozzle geometry (notes
+                           # "Realistic values"); its 2.2.1 remark that
+                           # cells "similar to the nozzle size" leave the
+                           # source velocities "not correct" only holds if
+                           # the cone converges onto the source.
+                           # source: assumed (notes/c26_conry2026_case.md
+                           # "Closed apex, parametric STL", 2026-10-24).
+  ps_tip_row_offset_cells: -1
+                           # parametric_apex only: point-source row relative
+                           # to y = 0 [-]; -1 is the tip row y in [-dx, 0],
+                           # which holds the whole cone tip (apex 0.038 mm
+                           # above the face at y = -2.1 mm; the builder
+                           # checks that the apex lies in this row).
+                           # source: derived from bed_C26 D_throat_m and
+                           # cone_angle_deg.
+  stl_apex_sagitta_max_m: 2.06e-5
+                           # parametric_apex only: largest chord error
+                           # (sagitta) of the faceted wall at R_c [m]
+                           # = 0.1 x the YSZ particle radius (d_p 411.6 um,
+                           # particles.yaml case_C26_ysz): facet ridges a
+                           # tenth of a particle radius, 1/20 of the W = 10
+                           # parcel radius (0.44 mm), contact normal within
+                           # +/- 2.25 deg of the true wall normal.  Gives
+                           # N = 80 segments (smallest multiple of 4 that
+                           # satisfies it): sagitta 19.4 um at R_c, 0.92 um
+                           # at R_t, polygon area 0.10 % under pi r^2.
+                           # source: assumed.
+  stl_apex_band_height_cells: 2
+                           # parametric_apex only: largest axial extent of
+                           # one facet band in fluid cells (2 x 2.1 mm =
+                           # 4.2 mm).  MFiX bins facets to cells by facet
+                           # bounding box (cartesian_grid/intersect.f cut-
+                           # cell loop; des/stl_preproc_des_mod.f
+                           # BIN_FACETS_TO_DG), so a facet must not span
+                           # many rows; the cone and column are ruled
+                           # surfaces, so subdivision adds no accuracy.
+                           # 2 cells: every facet within 3 rows, 11 cone +
+                           # 42 column bands, 8,480 facets (implicit
+                           # builder: 77,088).  1 cell would double the
+                           # count for nothing.
+                           # source: assumed.
 
 spouted_bed_C26_3d_dem:
   # DEM/CGP contact closure, C26 Table 1 (identical for YSZ and steel).
@@ -728,11 +796,28 @@ spouted_bed_C26_3d_dem:
                            # list; des/drag_gp_des.f:221).
                            # source: C26 p.3 (2.2.1).
   des_interp_scheme: 'LINEAR_HAT'
-                           # not reported in C26.
+                           # not reported in C26.  MFiX's own default is
+                           # 'NONE' (cell-centred exchange, no filter, with
+                           # des_interp_on / des_interp_mean_fields false);
+                           # run_C26_3d --interp-scheme NONE writes that
+                           # combination for the interpolation A/B
+                           # (c02_momentum24_nointerp, 2026-10-23).
                            # source: assumed; spouted-bed recipe Rule 13.
-  des_epg_clip: 0.42       # minimum gas fraction for drag evaluation [-]
+  des_epg_clip: 0.42       # floor on the whole gas-fraction field [-]:
+                           # EP_G = 1 - min(1 - DES_EPG_CLIP, sum EP_S)
+                           # (des/calc_epg_des.f:142, identical in 23.2 and
+                           # 26.1.2), so it enters gas continuity and
+                           # momentum as well as the interpolated voidage
+                           # passed to the TGS drag, not drag alone.
+                           # Undefined = no floor (MFiX default), but an
+                           # ep_star in a DEM/CGP deck becomes this value
+                           # (check_solids_model_prereqs.f:233, Warning
+                           # 2000).  Required on this mesh: without it
+                           # sliver cut cells hit Error 1100.
                            # not reported in C26.
-                           # source: assumed; same as spouted_bed_V_3d_dem.
+                           # source: assumed; same as spouted_bed_V_3d_dem
+                           # (notes/c26_conry2026_case.md, "Gas-fraction
+                           # floor in MFiX 23.2").
   des_interp_width_cells: 1.0  # DES_INTERP_WIDTH for SQUARE_DPVM, in fluid
                            # cells (1.0 -> 2.1 mm); written only when the
                            # scheme is SQUARE_DPVM.  Must be <= 2 cells

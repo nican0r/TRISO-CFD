@@ -12,8 +12,9 @@ workflow expects for an "internal flow" region (OUT_STL_VALUE = 1).
 
 Public API:
 
-    build_spouted_bed_stl(R_c_m, R_i_m, cone_half_angle_deg, H_dom_m,
-                           theta_segments, out_path) -> Path
+    build_spouted_bed_stl_implicit(R_c_m, R_i_m, cone_half_angle_deg, H_dom_m,
+                                   L_stub_m, dx_sample_m, out_path, ...) -> Path
+        Case V: stub + cone + column via SDF sampling and marching cubes.
     build_cone_column_stl_implicit(R_c_m, R_t_m, cone_half_angle_deg, H_dom_m,
                                    dx_sample_m, out_path, top_extend_m) -> Path
         Case C26: closed cone + column for a gas point source (no inlet stub).
@@ -77,162 +78,6 @@ def _write_ascii_stl(
         lines.append("  endfacet")
     lines.append(f"endsolid {name}")
     out_path.write_text("\n".join(lines) + "\n")
-
-
-def build_spouted_bed_stl(
-    R_c_m: float,
-    R_i_m: float,
-    cone_half_angle_deg: float,
-    H_dom_m: float,
-    theta_segments: int,
-    out_path: Path,
-    close_bottom: bool = False,
-    close_top: bool = False,
-    L_stub_m: float = 0.0,
-) -> Path:
-    """Build the Case V spouted-bed inner-wall STL.
-
-    R_c_m               : column (cylindrical section) inside radius [m]
-    R_i_m               : inlet orifice radius [m]
-    cone_half_angle_deg : cone half-angle from the vertical axis [deg]
-    H_dom_m             : axial domain extent [m] (y: 0 -> H_dom)
-    theta_segments      : number of angular facets around the axis [-]
-    out_path            : destination .stl file (ASCII format)
-    close_bottom        : if True, emit an annular floor at y=0 from
-                          r=R_i to r=R_c (keeps the orifice open at r<R_i).
-                          Normals point in +y (inward, toward the fluid above
-                          the floor), per MFiX OUT_STL_VALUE=1.0 convention.
-    close_top           : if True, emit a disk cap at y=H_dom from r=0
-                          to r=R_c. Normals point in -y (inward, toward the
-                          fluid below the cap).
-    L_stub_m            : if > 0, prepend an inlet stub tube of radius R_i
-                          from y = -L_stub to y = 0 to the profile.  Used
-                          by the Day-10 fix to replicate NETL's PIC
-                          spouted_bed_3d tutorial topology so the MI BC
-                          can sit at the box bottom (y = -L_stub) and the
-                          near-axis cells have STL sidewall facets within
-                          1-2 cells (seeds F_AT propagation along J).
-
-    Returns the written path.
-
-    Geometry (side walls always; floor / cap only when requested):
-        y = 0           : orifice plane
-        0 < y < h_cone  : conical wall at r = R_i + y * tan(theta)
-        y = h_cone      : cone top (meets cylindrical column)
-        y > h_cone      : cylindrical wall at r = R_c
-        y = H_dom       : top
-
-    Normals point INWARD (toward +r on the walls -- toward the axis; toward
-    +y on the floor annulus -- into the vessel; toward -y on the top cap --
-    into the vessel), i.e. toward the fluid region, per MFiX OUT_STL_VALUE=1.0
-    convention.
-
-    Day-10 note.  The Day-8 run on the planar quadric slab used an open
-    (side-walls-only) STL and only tested STL writing; MFiX never consumed
-    it.  On Day 10 the STL IS consumed by MFiX cut-cell preprocessing,
-    which runs an inside/outside classifier (``F_AT`` in
-    cartesian_grid/intersect.f) that leaves cells with no local facet
-    neighbour as UNDEFINED and marks them BLOCKED.  An open-top /
-    open-floor shell therefore mis-classifies the near-axis cells inside
-    the vessel.  ``close_bottom=True`` + ``close_top=True`` make the STL
-    watertight (except for the orifice hole), restoring the correct
-    fluid-cell count.
-    """
-    out_path = Path(out_path)
-    tan_h = math.tan(math.radians(cone_half_angle_deg))
-    if tan_h <= 0.0:
-        raise ValueError("cone_half_angle_deg must be positive and < 90 deg")
-    h_cone = (R_c_m - R_i_m) / tan_h
-    if h_cone <= 0.0 or h_cone >= H_dom_m:
-        raise ValueError(
-            f"cone top ({h_cone:.4g} m) must satisfy 0 < h_cone < H_dom ({H_dom_m} m)"
-        )
-
-    # (r, y) profile points along the vessel inner wall, bottom -> top.
-    #   P0 = (R_i, 0)       -- cone bottom edge (orifice rim)
-    #   P1 = (R_c, h_cone)  -- cone top / cylinder bottom edge
-    #   P2 = (R_c, H_dom)   -- top opening edge
-    # When L_stub_m > 0, prepend an inlet stub-tube profile point at
-    # (R_i, -L_stub) so the stub cylinder sidewalls are swept together
-    # with the cone + column.  The stub is open at y = -L_stub (MI BC
-    # sits at the Cartesian box bottom there; MFiX handles the "closure"
-    # from a BC perspective).
-    if L_stub_m > 0.0:
-        profile = [
-            (R_i_m, -L_stub_m),
-            (R_i_m, 0.0),
-            (R_c_m, h_cone),
-            (R_c_m, H_dom_m),
-        ]
-    else:
-        profile = [(R_i_m, 0.0), (R_c_m, h_cone), (R_c_m, H_dom_m)]
-
-    # Angular discretization.
-    thetas = np.linspace(0.0, 2.0 * math.pi, theta_segments + 1)
-    # Pre-compute (cos, sin).
-    cs = [(math.cos(t), math.sin(t)) for t in thetas]
-
-    def vertex(r: float, y: float, k: int) -> np.ndarray:
-        """Build a 3D vertex at radius r, axial y, angular index k."""
-        c, s = cs[k]
-        return np.array([r * c, y, r * s])
-
-    triangles: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-
-    # Side walls: 2 segments * theta_segments * 2 triangles.
-    for i in range(len(profile) - 1):
-        r_lo, y_lo = profile[i]
-        r_hi, y_hi = profile[i + 1]
-        for k in range(theta_segments):
-            k2 = k + 1
-            v00 = vertex(r_lo, y_lo, k)
-            v01 = vertex(r_lo, y_lo, k2)
-            v10 = vertex(r_hi, y_hi, k)
-            v11 = vertex(r_hi, y_hi, k2)
-            # Inward-pointing right-hand ordering: (lo_k, hi_k2, hi_k),
-            # (lo_k, lo_k2, hi_k2).  Reversing the second and third vertices
-            # flips the cross-product, giving nr < 0 (toward the axis) on the
-            # cylinder and nr < 0 (toward the interior) on the cone.
-            triangles.append((v00, v11, v10))   # inward normal
-            triangles.append((v00, v01, v11))   # inward normal
-
-    # Bottom annular floor at y = 0: a ring from r = R_i (orifice rim) to
-    # r = R_c (vessel wall).  The wall at y = 0 has r = R_i (cone bottom
-    # edge) so the floor annulus spans r in [R_i, R_c].  Facet normals
-    # point in +y (inward, toward the fluid above the floor), per MFiX
-    # OUT_STL_VALUE=1.0 convention.
-    # Only emitted when close_bottom=True (Day 10 run with closed STL).
-    if close_bottom:
-        for k in range(theta_segments):
-            k2 = k + 1
-            # Inner ring edge (r=R_i), outer ring edge (r=R_c), at y=0.
-            vi0 = vertex(R_i_m, 0.0, k)
-            vi1 = vertex(R_i_m, 0.0, k2)
-            vo0 = vertex(R_c_m, 0.0, k)
-            vo1 = vertex(R_c_m, 0.0, k2)
-            # Right-handed ordering for +y normal (counter-clockwise when
-            # viewed from above, i.e. inward toward the fluid above the
-            # floor): (inner_k2, outer_k, inner_k), (inner_k2, outer_k2,
-            # outer_k).  Verified by cross product: n_y > 0.
-            triangles.append((vi1, vo0, vi0))   # inward (+y) normal
-            triangles.append((vi1, vo1, vo0))   # inward (+y) normal
-
-    # Top is left open (PO face at y = H_dom covers the full cross-section;
-    # a disk cap would collide with the PO BC region).  close_top is
-    # accepted for API symmetry but kept False by callers.
-    if close_top:
-        v_axis = np.array([0.0, H_dom_m, 0.0])
-        for k in range(theta_segments):
-            k2 = k + 1
-            vo0 = vertex(R_c_m, H_dom_m, k)
-            vo1 = vertex(R_c_m, H_dom_m, k2)
-            # Right-handed ordering for -y normal (inward, toward the fluid
-            # below the cap): (axis, outer_k, outer_k2).  Cross product
-            # gives n_y = -(R_c^2 * sin(dtheta)) < 0 (inward).
-            triangles.append((v_axis, vo0, vo1))   # inward (-y) normal
-
-    _write_ascii_stl(triangles, "spouted_bed_V_3d", out_path)
-    return out_path
 
 
 def build_spouted_bed_stl_implicit(
@@ -660,23 +505,41 @@ def build_cone_column_stl_implicit(
 def _cli() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Generate the Case V 3D spouted-bed STL.")
+    p = argparse.ArgumentParser(
+        description="Generate the Case V 3D spouted-bed STL (implicit SDF path)."
+    )
     p.add_argument("--R-c", type=float, required=True, help="column inside radius [m]")
     p.add_argument("--R-i", type=float, required=True, help="orifice radius [m]")
     p.add_argument(
         "--half-angle", type=float, default=30.0, help="cone half-angle [deg]"
     )
     p.add_argument("--H-dom", type=float, required=True, help="axial domain extent [m]")
-    p.add_argument("--theta-segments", type=int, default=60)
+    p.add_argument("--L-stub", type=float, required=True, help="inlet stub length [m]")
+    p.add_argument(
+        "--dx-sample", type=float, required=True, help="SDF sampling step [m]"
+    )
+    p.add_argument(
+        "--top-extend", type=float, default=0.0, help="top-cap extension above H_dom [m]"
+    )
+    p.add_argument(
+        "--R-stub", type=float, default=None, help="stub radius [m] (default: R_i)"
+    )
+    p.add_argument(
+        "--taper-length", type=float, default=0.0, help="stub taper length [m]"
+    )
     p.add_argument("--out", type=Path, required=True)
     args = p.parse_args()
-    out = build_spouted_bed_stl(
+    out = build_spouted_bed_stl_implicit(
         R_c_m=args.R_c,
         R_i_m=args.R_i,
         cone_half_angle_deg=args.half_angle,
         H_dom_m=args.H_dom,
-        theta_segments=args.theta_segments,
+        L_stub_m=args.L_stub,
+        dx_sample_m=args.dx_sample,
         out_path=args.out,
+        top_extend_m=args.top_extend,
+        R_stub_m=args.R_stub,
+        taper_length_m=args.taper_length,
     )
     print(out)
 

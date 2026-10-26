@@ -386,7 +386,12 @@ def main(argv=None):
     pending = {c: job_id_for(c) for c in a.cases}
     say('watching ' + ', '.join(f'{c} ({j[:8]})' for c, j in pending.items()) + f' every {a.interval} s')
     while pending:
-        jobs = {j['jobId']: j for j in batch_describe_jobs(list(pending.values()))}
+        try:
+            jobs = {j['jobId']: j for j in batch_describe_jobs(list(pending.values()))}
+        except RuntimeError as e:   # aws CLI failed (expired `aws login`, network); keep watching
+            say(f'describe-jobs failed, retrying in {a.interval} s: {e}')
+            time.sleep(a.interval)
+            continue
         say('status: ' + ', '.join(f'{c} {jobs[j]["status"]}' for c, j in pending.items()))
         for case, jid in list(pending.items()):
             job = jobs[jid]

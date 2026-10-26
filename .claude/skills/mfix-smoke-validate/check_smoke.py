@@ -46,6 +46,9 @@ G = 9.80665  # m/s^2, standard gravity (matches gravity_y in the Case V deck)
 # Readers
 # ----------------------------------------------------------------------------
 _DTYPES = {'Float32': '>f4', 'Float64': '>f8', 'Int32': '>i4', 'Int64': '>i8', 'UInt8': 'u1'}
+# Block-size prefix of each appended array.  MFiX 26.1.2 writes
+# header_type="UInt64"; 23.2 omits the attribute, so the VTK default UInt32.
+_HEADER_DTYPES = {'UInt32': '>u4', 'UInt64': '>u8'}
 
 
 def read_vtk_xml(path):
@@ -54,14 +57,17 @@ def read_vtk_xml(path):
     i = raw.index(b'<AppendedData encoding="raw">')
     head = raw[:i].decode('latin1')
     base = raw.index(b'_', i) + 1
+    m = re.search(r'<VTKFile[^>]*\bheader_type="(\w+)"', head)
+    hdt = np.dtype(_HEADER_DTYPES[m.group(1) if m else 'UInt32'])
     out = {}
     pat = (r'<DataArray type="(\w+)" Name="(\w+)"(?:\s+NumberOfComponents="(\d+)")?'
            r'\s+format="appended" offset="\s*(\d+)\s*"')
     for m in re.finditer(pat, head):
         typ, name, nc, off = m.group(1), m.group(2), int(m.group(3) or 1), int(m.group(4))
         p = base + off
-        nbytes = int(np.frombuffer(raw[p:p + 8], '>u8')[0])
-        a = np.frombuffer(raw[p + 8:p + 8 + nbytes], _DTYPES[typ]).astype(
+        nbytes = int(np.frombuffer(raw[p:p + hdt.itemsize], hdt)[0])
+        p += hdt.itemsize
+        a = np.frombuffer(raw[p:p + nbytes], _DTYPES[typ]).astype(
             np.float64 if typ.startswith('Float') else np.int64)
         out[name] = a.reshape(-1, nc) if nc > 1 else a
     return out

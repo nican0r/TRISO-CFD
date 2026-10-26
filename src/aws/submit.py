@@ -10,9 +10,9 @@ Workflow:
 
 Single-run usage (sizing from the manifest, see below):
     .venv/bin/python -m src.aws.submit \
-        --case-dir cases/C26_3d/c02_massonly \
-        --mfx C26_c02_massonly.mfx \
-        --job-name c26-c02-massonly \
+        --case-dir cases/C26_3d/c02_massonly_v232 \
+        --mfx C26_c02_massonly_v232.mfx \
+        --job-name c26-c02-massonly-v232 \
         --dry-run                       # drop --dry-run to submit
 
 Array-run usage (one sweep dir per array index):
@@ -112,6 +112,19 @@ def manifest_sizing(case_dir: Path) -> dict:
     return out
 
 
+# Every deck rendered before manifests carried "mfix_version" (2026-10-24)
+# was written for 26.1.2.
+UNVERSIONED_MFIX = "26.1.2"
+
+
+def manifest_mfix_version(case_dir: Path) -> str:
+    """MFiX release the case deck was rendered for (manifest "mfix_version")."""
+    path = case_dir / "manifest.json"
+    if not path.is_file():
+        return UNVERSIONED_MFIX
+    return str(json.loads(path.read_text()).get("mfix_version", UNVERSIONED_MFIX))
+
+
 def submit_single(case_name: str, mfx: str, job_name: str,
                    vcpu: int, memory: int, nranks: int,
                    extra_args: str,
@@ -201,6 +214,13 @@ def main() -> None:
     args = p.parse_args()
 
     root = args.case_dir if args.case_dir else args.array_root / "case_00"
+    # A deck for another release dies at startup (23.2 aborts on 26.1.2-only
+    # keywords with Error 2000), so refuse before syncing or submitting.
+    deck_mfix = manifest_mfix_version(root)
+    if deck_mfix != C.IMAGE_TAG:
+        sys.exit(f"{root}: deck is for MFiX {deck_mfix} but the job definition "
+                 f"{C.JOB_DEFINITION} runs {C.IMAGE_TAG}. Re-render it with "
+                 f"--mfix-version {C.IMAGE_TAG}, or set TRISO_IMAGE_TAG={deck_mfix}.")
     sizing = manifest_sizing(root)
     if sizing:
         _log(f"manifest sizing ({root / 'manifest.json'}): {sizing}")
@@ -226,6 +246,7 @@ def main() -> None:
         if not args.case_dir.exists():
             sys.exit(f"case dir not found: {args.case_dir}")
         plan = {"mode": "single", "case": case_name, "mfx": args.mfx,
+                 "mfix": C.IMAGE_TAG, "job_definition": C.JOB_DEFINITION,
                  "vcpu": args.vcpu, "memory_mb": args.memory, "nranks": nranks,
                  "nodes": list(nodes) if nodes else None}
         _log(json.dumps(plan))
@@ -245,6 +266,7 @@ def main() -> None:
             if not sub.exists():
                 sys.exit(f"missing array leaf: {sub}")
         plan = {"mode": "array", "case": case_name, "mfx": args.mfx,
+                 "mfix": C.IMAGE_TAG, "job_definition": C.JOB_DEFINITION,
                  "size": args.array_size, "vcpu": args.vcpu,
                  "memory_mb": args.memory, "nranks": nranks,
                  "nodes": list(nodes) if nodes else None}
@@ -264,7 +286,7 @@ def main() -> None:
         "date": dt.date.today().isoformat(),
         "step": "aws-batch",
         "case": case_name,
-        "key_params": f"job_name={args.job_name}; vcpu={args.vcpu}; "
+        "key_params": f"job_name={args.job_name}; mfix={C.IMAGE_TAG}; vcpu={args.vcpu}; "
                         f"memory_mb={args.memory}; nranks={nranks}",
         "status": "submitted",
         "notes": f"aws_job_id={job_id}; s3={s3_prefix}",

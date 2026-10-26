@@ -91,6 +91,28 @@ def test_piv_static_and_empty_images_give_zero():
     assert empty.all() and not dr.any() and not dc.any()
 
 
+def test_inpaint_nans_recovers_linear_ramp():
+    """A linear ramp is harmonic, so Laplace inpainting recovers a hole exactly;
+    a hole on the border is filled with finite values; all-NaN stays NaN."""
+    i, j = np.mgrid[0:9, 0:11]
+    a = (i + 2.0 * j).astype(float)
+    h = a.copy()
+    h[3:6, 4:7] = np.nan
+    assert np.allclose(P.inpaint_nans(h), a, atol=1e-9)
+    b = a.copy()
+    b[0:2, 0:3] = np.nan                       # touches two borders
+    out = P.inpaint_nans(b)
+    assert np.isfinite(out).all() and np.allclose(out[2:, 3:], a[2:, 3:])
+    assert out[0, 0] >= a.min() and out[0, 0] <= a.max()
+    assert np.isnan(P.inpaint_nans(np.full((3, 3), np.nan))).all()
+    assert np.array_equal(P.inpaint_nans(a), a)
+
+
+def test_empty_window_modes_listed():
+    assert P.EMPTY_WINDOW_MODES == ("zero", "skip", "interpolate")
+    assert P.load_params()["spout_map"]["empty_windows"] in P.EMPTY_WINDOW_MODES
+
+
 def test_median_test_flags_isolated_spike():
     dr = np.zeros((5, 5))
     dr[2, 2] = 5.0
@@ -152,3 +174,17 @@ def test_digitized_fig4_maps(flow):
     assert exp.shape == model.shape and exp.shape[1] == 100
     for a in (exp, model):
         assert a.min() >= 4e-4 - 1e-4 and a.max() <= 0.4 + 1e-4
+
+
+def test_bed_surface_ignores_fountain_parcels():
+    rng = np.random.default_rng(1)
+    n = 4000
+    ann = np.column_stack([rng.uniform(-25e-3, 25e-3, n), rng.uniform(0, 30e-3, n),
+                           rng.uniform(-25e-3, 25e-3, n)])
+    ann = ann[np.hypot(ann[:, 0], ann[:, 2]) >= 15e-3]
+    fount = np.column_stack([rng.uniform(-5e-3, 5e-3, 500), rng.uniform(30e-3, 60e-3, 500),
+                             rng.uniform(-5e-3, 5e-3, 500)])
+    xyz = np.vstack([ann, fount])
+    assert P.bed_surface(xyz, 95, 15e-3) == pytest.approx(np.percentile(ann[:, 1], 95))
+    assert np.percentile(xyz[:, 1], 95) > 30e-3          # all-parcel value is fountain-inflated
+    assert P.bed_surface(fount, 95, 15e-3) == pytest.approx(np.percentile(fount[:, 1], 95))

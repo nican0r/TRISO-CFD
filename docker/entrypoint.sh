@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# AWS Batch entrypoint for MFiX 26.1.2.
+# AWS Batch entrypoint for the MFiX release in docker/Dockerfile (23.2 since
+# 2026-10-24; 26.1.2 before).  NP = 1 runs the stock serial mfixsolver; NP > 1
+# runs mpirun mfixsolver_dmp, the batch DMP solver the Dockerfile builds.
 #
 # Required env vars (set via the Batch job's containerOverrides):
 #   CASE_S3        s3://bucket/cases/<case>/        (prefix with case files)
@@ -14,7 +16,10 @@
 #                                                   and syncs
 #                                                   <CASE_S3_ARRAY>case_<NN>/)
 #   RESULTS_S3_ARRAY  s3://bucket/sweep/<prefix>/results/
-#   EXTRA_MFIX_ARGS   extra argv passed to mfixsolver (e.g. "-r")
+#   EXTRA_MFIX_ARGS   extra argv passed to the solver.  23.2: the serial
+#                     mfixsolver takes -l/-c/-p; the DMP build takes -l
+#                     LEVEL and KEYWORD=VALUE (mfix.f
+#                     PARSE_COMMAND_LINE_ARGS); other options stop it.
 #   NODESI/NODESJ/NODESK  explicit DMP partitioning (must multiply to NP).
 #                         If all are unset, entrypoint auto-picks: NODESJ=NP,
 #                         NODESI=NODESK=1 (axial decomposition — biased toward
@@ -31,10 +36,22 @@ log() { printf '[entrypoint %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
 # -- DMP decomposition --------------------------------------------------------
 
+deck_nodes() {
+    # "ni nj nk" as last assigned in the deck ("?" for an unset one).
+    local mfx=$1 a v out=""
+    for a in i j k; do
+        v=$(sed -n -E "s/^[[:space:]]*nodes${a}[[:space:]]*=[[:space:]]*([0-9]+).*$/\1/Ip" "$mfx" | tail -n 1)
+        out+="${v:-?} "
+    done
+    echo "${out% }"
+}
+
 inject_dmp_keywords() {
-    # mfixsolver_dmp (pymfix.py wrapper) does not accept command-line keyword
-    # overrides. Instead, patch NODESI/NODESJ/NODESK directly into the deck
-    # (idempotent: remove any existing nodesi/j/k lines first).
+    # 26.1.2's mfixsolver_dmp (pymfix.py wrapper) took no command-line keyword
+    # overrides, so NODESI/NODESJ/NODESK are patched into the deck itself
+    # (idempotent: remove any existing nodesi/j/k lines first).  A deck that
+    # already has them is left untouched, so a LOCAL_SMOKE run does not
+    # rewrite the bind-mounted case deck.
     local mfx=$1 np=$2
     if [[ "$np" -le 1 ]]; then return 0; fi
     local ni=${NODESI:-}
@@ -51,6 +68,10 @@ inject_dmp_keywords() {
         exit 3
     fi
     log "DMP decomposition: nodesi=$ni nodesj=$nj nodesk=$nk"
+    if [[ "$(deck_nodes "$mfx")" == "$ni $nj $nk" ]]; then
+        log "deck already sets this decomposition; not patching $mfx"
+        return 0
+    fi
     # Strip any pre-existing nodes* lines (case-insensitive, leading whitespace OK).
     sed -i -E '/^[[:space:]]*nodes[ijk][[:space:]]*=.*$/Id' "$mfx"
     {

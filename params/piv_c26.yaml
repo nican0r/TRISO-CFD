@@ -5,9 +5,14 @@
 # C26 runs PIVlab (Stamhuis & Thielicke 2014) on side-view high-speed video
 # (430 fps, p.3 2.1) and "on images of the simulated SFB analogously to the
 # experiments" (p.9 3.2.1), but gives no camera or PIV settings; it points to
-# Conry et al. 2025 for the full process, which this project does not have.
-# So every camera and PIV setting below is ASSUMED unless a C26 page is cited.
-# All values SI.
+# Conry et al. 2025 for the full process (CES25 = Chem. Eng. Sci. 306:121197,
+# same rig with SiC; PDF at the repo root, gitignored).  CES25 p.3 2.3 names
+# the steps but not the PIVlab settings: binarize, threshold the background
+# and dilate each frame; PIVlab "adaptive multipass" on consecutive frames;
+# mean vertical velocity in a small central box on the wall, downward
+# positive.  So every camera and PIV setting below is still ASSUMED unless a
+# page is cited.  Comparison and A/B: notes/c26_conry2026_case.md ("Conry et
+# al. 2025 PIV method", 2026-10-25).  All values SI.
 
 camera:
   view_axis: z            # line of sight; image axes are x (horizontal) and
@@ -21,6 +26,13 @@ camera:
   # diameter in CGP mode), intensity sqrt(1 - (r/R)^2), on a black
   # background, nearest surface wins (z-buffer).  source: assumed; C26 Fig. 4
   # (simulated snapshot) shows opaque parcels at parcel size.
+  # CES25 binarizes each frame (threshold + dilation) before PIV; not done
+  # here.  A/B on c02_momentum24 (2026-10-25): keeping only the bright parcel
+  # centres (intensity > 0.9, 1 px dilation, like CES25's dots) moved CC /
+  # SSI / MSE by +0.02 / +0.004 / -0.0004 and the wall PIV by +0.7 %.  A 0.5
+  # threshold merges the touching wall parcels into one white field and the
+  # wall PIV fails (11x the visible parcels), so a binarizing step must keep
+  # dots, not disks.
 
 piv:
   windows_px: [64, 32, 32] # interrogation window per pass [px]
@@ -34,6 +46,12 @@ piv:
                           # wall-velocity sampling region (wall_roi below).
   step_px: 16             # vector spacing [px] (50 % overlap of the last pass)
                           # source: assumed, PIVlab default 50 % overlap.
+                          # The published vector fields are denser: ~0.35 mm
+                          # in C26 Fig. 1c (scaled by its "~4 mm" box) and
+                          # ~0.5 mm in CES25 Fig. 2c (scaled by its ~25 mm
+                          # bed), both read from the figures.  The wall-box
+                          # mean is insensitive to the window size (+-5 %,
+                          # notes "Wall-velocity gap"); the map is untested.
   uod_threshold: 2.0      # normalized median test threshold [-]
                           # source: Westerweel & Scarano 2005, Exp. Fluids
                           #         39:1096, recommended value.
@@ -56,18 +74,53 @@ spout_map:
   # source: C26 Fig. 4 caption; bottom position assumed (the mask strip under
   # each panel is ~3.4 mm tall, so the bed surface lies within ~3 mm of it).
   bed_surface_percentile: 95   # [-] source: assumed (as smoke check P5).
+  bed_surface_annulus_r_min_m: 15.0e-3
+                          # the bed surface is the percentile over the annulus
+                          # parcels only, r >= this from the axis, so the
+                          # fountain standing above the spout does not raise
+                          # it.  source: C26 Fig. 4 caption ("masks placed over
+                          #   the bed annular surface"): the panel bottom is the
+                          #   annulus surface.  Cutoff assumed: the percentile
+                          #   plateaus beyond 15 mm (c03_momentum24: 40.5 /
+                          #   39.4 / 37.9 / 36.8 / 36.7 mm for r > 8 / 10 / 12
+                          #   / 15 / 18 mm; c01 and c02 within 0.5 mm from
+                          #   8 mm on).  Before 2026-10-23 the percentile ran
+                          #   over all parcels, which the fountain inflated by
+                          #   1.6 / 4.1 / 6.3 mm (c01 / c02 / c03 momentum24);
+                          #   user decision 2026-10-23 (notes "Map bottom moved
+                          #   to the annulus surface").
   bottom_offset_m: 0.0    # map bottom = bed surface + this [m]
-                          # source: assumed.  Sensitivity on c01: -3.4 mm (the
+                          # source: assumed.  Sensitivity (all-parcel surface,
+                          # zero-window convention) on c01: -3.4 mm (the
                           # mask strip height) moves CC 0.21 -> 0.62, +3.4 mm
                           # -> 0.10 (notes/c26_conry2026_case.md, "Synthetic
                           # PIV").  Fix independently of the score before the
                           # mass-only runs are scored.
-  empty_windows: zero     # how a window with no particles in a frame pair
-                          # enters the time mean: 'zero' = zero velocity
-                          # (averaged over all pairs); 'skip' = left out
-                          # (averaged over the pairs with particles).
-                          # source: assumed; C26 does not say, and PIVlab's
-                          # handling depends on its validation settings.
+  empty_windows: interpolate
+                          # how a window with no particles in a frame pair
+                          # enters the time mean:
+                          #   'interpolate' = the window gets no vector of its
+                          #     own; it is filled from its neighbours in that
+                          #     pair (discrete Laplace, PIVlab's "interpolate
+                          #     missing data" / inpaint_nans), so every window
+                          #     carries a vector in every pair, and the time
+                          #     mean runs over the pairs with any particles;
+                          #   'zero' = zero velocity, averaged over all pairs;
+                          #   'skip' = left out, averaged over the pairs in
+                          #     which that window had particles.
+                          # source: C26 p.5 (3.1): "a velocity vector is
+                          #   calculated for each pixel of the image" and the
+                          #   map is "the mean of these vectors on a
+                          #   pixel-by-pixel basis"; C26 p.5 also says the
+                          #   simulated spout is an order of magnitude sparser
+                          #   than the experiment, yet its Fig. 4b maps are
+                          #   dense, which only a filled-in per-frame field
+                          #   gives.  PIVlab's post-processing interpolates
+                          #   rejected/missing vectors by default.  'zero' was
+                          #   used for every score before 2026-10-23 (user
+                          #   decision 2026-10-23 to match C26).  Sensitivity
+                          #   on c02_momentum24: CC 0.22 (zero) -> 0.64
+                          #   (skip); notes "Interpolation A/B".
   # Map value = |time mean of the PIV vectors| per point, so up and down
   # motion in the line of sight cancels, as C26 p.5 describes for the spout.
   # source: C26 p.5 (3.1: vectors averaged "on a pixel-by-pixel basis";
@@ -78,14 +131,29 @@ wall_roi:
   # downward positive (C26 p.7 3.2).
   size_m: 4.0e-3          # side of the square sampling box [m]
                           # source: C26 Fig. 1c ("~4 mm" x "~4 mm" box).
+                          # (CES25 Fig. 2c, SiC rig: ~7 % of the bed width,
+                          # ~2 mm in its ~25 mm bed; C26's own box is kept.)
   x_center_m: 0.0         # box centre, horizontal [m]
                           # source: C26 p.10 ("a small region is identified in
                           #         the center of the bed wall"); Fig. 1c box
-                          #         sits at the image centre (read by eye).
-  y_center_frac: 0.5      # box centre height / bed surface height [-]
-                          # source: C26 Fig. 1c (box at about mid-bed, read by
-                          #         eye) and p.10 (balance between slow top
-                          #         and fast bottom).
+                          #         sits at the image centre (read by eye);
+                          #         CES25 p.3 ("a small, central area") and
+                          #         Fig. 2c.
+  y_center_frac: 0.64     # box centre height / bed surface height, both
+                          # measured from y = 0 (the orifice plane) [-]
+                          # source: C26 Fig. 1c, measured 2026-10-25: the side
+                          #   edges of the PIV vector field, fitted (29.0 deg
+                          #   half-angle, nominal 30), meet at the virtual
+                          #   apex; the box centre is at 0.658 of the apex-to-
+                          #   field-top height, 0.64 from the orifice plane
+                          #   (apex R_t / tan 30 = 2.06 mm below y = 0, scaled
+                          #   by the cone with a 35.8 mm bed).  CES25 Fig. 2c
+                          #   also puts its box above mid-bed (~0.75 from the
+                          #   apex).  C26 p.10: the box balances the slow top
+                          #   and the fast bottom of the bed.  Was 0.5 ("about
+                          #   mid-bed, read by eye") until 2026-10-25; user
+                          #   decision 2026-10-25 (notes "Conry et al. 2025
+                          #   PIV method").
 
 metrics:
   # CC (Pearson), SSI (structural similarity) and MSE [m^2/s^2] between two

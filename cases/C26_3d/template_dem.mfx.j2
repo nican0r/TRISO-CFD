@@ -19,6 +19,14 @@
 #! 26.1.2 source (CLAUDE.md rule 1; notes/c26_conry2026_case.md "Keyword
 #! verification"); the rest are reused unchanged from the verified V_3d DEM
 #! template.
+{%- if mfix_version != '26.1.2' %}
+#! MFiX {{ mfix_version }} deck: every keyword checked against the 23.2 source
+#! namelists (2026-10-24, notes/c26_conry2026_case.md "MFiX 23.2 decks and
+#! AWS image").
+#! The four 26.1.2-only keywords (mu_g_model, ic_des_abort_on_failed_seeding,
+#! ic_des_tight_boundary_spacing, bc_default_walls) are left out; a comment
+#! stands where each would be.
+{%- endif %}
 
 ### Run controls
   description = '{{ description }}'
@@ -87,7 +95,12 @@
 
 #### Fluid ({{ gas_case }}: {{ T_g_K }} K, {{ p_g_Pa }} Pa)
   mu_g0      = {{ "%.6e"|format(mu_g_pa_s) }}
+{%- if mfix_version == '26.1.2' %}
   mu_g_model = 'CONSTANT'
+{%- else %}
+  # MFiX {{ mfix_version }} has no mu_g_model: a defined mu_g0 is a constant
+  # viscosity (set_constprop.f).
+{%- endif %}
   ro_g0      = {{ "%.6e"|format(rho_g_kg_m3) }}
 
 #### Solids (CFD-DEM soft-sphere spring-dashpot)
@@ -145,8 +158,15 @@
     ic_v_s(2,1)  = 0.0
     ic_w_s(2,1)  = 0.0
     ic_des_lattice(2,1) = 'HEXA'
+{%- if mfix_version == '26.1.2' %}
     ic_des_abort_on_failed_seeding(2,1) = .False.
     ic_des_tight_boundary_spacing(2,1) = .True.
+{%- else %}
+    # MFiX {{ mfix_version }} has neither seeding flag (generate_particles_mod.f):
+    # a short parcel count is only a warning (= abort_on_failed_seeding
+    # .False.), and the lattice keeps a one-radius margin inside the IC box
+    # (= tight_boundary_spacing .False., unlike the 26.1.2 decks).
+{%- endif %}
     ic_des_spacing(2,1) = 0.05
     # Measured feedstock PSD (C26 2.2.2, Fig. 2), mean shifted by any TRISO
     # layers: sigma = sqrt(variance), truncated at mean +/- psd_n_sigma sigma
@@ -174,8 +194,14 @@
     bc_z_b(2)  = {{ "%.6e"|format(z_min_m) }}
     bc_z_t(2)  = {{ "%.6e"|format(z_max_m) }}
     bc_p_g(2)  = {{ p_g_Pa }}
+{%- if mfix_version == '26.1.2' %}
 
   bc_default_walls = .True.
+{%- else %}
+
+  # MFiX {{ mfix_version }} has no bc_default_walls: it always applies default
+  # walls along the MFiX box (set_icbc_flags.f; = bc_default_walls .True.).
+{%- endif %}
 
 # Point source (C26 2.2.1): one cell centred on the axis at the bottom of
 # the cone.  MFiX 26.1.2 adds ps_massflow_g over the fluid volume of the
@@ -186,17 +212,31 @@
 # MASS-ONLY source: ps_v_g = 0, so no momentum is added (source_v_g.f skips
 # |v| < small_number) and continuity accelerates the gas out of the cell.
 {%- endif %}
+{%- if stl_builder == 'parametric_apex' %}
+# CLOSED-APEX STL (src/make_stl_c26_apex.py): the cone continues to its apex
+# at y = {{ "%.4e"|format(y_apex_m) }} m and the source fills the tip row y in [-dx, 0]; the open
+# area at y = 0 is pi R_t^2 = {{ "%.3e"|format(ps_open_area_m2) }} m^2, so by continuity the gas leaves
+# the tip at U_nozzle.
+{%- endif %}
 #   flow = {{ flow_slpm }} slpm Ar -> m_dot = {{ "%.6e"|format(ps_massflow_g_kg_s) }} kg/s,
 #   U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s (D_n = {{ "%.5e"|format(2 * R_nozzle_m) }} m).
+{%- if ps_point %}
+# POINT region (C26 p.4, "a point source centered with the reactor"): on the
+# axis-on-face grid get_ps.f / calc_cell.f snap this point to ONE cell, the
+# -x / -z cell x, z in [{{ "%.4e"|format(ps_cell_x_w_m) }}, {{ "%.4e"|format(ps_cell_x_e_m) }}] m of the source row, not the 2 x 2
+# axis cells; y sits a quarter cell below the row's north face so it maps to
+# that row (dry run ps_point_dry, run_log 2026-10-24).
+{%- else %}
 # The region is the axis cell's faces, not a zero-width point: get_ps.f /
 # calc_cell.f round a point at a cell centre to a face, which put the c01
 # smoke's source in a corner sliver cut cell (run_log 2026-10-16).
-    ps_x_w(1)        = {{ "%.6e"|format(ps_cell_x_w_m) }}
-    ps_x_e(1)        = {{ "%.6e"|format(ps_cell_x_e_m) }}
-    ps_y_s(1)        = {{ "%.6e"|format(ps_cell_y_s_m) }}
-    ps_y_n(1)        = {{ "%.6e"|format(ps_cell_y_n_m) }}
-    ps_z_b(1)        = {{ "%.6e"|format(ps_cell_z_b_m) }}
-    ps_z_t(1)        = {{ "%.6e"|format(ps_cell_z_t_m) }}
+{%- endif %}
+    ps_x_w(1)        = {{ "%.6e"|format(ps_region_x_w_m) }}
+    ps_x_e(1)        = {{ "%.6e"|format(ps_region_x_e_m) }}
+    ps_y_s(1)        = {{ "%.6e"|format(ps_region_y_s_m) }}
+    ps_y_n(1)        = {{ "%.6e"|format(ps_region_y_n_m) }}
+    ps_z_b(1)        = {{ "%.6e"|format(ps_region_z_b_m) }}
+    ps_z_t(1)        = {{ "%.6e"|format(ps_region_z_t_m) }}
     ps_massflow_g(1) = {{ "%.6e"|format(ps_massflow_g_kg_s) }}
     ps_u_g(1)        = 0.0
     ps_v_g(1)        = {{ "%.6e"|format(ps_v_g_m_s) }}
@@ -329,8 +369,8 @@
   resid_string(3) = 'V0'
 
 ### Discrete-element block.
-  des_interp_mean_fields = .True.
-  des_interp_on          = .True.
+  des_interp_mean_fields = {{ '.True.' if des_interp_mean_fields else '.False.' }}
+  des_interp_on          = {{ '.True.' if des_interp_on else '.False.' }}
   des_interp_scheme      = '{{ des_interp_scheme }}'
 {%- if des_interp_width_m is not none %}
   des_interp_width       = {{ "%.6e"|format(des_interp_width_m) }}

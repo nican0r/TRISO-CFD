@@ -13,11 +13,15 @@ REGION = os.environ.get("TRISO_AWS_REGION", "us-east-1")
 PROJECT = "triso-cfd"
 S3_BUCKET = os.environ.get("TRISO_S3_BUCKET", f"{PROJECT}-mfix")
 ECR_REPO = os.environ.get("TRISO_ECR_REPO", f"{PROJECT}/mfix")
-IMAGE_TAG = os.environ.get("TRISO_IMAGE_TAG", "26.1.2")
+# Image tag = the MFiX release in the image (docker/Dockerfile): 23.2 since
+# 2026-10-24, C26's release (26.1.2 before).  Each release has its own job
+# definition, named from the tag (23.2 -> triso-cfd-mfix-23-2), so
+# TRISO_IMAGE_TAG=26.1.2 still reaches the 26.1.2 image and job definition.
+IMAGE_TAG = os.environ.get("TRISO_IMAGE_TAG", "23.2")
 
 COMPUTE_ENV = f"{PROJECT}-ce"
 JOB_QUEUE = f"{PROJECT}-q"
-JOB_DEFINITION = f"{PROJECT}-mfix-26-1-2"
+JOB_DEFINITION = f"{PROJECT}-mfix-{IMAGE_TAG.replace('.', '-')}"
 
 INSTANCE_ROLE = f"{PROJECT}-ecs-instance-role"
 INSTANCE_PROFILE = f"{PROJECT}-ecs-instance-profile"

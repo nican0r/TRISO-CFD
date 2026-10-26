@@ -2,7 +2,7 @@
 
 import json
 
-from src.aws.submit import manifest_sizing
+from src.aws.submit import manifest_mfix_version, manifest_sizing
 
 
 def _write(tmp_path, manifest):
@@ -26,3 +26,15 @@ def test_manifest_without_aws_vcpu_is_ignored(tmp_path):
 
 def test_missing_manifest(tmp_path):
     assert manifest_sizing(tmp_path) == {}
+
+
+def test_manifest_mfix_version(tmp_path):
+    d = _write(tmp_path, {"aws_vcpu": 4, "mfix_version": "23.2"})
+    assert manifest_mfix_version(d) == "23.2"
+
+
+def test_unversioned_manifest_is_26_1_2(tmp_path):
+    # Manifests written before 2026-10-24 carry no mfix_version; all of
+    # them are for 26.1.2 decks.
+    assert manifest_mfix_version(_write(tmp_path, {"aws_vcpu": 4})) == "26.1.2"
+    assert manifest_mfix_version(tmp_path / "no_such_case") == "26.1.2"
