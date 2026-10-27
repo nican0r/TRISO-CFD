@@ -356,8 +356,15 @@ def piv_frames(run, manifest):
     return frames
 
 
-def analyse_run(run, params=None, stride=1, max_frames=None):
-    """Synthetic PIV of one run dir over the manifest's PIV window."""
+def run_geometry(run, params=None, stride=1, max_frames=None):
+    """Camera views and sampling regions of one run dir over the manifest's
+    PIV window (shared by analyse_run and the frame exporter for PIVlab).
+
+    Returns a dict: manifest m, frames [(t, path)], flow, R_c, px, step, wins,
+    cols_xyz (parcel columns seen by the camera), y_s (bed surface), y_map
+    (map bottom), H (map height), pflow / nrow / ncol (digitized experiment
+    panel and its grid), the spout and wall Views, xc / yc / half (wall box),
+    in_roi (wall grid points inside the box) and roi_pix (box pixels)."""
     run = Path(run)
     p = params or load_params()
     m = json.loads((run / "manifest.json").read_text())
@@ -396,6 +403,36 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
     r_lo, r_hi = (np.array([yc - half, yc + half]) - wall.y0) / px
     c_lo, c_hi = (np.array([xc - half, xc + half]) - wall.x0) / px
     roi_pix = (slice(int(r_lo), int(np.ceil(r_hi))), slice(int(c_lo), int(np.ceil(c_hi))))
+    return dict(m=m, frames=frames, flow=flow, R_c=R_c, px=px, step=step, wins=wins, cols_xyz=cols_xyz,
+                y_s=y_s, y_map=y_map, H=H, pflow=pflow, nrow=nrow, ncol=ncol, spout=spout, wall=wall,
+                xc=xc, yc=yc, half=half, in_roi=in_roi, roi_pix=roi_pix)
+
+
+def fig4_grid_map(mean_map, spout, y_map, H, R_c, nrow, ncol):
+    """Resample a map on the spout View's grid onto the digitized Fig. 4 grid
+    (nrow x ncol over x in [-R_c, R_c], height H above y_map)."""
+    gy, gx = spout.y - y_map, spout.x
+    ci = (np.arange(nrow) + 0.5) * H / nrow
+    cj = -R_c + (np.arange(ncol) + 0.5) * 2 * R_c / ncol
+    Y, X = np.meshgrid(np.clip(ci, gy[0], gy[-1]), np.clip(cj, gx[0], gx[-1]), indexing="ij")
+    return RegularGridInterpolator((gy, gx), mean_map)(np.stack([Y, X], -1))
+
+
+def analyse_run(run, params=None, stride=1, max_frames=None, on_pair=None):
+    """Synthetic PIV of one run dir over the manifest's PIV window.
+    on_pair: optional callback(info) after each frame pair, with info =
+    {"i", "t0", "t1", "spout": (img_a, img_b, dr, dc, empty), "wall": (...)};
+    dr / dc are the fields as accumulated (spout: after the empty-window
+    policy) [px per pair].  Used by the PIVlab frame exporter."""
+    run = Path(run)
+    p = params or load_params()
+    _, read_vtk_xml = _vtk_readers()
+    g = run_geometry(run, p, stride, max_frames)
+    m, frames, flow, R_c, px, step, wins = (g[k] for k in ("m", "frames", "flow", "R_c", "px", "step", "wins"))
+    cols_xyz, y_s, y_map, H, pflow, nrow, ncol = (g[k] for k in ("cols_xyz", "y_s", "y_map", "H", "pflow",
+                                                                  "nrow", "ncol"))
+    spout, wall, xc, yc, in_roi, roi_pix = (g[k] for k in ("spout", "wall", "xc", "yc", "in_roi", "roi_pix"))
+    cam, piv, sm = p["camera"], p["piv"], p["spout_map"]
 
     kw = dict(windows_px=wins, min_std=float(piv["min_window_std"]),
               uod_threshold=float(piv["uod_threshold"]), uod_eps=float(piv["uod_eps_px"]))
@@ -408,7 +445,7 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
     n_any = 0                                  # pairs with particles in any window
     t_pair, wall_piv, wall_vis, empty_frac = [], [], [], []
     prev = None
-    for t, f in frames:
+    for n_pair, (t, f) in enumerate(frames, start=-1):
         d = read_vtk_xml(f)
         xyz, dia = d["coordinates"][:, cols_xyz], d["Diameter"]
         img_s, _ = render(xyz, dia, (spout.x0, spout.y0), spout.shape, px)
@@ -432,8 +469,11 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
             sv += dr * px / dt
             empty_frac.append(emp.mean())
             n_full += ~emp
-            dr, _, _ = piv_pair(pw, img_w, wall.rows, wall.cols, **kw)
-            wall_piv.append(-(dr[in_roi] * px / dt).mean())        # downward +
+            dr_w, dc_w, emp_w = piv_pair(pw, img_w, wall.rows, wall.cols, **kw)
+            wall_piv.append(-(dr_w[in_roi] * px / dt).mean())      # downward +
+            if on_pair is not None:
+                on_pair({"i": n_pair, "t0": tp, "t1": t, "spout": (ps, img_s, dr, dc, emp),
+                         "wall": (pw, img_w, dr_w, dc_w, emp_w)})
             o = own_p[roi_pix].ravel()
             o = o[o >= 0]
             wall_vis.append(-vel_p[o, 1].mean() if o.size else np.nan)
@@ -446,11 +486,7 @@ def analyse_run(run, params=None, stride=1, max_frames=None):
     # per pair, see above) over the pairs with particles anywhere
     n_avg = {"zero": n, "skip": np.maximum(n_full, 1), "interpolate": max(n_any, 1)}[mode]
     mean_map = np.hypot(su / n_avg, sv / n_avg)        # |time mean vector| [m/s]
-    gy, gx = spout.y - y_map, spout.x
-    ci = (np.arange(nrow) + 0.5) * H / nrow
-    cj = -R_c + (np.arange(ncol) + 0.5) * 2 * R_c / ncol
-    Y, X = np.meshgrid(np.clip(ci, gy[0], gy[-1]), np.clip(cj, gx[0], gx[-1]), indexing="ij")
-    grid_map = RegularGridInterpolator((gy, gx), mean_map)(np.stack([Y, X], -1))
+    grid_map = fig4_grid_map(mean_map, spout, y_map, H, R_c, nrow, ncol)
 
     res = {
         "case": str(m["case_id"]), "run_dir": str(run), "flow_slpm": flow,

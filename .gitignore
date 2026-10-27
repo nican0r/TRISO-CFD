@@ -52,3 +52,6 @@ cases/**/.wall_end
 .claude/scheduled_tasks.lock
 .firecrawl/
 /*.pdf
+
+# PIVlab frame export (raw rendered frames and PIVlab outputs; src/post/piv_c26_export_frames.py)
+results/pivlab_export/

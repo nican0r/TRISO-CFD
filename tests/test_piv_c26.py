@@ -188,3 +188,28 @@ def test_bed_surface_ignores_fountain_parcels():
     assert P.bed_surface(xyz, 95, 15e-3) == pytest.approx(np.percentile(ann[:, 1], 95))
     assert np.percentile(xyz[:, 1], 95) > 30e-3          # all-parcel value is fountain-inflated
     assert P.bed_surface(fount, 95, 15e-3) == pytest.approx(np.percentile(fount[:, 1], 95))
+
+
+def test_pivlab_ascii_round_trip(tmp_path):
+    """Exporter -> PIVlab-layout ASCII -> compare-script reader: the field and
+    the axis conventions (PIVlab y down, 1-based pixels) survive the round
+    trip, and a TIFF frame is the image flipped top-row-first."""
+    import tifffile
+    from src.post import piv_c26_export_frames as X
+    from src.post import piv_c26_pivlab_compare as C
+    rows, cols = _grid()
+    ny = 200
+    dr = np.linspace(-2, 2, rows.size).reshape(rows.shape)       # up
+    dc = np.linspace(1, 3, rows.size).reshape(rows.shape)        # right
+    f = tmp_path / "pair_0000.txt"
+    X.write_pivlab_ascii(f, rows, cols, dr, dc, ny)
+    x, y, u, v = C.read_pivlab_ascii(f)
+    xs, ys, U, V = C.to_grid(x, y, u, v)
+    assert xs[0] == cols[0, 0] + 1 and ys[0] == ny - rows[-1, 0]          # 1-based, y down
+    np.testing.assert_allclose(U, dc[::-1], atol=1e-4)                     # ys increases downward
+    np.testing.assert_allclose(V, -dr[::-1], atol=1e-4)
+    a, _ = _shifted_pair((0.0, 0.0))
+    X.to_tiff(a, tmp_path / "f.tif")
+    img = tifffile.imread(tmp_path / "f.tif")
+    assert img.dtype == np.uint16 and img.shape == a.shape
+    np.testing.assert_allclose(img / 65535.0, np.flipud(a), atol=1e-4)

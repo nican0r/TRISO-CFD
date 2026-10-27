@@ -188,6 +188,25 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
    (notes, "Synthetic PIV"). The map placement and the handling of empty
    windows are assumptions that move CC a lot. For the mass-only runs, SSI
    and MSE stay far from C26's model under every variant tested.
+   - 2026-10-27: **re-run with PIVlab 3.14** (MATLAB R2026b) on c01–c03
+     `_apex_v232`, C26's settings + PIVlab defaults, scoring in MATLAB
+     (`corrcoef`/`ssim`/`immse`): `src/post/piv_c26_pivlab_batch.sh`,
+     `results/c26_pivlab_rerun.csv`, `fig_c26_pivlab_{maps,wall}.png`,
+     note `notes/c26_pivlab_rerun.md`.  Pure defaults on the shaded 16-bit
+     renders are ruined by CLAHE on the black background (fixed spurious
+     0.43 m/s vector in every empty window; c02 CC 0.10); with CLAHE off,
+     c02 scores CC 0.846 / SSI 0.850 / MSE 0.0028 (C26 model through the
+     same code 0.872 / 0.740 / 0.0022), c03 0.633 / 0.771 / 0.0074, c01
+     0.464 / 0.706 / 0.0049.  Frames made as C26's Fig. 4d shows (binary
+     white parcel disks on black, 8-bit) + untouched PIVlab defaults
+     (`pivlab_c26img`): empty windows go NaN and are interpolated as in C26;
+     c02 CC 0.778 / SSI 0.825 / MSE 0.0048, c03 0.559 / 0.738 / 0.0085, c01
+     0.273 / 0.647 / 0.0070; CLAHE off on the same frames 0.856 / 0.871 /
+     0.0025, 0.611 / 0.772 / 0.0078, 0.354 / 0.691 / 0.0058.  Wall PIV on
+     binary frames is not usable (merged disks; C26 Fig. 8 describes the
+     same failure); the headline wall velocity is the parcels in the box,
+     as C26 reports its model (2.09 / 1.53 / 3.04e-2 m/s), which PIVlab on
+     the shaded frames reproduces within 2 %.
 5. **Coating-stage / charge sweep c04–c09** (one factor at a time around c02:
    YSZ, 60 g, 12 slpm, W = 10). It replaces C26's wall-friction,
    statistical-weight and steel cases.
