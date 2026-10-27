@@ -3604,8 +3604,192 @@ Figures `results/fig_c26_sweep_{flow,diameter,charge}_apex_v232.png` carry
 the three new rows of panels (bed ΔP/(W/A), U/U_ms, circulation, turnover,
 bed fraction cycled); caption states the window.
 
+## C26 authors on the point source; full-face nozzle (2026-10-27)
+
+**The reply.** To "Did the gas point source carry momentum, or only mass
+flow?" the C26 authors answered: "the point sources were defined as mass
+flow with velocity vector and point. Velocity mag is calculated based on the
+local mesh characteristics."
+- MFiX 23.2 does not compute a point-source speed from the mesh. The GUI
+  defaults ps_u/v/w_g to 0 (`mfixgui/pss.py`). The solver takes |v| from the
+  typed vector, normalises it (`set_ps.f` CALC_PS_VEL_MAG) and adds momentum
+  ṁ |v| v̂ (`source_v_g.f:984–987`). So they typed a speed worked out by hand
+  from the mesh, most likely Q / (cell face). That is the 2.2.1 reason for
+  dx = 2.1 mm ≈ the 2.38 mm nozzle.
+- Against our configurations:
+  - The production control (2 × 2 tip cells, mass-only; `ps_momentum: false`,
+    `ps_point: false`) matches neither "velocity vector" nor "point".
+  - `c02_point_mom_v232` matches the keywords (one cell, 44.91 m/s) but not
+    the geometry the sizing implies. Its cell opens upward through a quarter
+    disc (1.11 mm²; 0.71 mm² as MFiX cuts it) and sideways into the other
+    three tip cells (up share 0.58). It sits 1.5 mm off the axis.
+- The mass-only reading behind `ps_momentum: false` (GUI default plus "when
+  the flow mass is added") is ruled out. The yaml comments now cite the
+  reply; the default stays false pending a user decision, since the
+  production sweep ran with it.
+**Which area set their speed.** A point only picks the cell that gets the
+gas; MFiX then needs a mass flow and a velocity vector. A speed derived
+"from the mesh" is Q / A for some mesh area A:
+
+| A | value | speed at 10 / 12 slpm |
+|---|---|---|
+| full cell face dx² | 4.41 mm² | 37.8 / 45.4 m/s |
+| nozzle bore πD²/4 (dx was chosen to match it) | 4.45 mm² | 37.4 / 44.9 m/s |
+| open part of a cell cut by the cone wall (e.g. our apex tip cell: quarter disc 1.11 mm², 0.71 mm² as MFiX cuts it) | smaller | ~150–280 m/s |
+
+- The first two rows agree within 1 %. The question only matters if the
+  cone wall cut their source cell.
+- In a source cell walled on five sides (the full-face nozzle below),
+  continuity fixes the exit speed at Q / A_open whatever speed is typed;
+  the typed speed then changes only the source cell's pressure. It matters
+  when the source cell has open sides: on the one-cell apex runs, momentum
+  raised the up share from 0.27 to 0.58.
+- To ask the authors:
+  1. What velocity did you enter at 10 slpm, and was the source cell a
+     whole cell or one cut by the cone wall? An answer near 38 m/s means a
+     whole cell; one above 150 m/s means a cut cell.
+  2. Where did the vessel axis sit relative to the grid? On a 24-cell box a
+     point on the axis snaps to an off-axis cell, yet their maps are
+     symmetric to ≤ 0.5 mm.
+
+**The point-source runs under PIVlab.** The source comparison behind the
+2026-10-26 decision used the native engine; the PIVlab re-run
+(`notes/c26_pivlab_rerun.md`) covered only the control. Applying the same
+metrics to the control's PIVlab maps (`notes/c26_map_metrics_pivlab_vs_native.py`,
+c02, t = 2.4–3.0 s):
+
+| map | reach | bands vs exp (0.70–0.95 / 0.5–0.7 / < 0.5) | mean / C26 model | fifths / C26 model (bottom → top) | CC vs exp | peak offset, bottom fifth |
+|---|---|---|---|---|---|---|
+| control, native | 0.69 | 0.85 / 0.89 / 1.04 | 0.98 | 0.98 1.14 0.97 0.85 0.85 | 0.914 | +1.7 mm |
+| control, PIVlab C26-style frames + defaults | 0.59 | 0.74 / 0.78 / 0.88 | 0.79 | 0.84 0.98 0.78 0.65 0.59 | 0.778 | −1.0 mm |
+| control, PIVlab, CLAHE off | 0.63 | 0.81 / 0.83 / 0.94 | 0.92 | 0.89 1.09 0.93 0.82 0.81 | 0.856 | −0.1 mm |
+| one-cell point, mass-only, native | 0.68 | 0.87 / 0.86 / 1.12 | 1.06 | 1.19 1.20 0.90 0.90 1.03 | 0.737 | −3.0 mm |
+| one-cell point + momentum, native | 0.99 | 1.12 / 1.16 / 1.38 | 1.16 | 1.28 1.32 1.13 0.99 0.96 | 0.913 | +5.3 mm |
+| 2 × 2 + momentum, native | 0.51 | 0.66 / 0.70 / 0.95 | 0.86 | 0.91 1.02 0.82 0.71 0.74 | 0.850 | −2.7 mm |
+
+(C26 model: reach 0.97, offset +0.5 mm; experiment 0.91, +1.0 mm.)
+- PIVlab, the program C26 made Fig. 4b with, reads the control 8–21 %
+  slower than the native engine, most in the upper map (top two fifths
+  −24 to −31 % with defaults, bottom fifth −14 %). "0.98 of C26's model"
+  becomes 0.79 like for like.
+- Scaled by the control's per-fifth factors, the one-cell momentum run
+  would land at ~0.94 of C26's map mean, with the lower map ~1.1× instead
+  of ~1.3×: closer to C26's model than the control. This is a projection,
+  not a measurement. The engines differ mainly in windows with few or no
+  particles, and the one-cell momentum run has fewer empty windows (46 %
+  against 63–68 %), so it may drop less.
+- Robust to the engine: the wall velocity (the headline is now the parcels
+  in the wall box, which PIVlab matches within 1–2 %) and the gas-flux lean
+  (from the MFiX gas field). Map-peak offsets move by up to 2.7 mm between
+  engines on the control, so only the one-cell run's 5.3 mm stands out.
+- Not done: rescoring `c02_point_v232`, `c02_point_mom_v232` and
+  `c02_apex_mom_v232` with PIVlab (about 8 min each locally; their outputs
+  are on disk).
+
+**The cone bottom across builders.**
+- Implicit STL (all runs to 2026-10-23): a flat cap at y = 0, a 4.45 mm²
+  disc, with the source cells sitting on it.
+- Closed apex (since 2026-10-24: the control, the production sweep, the
+  point-source runs): no flat surface.
+- Full-face nozzle: a ledge in its first version (retired, below); none in
+  the bore version.
+
+**Full-face nozzle (`run_C26_3d --stl-builder parametric_fullface`).** The
+one-cell inlet the reply describes, centred on the axis:
+- *Grid.* The odd 25-cell box (margin 0, axis at a cell centre),
+  x, z ∈ ±26.25 mm; the column wall sits 1.05 mm inside the box face.
+  Forced by the builder; `--axis-on-face` is refused. Default gridmap
+  [12, 13].
+- *Nozzle.* `src/make_stl_c26_fullface.py`: the closed-apex cone of
+  `src/make_stl_c26_apex.py` with a square bore cut into its tip, fluid =
+  cone ∪ bore. The bore is |x|, |z| < a = dx/2 + δ with δ = 0.005 dx =
+  10.5 µm (`stl_fullface_wall_offset_frac`), with its floor at −dx − δ.
+  - The 30° wall runs down unchanged until it meets the bore walls, at
+    y = −0.23 mm mid-side and +0.54 mm at the corners.
+  - The only horizontal surface is the bore floor under the source cell.
+  - Above the first apex ring (y = 1.91 mm) the STL is facet-for-facet the
+    control's (test). 8,816 facets, watertight, md5 59ddf7c1.
+- *Why δ sits outside the cell.* Cut cells are classified by their corner
+  nodes. With the walls δ outside, the source cell is a standard (uncut)
+  cell. Each face neighbour keeps δ/dx = 0.5 % of its volume, plus 0.09 %
+  where the cone pokes past the bore's side just below y = 0 (R_t > a):
+  0.59 % in all. Diagonal neighbours keep ~0.003 %. All are below
+  TOL_SMALL_CELL = 1 %, so MFiX blocks them
+  (`get_cut_cell_volume_area.f:616`) and `set_flags.f` leaves the shared
+  faces as walls; the builder refuses ≥ 1 %. δ is also 10× TOL_STL, the
+  1 µm below which MFiX drops an edge crossing.
+- *Source.* The axis cell of row y ∈ [−2.1, 0] mm, written as the cell's
+  faces (as on the 27-cell decks; a literal point at a cell centre is a
+  CALC_CELL tie). With `--ps-momentum`, ps_v_g = Q / dx² = 45.35 m/s at
+  12 slpm (37.79 / 52.91 at 10 / 14). The open face is 4.41 mm² against
+  the nozzle's 4.45 mm², so the inlet is not widened (recipe Rule 3 holds;
+  Rule 1 stays replaced by the point source, see "Deliberate deviations").
+- *Deck.* Against `c02_apex_mom_v232` the keyword diff is: the run name; the
+  box's x/z extent and every region that spans it; the one-cell PS and
+  monitor x/z footprint; ps_v_g. Every y-coordinate, dt, the particles, the
+  DEM closure and the gas are unchanged (test). Monitor 1 stays in the
+  source cell, as on the control.
+- *Tests.* `tests/test_make_stl_c26_fullface.py` (24): hand values, shell
+  checks, no horizontal facet but the floor and cap, identity with the apex
+  STL above the collar, curve vertices on both surfaces, the source cell
+  whole and its neighbours under 1 % (exact line integrals), sections,
+  wiring and the CLI. Suite: 283 passed. The existing decks (c01/c02
+  `_apex_v232`, `c02_point_mom_v232`, `c02_apex_mom_v232`) re-render
+  byte-identically.
+
+**Retired first version (ledge).** The first full-face STL joined a square
+duct to the cone with a flat ledge at y = 0.754 mm, 0.12–0.57 mm wide
+(md5 4f06d245, 8,494 facets).
+- Particles see such a ledge exactly (DEM contact uses the STL); the gas
+  barely sees it (it is smaller than a cell). With wall friction 0.1 and no
+  rolling resistance, a flat ledge is the one place a parcel can rest.
+- Its dry run passed D1–D5 (run_log 2026-10-27). Its smoke
+  (`c26-c02-fullface-mom-v232-smoke05`, job b7ff700a) ran at 17.3 s of
+  wall time per simulated ms and was terminated at t = 0.061 s (user
+  decision 2026-10-27): not pulled, not scored.
+- The criteria (`fullface_smoke`) were kept; only the case name and D4's
+  facet count changed (`geometry_change_2026_10_27`).
+
+**Dry run of the bore deck (local docker 23.2, 1 ms, 4 ranks, 22 s
+wall).** All of `fullface_smoke.dry_run` pass:
+- D1: exit 0, 0.001 s reached, no warnings or errors.
+- D2: PS volume 9.26100e-9 m³ = dx³ (one standard cell in the axis column).
+- D3: in the source row, no other fluid cell within one cell of the axis;
+  none in the rows below. The source's north-face V_G is 45.485 m/s with
+  source EP_G 0.9971 (parcels just above are smeared into it by LINEAR_HAT),
+  so ε_g V dx² = 1.0001 Q: up share 1.000.
+- D4: 8,816 facets read, 0 ignored.
+- D5: 27,763 parcels seeded (control 27,765).
+
+MESH_STATS: 43,549 fluid cells, 51 small cells blocked.
+
+**AWS smoke.** `c26-c02-fullface-bore-mom-v232-smoke05`, job
+9ddc0be0-c08f-47f6-913b-6d239485bcbd, submitted 2026-10-27 13:02 EDT. MFiX
+23.2, 4 vCPU, 6000 MB, no job timeout; 0.5 s with gas VTK every 5 ms and PIV
+frames over 0–0.5 s.
+- Expected wall time ~2.4 h (the same mesh ran at 17.3 s per simulated ms),
+  more if dt is cut.
+- Score per `fullface_smoke.smoke_criteria`: health H; up share M ≥ 0.95
+  (with `notes/c26_source_split.py`, taking the source's north area as
+  dx²); lean L ≤ 0.7 mm.
+- The comparator is `c02_point_mom_v232_smoke05`. The prediction (written
+  first) is that all pass.
+
 ## Open items (not done here)
 
+- Full-face nozzle (2026-10-27): score the bore smoke
+  (`c26-c02-fullface-bore-mom-v232-smoke05`, job 9ddc0be0, expected
+  ~15:30–15:45 EDT) against `fullface_smoke` (H, M, L). Before any 3 s
+  run, apply the smoke-validate skill, and report parcels entering the bore
+  and how long they stay. If H, M and L pass, a 3 s c02 run scored with
+  PIVlab next to the control and the one-cell momentum run, both rescored
+  with PIVlab (user decision).
+- Production point-source defaults: the authors' reply rules out the
+  mass-only reading, but `ps_momentum` / `ps_point` stay false (the
+  production sweep's settings) until the user decides.
+- Ask the C26 authors: the velocity entered at 10 slpm and whether the
+  source cell was whole or cut by the cone wall; where the axis sat
+  relative to the grid ("Which area set their speed").
 - momentum24 runs (2026-10-22): c05 and c07 done, the other seven running
   on 2026-10-23. Pull, score and compare as set out in "First-principles
   review of the velocity gap". The production source is decided
@@ -3633,7 +3817,10 @@ bed fraction cycled); caption states the window.
   result that depends on inventory.
 - Point-source momentum and wall velocity: asked the C26 authors for the
   .mfx/STL, the PS velocity, the apex geometry and probe definitions
-  (2026-10-19); no reply yet. The 3 s mass-only A/B was scored on
+  (2026-10-19). The PS question was answered on 2026-10-27 (momentum, a
+  point, speed from the mesh; see "C26 authors on the point source;
+  full-face nozzle"); the .mfx/STL, apex and probes are still open. The 3 s
+  mass-only A/B was scored on
   2026-10-20: inconclusive by the rule. The mass-only source fixes C1 but D
   doubles (see "c01–c03 mass-only 3 s results"). The MFiX 23.2 vs 26.1.2
   wall-contact review is done (see "Gas-fraction floor"); the apex geometry

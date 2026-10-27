@@ -206,7 +206,11 @@
 # Point source (C26 2.2.1): one cell centred on the axis at the bottom of
 # the cone.  MFiX 26.1.2 adds ps_massflow_g over the fluid volume of the
 # cell and momentum ps_massflow_g * |v| * v_hat (source_v_g.f).
-{%- if ps_momentum %}
+{%- if ps_momentum and stl_builder == 'parametric_fullface' %}
+# ps_v_g is the velocity through the source cell's top face, Q / dx^2 (C26
+# authors, 2026-10-27: "mass flow with velocity vector and point.  Velocity
+# mag is calculated based on the local mesh characteristics").
+{%- elif ps_momentum %}
 # ps_v_g is the nozzle exit velocity Q / (pi D_n^2 / 4).
 {%- else %}
 # MASS-ONLY source: ps_v_g = 0, so no momentum is added (source_v_g.f skips
@@ -217,6 +221,14 @@
 # at y = {{ "%.4e"|format(y_apex_m) }} m and the source fills the tip row y in [-dx, 0]; the open
 # area at y = 0 is pi R_t^2 = {{ "%.3e"|format(ps_open_area_m2) }} m^2, so by continuity the gas leaves
 # the tip at U_nozzle.
+{%- elif stl_builder == 'parametric_fullface' %}
+# FULL-FACE NOZZLE STL (src/make_stl_c26_fullface.py): the closed-apex cone
+# with a square bore one cell wide cut into its tip.  The source is the axis
+# cell y in [-dx, 0]; the bore's walls and floor sit {{ "%.3e"|format(stl_fullface_wall_offset_m) }} m outside its
+# faces, so its neighbours keep {{ "%.2f"|format(100 * nozzle_neighbour_fluid_fraction) }} % fluid, slivers MFiX blocks
+# (< TOL_SMALL_CELL), and the gas leaves only through its whole top face,
+# dx^2 = {{ "%.3e"|format(ps_open_area_m2) }} m^2, at Q / dx^2 = {{ "%.4f"|format(U_ps_exit_m_s) }} m/s.  The 30 deg wall meets the bore
+# walls between y = {{ "%.4e"|format(y_bore_curve_min_m) }} and {{ "%.4e"|format(y_bore_curve_max_m) }} m (no ledge).
 {%- endif %}
 #   flow = {{ flow_slpm }} slpm Ar -> m_dot = {{ "%.6e"|format(ps_massflow_g_kg_s) }} kg/s,
 #   U_nozzle = {{ "%.4f"|format(U_nozzle_m_s) }} m/s (D_n = {{ "%.5e"|format(2 * R_nozzle_m) }} m).

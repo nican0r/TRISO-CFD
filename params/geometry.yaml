@@ -678,7 +678,14 @@ spouted_bed_C26_3d:
                            # false -> ps_v_g = 0, mass only (MFiX GUI default
                            # for a mass-flow PS; C26 2.2.1 wording "when the
                            # flow mass is added" suggests this).  C26 does not
-                           # state it.  A/B: c01_smoke_r4_massonly; 3 s A/B
+                           # state it; the C26 authors (pers. comm.
+                           # 2026-10-27) say it carried momentum: "mass flow
+                           # with velocity vector and point.  Velocity mag is
+                           # calculated based on the local mesh
+                           # characteristics", which rules out the mass-only
+                           # reading above.  The default is left false (the
+                           # production sweep's setting) pending a user
+                           # decision.  A/B: c01_smoke_r4_massonly; 3 s A/B
                            # c01-c03_massonly vs the momentum c01 run.
                            # Default false since 2026-10-19 (user decision);
                            # it was true for the c01 3 s run, the c01-c03 decks
@@ -698,7 +705,13 @@ spouted_bed_C26_3d:
                            # source centered with the reactor"; dry run
                            # ps_point_dry (run_log 2026-10-24) put it in one
                            # cell of 4.865e-10 m3.  A/B: run_C26_3d --ps-point.
-                           # source: assumed (C26 does not state the region).
+                           # The C26 authors (pers. comm. 2026-10-27): the
+                           # source was a "point" (one cell in 23.2).  The
+                           # axis-centred one-cell variant is stl_builder
+                           # parametric_fullface.
+                           # source: C26 authors (pers. comm. 2026-10-27)
+                           # for "point"; the default false is the
+                           # production sweep's setting.
   ps_row_offset_cells: 0   # point-source cell row above the cap [-]
                            # (0 = first fluid row, y in [0, dx]).  C26 2.2.1:
                            # point source "centered with the reactor and
@@ -730,14 +743,40 @@ spouted_bed_C26_3d:
                            # the cone converges onto the source.
                            # source: assumed (notes/c26_conry2026_case.md
                            # "Closed apex, parametric STL", 2026-10-24).
+                           # 'parametric_fullface' -- the parametric_apex
+                           #   cone with a square bore one cell wide cut
+                           #   into its tip, around the axis cell of the ODD
+                           #   25-cell box (src/make_stl_c26_fullface.py):
+                           #   the source cell (row ps_tip_row_offset_cells)
+                           #   is a standard cell whose only open face is its
+                           #   whole top face, dx^2 = 4.41 mm^2 (nozzle
+                           #   4.45 mm^2), and ps_v_g = Q / dx^2 with
+                           #   momentum.  The 30 deg wall runs down until it
+                           #   meets the bore walls (y = -0.23 mm mid-side to
+                           #   +0.54 mm at the corners): no ledge, no
+                           #   horizontal surface but the bore floor.  The
+                           #   C26 authors: the point source was "mass flow
+                           #   with velocity vector and point.  Velocity mag
+                           #   is calculated based on the local mesh
+                           #   characteristics" (personal communication
+                           #   2026-10-27).  Selected with run_C26_3d
+                           #   --stl-builder parametric_fullface (forces the
+                           #   odd layout).  (A first version joined a duct to
+                           #   the cone with a flat ledge at y = 0.754 mm;
+                           #   retired 2026-10-27, user decision.)
+                           # source: C26 authors (pers. comm. 2026-10-27);
+                           # bore geometry assumed (notes "C26 authors on the
+                           # point source; full-face nozzle").
   ps_tip_row_offset_cells: -1
-                           # parametric_apex only: point-source row relative
-                           # to y = 0 [-]; -1 is the tip row y in [-dx, 0],
-                           # which holds the whole cone tip (apex 0.038 mm
-                           # above the face at y = -2.1 mm; the builder
-                           # checks that the apex lies in this row).
+                           # parametric_apex / parametric_fullface:
+                           # point-source row relative to y = 0 [-]; -1 is
+                           # the row y in [-dx, 0].  apex: it holds the whole
+                           # cone tip (apex 0.038 mm above the face at
+                           # y = -2.1 mm; the builder checks that the apex
+                           # lies in this row).  fullface: the nozzle cell,
+                           # walled on its sides and bottom.
                            # source: derived from bed_C26 D_throat_m and
-                           # cone_angle_deg.
+                           # cone_angle_deg (apex); assumed (fullface).
   stl_apex_sagitta_max_m: 2.06e-5
                            # parametric_apex only: largest chord error
                            # (sagitta) of the faceted wall at R_c [m]
@@ -762,8 +801,28 @@ spouted_bed_C26_3d:
                            # 2 cells: every facet within 3 rows, 11 cone +
                            # 42 column bands, 8,480 facets (implicit
                            # builder: 77,088).  1 cell would double the
-                           # count for nothing.
+                           # count for nothing.  parametric_fullface keeps
+                           # these rings; only the apex fan below the first
+                           # ring (y = 1.91 mm) is replaced (8,816 facets).
                            # source: assumed.
+  stl_fullface_wall_offset_frac: 0.005
+                           # parametric_fullface only: the bore's walls and
+                           # floor sit this fraction of dx outside the
+                           # source cell's faces [-] (10.5 um).  Every
+                           # corner node of the source cell is then fluid
+                           # and none of its edges is cut, so it is a
+                           # standard cell.  Each neighbour in the source row
+                           # keeps a sliver of 0.5 % of its volume, plus
+                           # 0.09 % where the cone pokes past the bore's
+                           # side just below y = 0 (R_t > a): 0.59 % in all,
+                           # below MFiX's TOL_SMALL_CELL = 1 %, so it is
+                           # flagged blocked (get_cut_cell_volume_area.f:616)
+                           # and walls the source cell in (the builder
+                           # refuses >= 1 %).  Bounds: > TOL_STL / dx =
+                           # 4.8e-4 (edge crossings closer than 1 um to a
+                           # node are dropped, get_stl_data.f:1799).
+                           # source: assumed (MFiX 23.2 cut-cell defaults,
+                           # cartesian_grid_init_namelist.f:704, 748).
 
 spouted_bed_C26_3d_dem:
   # DEM/CGP contact closure, C26 Table 1 (identical for YSZ and steel).

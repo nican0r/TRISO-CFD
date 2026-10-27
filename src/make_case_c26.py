@@ -36,11 +36,12 @@ from src.make_case import (
     _load_yaml,
     _uniform_axis,
 )
+from src.make_stl_c26_fullface import fullface_nozzle_geometry
 
 SLPM_TO_M3_S = 1.0e-3 / 60.0   # unit conversion only: 1 L/min in m^3/s
 
 # Vessel STL builders (geometry.yaml spouted_bed_C26_3d ``stl_builder``).
-STL_BUILDERS = ("implicit", "parametric_apex")
+STL_BUILDERS = ("implicit", "parametric_apex", "parametric_fullface")
 
 # MFiX releases the template can write for (numerics.yaml
 # spouted_bed_C26_3d_numerics ``mfix_version``).  23.2 (C26's release; the
@@ -272,6 +273,13 @@ def build_C26_3d_params(
         y = -R_t / tan(theta); the point source moves to the tip row
         ``ps_tip_row_offset_cells`` (y in [-dx, 0]), whose open top face is
         pi R_t^2.  Nothing else in the deck changes.
+        'parametric_fullface': src/make_stl_c26_fullface.py; the apex cone
+        with a square bore one cell wide cut into its tip, around the axis
+        cell of the ODD layout
+        (forced; ``axis_on_face`` True is an error), the source is that cell
+        in the row ``ps_tip_row_offset_cells``, open only through its whole
+        top face dx^2, and ps_v_g = Q / dx^2 with ``ps_momentum`` (the C26
+        authors' "velocity mag ... based on the local mesh", 2026-10-27).
     """
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
@@ -332,8 +340,18 @@ def build_C26_3d_params(
     if h_cone_m >= H_dom_m:
         raise ValueError(f"cone height {h_cone_m} m exceeds H_dom {H_dom_m} m")
 
+    stl_builder = str(mesh["stl_builder"] if stl_builder is None else stl_builder)
+    if stl_builder not in STL_BUILDERS:
+        raise ValueError(f"stl_builder must be one of {STL_BUILDERS}, got {stl_builder!r}")
+    fullface = stl_builder == "parametric_fullface"
     # Odd count -> axis at a cell centre; even (axis_on_face) -> axis on the
-    # edge shared by the four central cells.
+    # edge shared by the four central cells.  The full-face nozzle is the
+    # axis cell, so it needs the odd layout.
+    if fullface:
+        if axis_on_face:
+            raise ValueError("parametric_fullface needs the odd layout (axis at a cell "
+                             "centre); do not combine it with axis_on_face")
+        axis_on_face = False
     axis_on_face = bool(mesh["axis_on_cell_face"] if axis_on_face is None else axis_on_face)
     n_xz = _n_cells_xz(mesh, axis_on_face)
     x_half_m = 0.5 * n_xz * dx_m
@@ -391,10 +409,8 @@ def build_C26_3d_params(
     ps_row = int(mesh["ps_row_offset_cells"])
     if ps_row < 0:
         raise ValueError("ps_row_offset_cells must be >= 0")
-    stl_builder = str(mesh["stl_builder"] if stl_builder is None else stl_builder)
-    if stl_builder not in STL_BUILDERS:
-        raise ValueError(f"stl_builder must be one of {STL_BUILDERS}, got {stl_builder!r}")
     y_apex_m = None
+    nozzle = None
     if stl_builder == "parametric_apex":
         # The cone's virtual apex; the source fills the grid row holding it.
         y_apex_m = -R_t_m / tan_t
@@ -405,6 +421,17 @@ def build_C26_3d_params(
             raise ValueError(
                 f"tip row {ps_row} (y in [{ps_row * dx_m:.4e}, {(ps_row + 1) * dx_m:.4e}] m) "
                 f"does not contain the apex y = {y_apex_m:.4e} m")
+    elif fullface:
+        # The nozzle cell, walled on its sides and bottom; its floor sliver
+        # needs a row below it inside the box.
+        ps_row = int(mesh["ps_tip_row_offset_cells"])
+        if ps_row - 1 < -n_below:
+            raise ValueError("the full-face nozzle needs a cell row below its source row")
+        nozzle = fullface_nozzle_geometry(
+            R_t_m=R_t_m, cone_half_angle_deg=cone_half_angle_deg, cell_half_m=0.5 * dx_m,
+            nozzle_y_s_m=ps_row * dx_m,
+            wall_offset_m=float(mesh["stl_fullface_wall_offset_frac"]) * dx_m,
+        )
     ps_y_s_m = ps_row * dx_m
     ps_y_n_m = (ps_row + 1) * dx_m
     ps_y_m = 0.5 * (ps_y_s_m + ps_y_n_m)
@@ -426,9 +453,19 @@ def build_C26_3d_params(
     U_sup = Q_actual / (math.pi * R_c_m ** 2)
     U_ps_cell = Q_actual / (ps_cell_x[1] - ps_cell_x[0]) ** 2   # mean velocity over the PS footprint
     # Open cross-section at the top of the source row and the mean velocity
-    # through it: with the apex STL it is pi R_t^2 = A_nozzle, so U_nozzle.
-    ps_open_area = math.pi * r_cone_at_ps_top ** 2
+    # through it: with the apex STL it is pi R_t^2 = A_nozzle, so U_nozzle;
+    # with the full-face nozzle it is the source cell's top face, dx^2.
+    if fullface:
+        r_cone_at_ps_top = None
+        ps_open_area = nozzle["nozzle_face_area_m2"]
+    else:
+        ps_open_area = math.pi * r_cone_at_ps_top ** 2
     U_ps_exit = Q_actual / ps_open_area
+    # Point-source velocity with momentum: the nozzle exit velocity, or for
+    # the full-face nozzle the velocity through the cell face (C26 authors:
+    # "Velocity mag is calculated based on the local mesh characteristics").
+    ps_momentum = bool(mesh["ps_momentum"] if ps_momentum is None else ps_momentum)
+    ps_v_g = (U_ps_exit if fullface else U_nozzle) if ps_momentum else 0.0
 
     # ---- time step: the paper's step, capped by recipe Rule 9 per case ----
     dt_max_paper_s = float(numerics["dt_max_paper_s"])
@@ -518,6 +555,14 @@ def build_C26_3d_params(
         "y_apex_m": y_apex_m,
         "stl_apex_sagitta_max_m": float(mesh["stl_apex_sagitta_max_m"]),
         "stl_apex_band_height_m": float(mesh["stl_apex_band_height_cells"]) * dx_m,
+        "stl_fullface_wall_offset_m": (float(mesh["stl_fullface_wall_offset_frac"]) * dx_m
+                                       if fullface else None),
+        "nozzle_half_width_m": nozzle["half_width_m"] if fullface else None,
+        "y_nozzle_floor_m": nozzle["y_floor_m"] if fullface else None,
+        "y_bore_curve_min_m": nozzle["y_curve_min_m"] if fullface else None,
+        "y_bore_curve_max_m": nozzle["y_curve_max_m"] if fullface else None,
+        "nozzle_neighbour_fluid_fraction": (nozzle["neighbour_fluid_fraction"]
+                                            if fullface else None),
         # point source
         "ps_x_m": 0.0, "ps_y_m": ps_y_m, "ps_z_m": 0.0,
         "ps_cell_x_w_m": ps_cell_x[0], "ps_cell_x_e_m": ps_cell_x[1],
@@ -537,9 +582,8 @@ def build_C26_3d_params(
         "r_cone_at_ps_top_m": r_cone_at_ps_top,
         "ps_open_area_m2": ps_open_area,
         "ps_massflow_g_kg_s": m_dot,
-        "ps_momentum": bool(mesh["ps_momentum"] if ps_momentum is None else ps_momentum),
-        "ps_v_g_m_s": U_nozzle if (mesh["ps_momentum"] if ps_momentum is None else ps_momentum)
-                      else 0.0,
+        "ps_momentum": ps_momentum,
+        "ps_v_g_m_s": ps_v_g,
         # operating point (provenance)
         "flow_slpm": flow_slpm,
         "Q_actual_m3_s": Q_actual,

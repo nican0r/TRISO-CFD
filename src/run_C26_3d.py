@@ -58,6 +58,7 @@ from src.make_case_c26 import (
 )
 from src.make_stl import build_cone_column_stl_implicit
 from src.make_stl_c26_apex import build_cone_column_stl_apex
+from src.make_stl_c26_fullface import build_cone_column_stl_fullface
 from src.run_V_3d_day10 import _parse_nodes, write_runner
 from src.aws.config import C26_MEMORY_MB, PROJECT
 from src.aws.submit import manifest_mfix_version
@@ -152,6 +153,11 @@ def write_docker_runner(run_dir: Path, mfx_name: str, params: dict) -> Path:
 # Facts of the apex builder carried into the manifest (src/make_stl_c26_apex.py).
 _APEX_FACTS = ("n_theta", "sagitta_Rc_m", "sagitta_Rt_m", "n_bands_cone", "n_bands_column",
                "open_area_y0_m2", "tip_volume_m3")
+# ... and of the full-face nozzle builder (src/make_stl_c26_fullface.py).
+_FULLFACE_FACTS = ("n_theta", "sagitta_Rc_m", "n_bands_cone", "n_bands_column",
+                   "nozzle_face_area_m2", "bore_area_m2", "sliver_fraction",
+                   "protrusion_fraction", "neighbour_fluid_fraction", "y_curve_min_m",
+                   "y_curve_max_m", "y_collar_top_m")
 
 
 def _build_stl(params: dict, path: Path) -> dict:
@@ -185,6 +191,25 @@ def _build_stl(params: dict, path: Path) -> dict:
             raise AssertionError("apex height differs between builder and params")
         facts = {"facet_count": apex["facet_count"]}
         facts.update({f"stl_{k}": apex[k] for k in _APEX_FACTS})
+    elif builder == "parametric_fullface":
+        _, ff = build_cone_column_stl_fullface(
+            R_c_m=params["R_c_m"],
+            R_t_m=params["R_t_m"],
+            cone_half_angle_deg=params["cone_half_angle_deg"],
+            H_dom_m=params["H_dom_m"],
+            out_path=path,
+            top_extend_m=params["top_extend_m"],
+            sagitta_max_m=params["stl_apex_sagitta_max_m"],
+            band_height_m=params["stl_apex_band_height_m"],
+            cell_half_m=0.5 * params["dx_m"],
+            nozzle_y_s_m=params["ps_cell_y_s_m"],
+            wall_offset_m=params["stl_fullface_wall_offset_m"],
+        )
+        if (abs(ff["y_floor_m"] - params["y_nozzle_floor_m"]) > 1e-12
+                or abs(ff["half_width_m"] - params["nozzle_half_width_m"]) > 1e-12):
+            raise AssertionError("nozzle geometry differs between builder and params")
+        facts = {"facet_count": ff["facet_count"]}
+        facts.update({f"stl_{k}": ff[k] for k in _FULLFACE_FACTS})
     else:
         raise ValueError(f"unknown stl_builder {builder!r}")
     facts["stl_md5"] = _md5(path)
@@ -211,7 +236,12 @@ def main() -> None:
                    help="vessel STL builder (default geometry.yaml stl_builder = implicit). "
                         "parametric_apex: analytic cone closed at its apex y = -R_t/tan30 "
                         "(src/make_stl_c26_apex.py) with the point source in the tip row "
-                        "y in [-dx, 0]; the deck is otherwise unchanged")
+                        "y in [-dx, 0]; the deck is otherwise unchanged. "
+                        "parametric_fullface: the apex cone with a one-cell square bore "
+                        "cut into its tip around the axis cell of the odd 25-cell box "
+                        "(src/make_stl_c26_fullface.py), the "
+                        "source open only through its whole top face, ps_v_g = Q/dx^2 "
+                        "with --ps-momentum; not with --axis-on-face")
     p.add_argument("--stl-sample-fraction", type=float, default=None, metavar="F",
                    help="implicit builder: STL SDF sampling step as a fraction of dx "
                         "(default: geometry.yaml dx_sample_fraction); facet count ~ 1/F^2")
@@ -262,6 +292,11 @@ def main() -> None:
     args = p.parse_args()
     if args.flow_slpm is not None and not args.run_dir_suffix:
         p.error("--flow-slpm needs --run-dir-suffix (keeps the sweep's run dir)")
+    fullface = args.stl_builder == "parametric_fullface"
+    if fullface and args.axis_on_face:
+        p.error("--stl-builder parametric_fullface needs the odd layout; drop --axis-on-face")
+    # None = geometry.yaml axis_on_cell_face; the full-face nozzle forces the odd box.
+    axis_on_face = True if args.axis_on_face else (False if fullface else None)
 
     sweep = load_sweep()
     selected = _select(sweep["cases"], args.case)
@@ -269,7 +304,7 @@ def main() -> None:
     if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
         gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
     elif args.nodes is None:
-        gridmap = default_gridmap(True if args.axis_on_face else None)
+        gridmap = default_gridmap(axis_on_face)
     nodes = args.nodes or (1, 1, 1)
     stl_cache: Path | None = None
     stl_facts: dict | None = None
@@ -286,7 +321,7 @@ def main() -> None:
             ps_point=True if args.ps_point else None,
             epg_clip=args.epg_clip,
             interp_scheme=args.interp_scheme,
-            axis_on_face=True if args.axis_on_face else None,
+            axis_on_face=axis_on_face,
             vtk_dt_background_s=args.vtk_dt_background,
             stl_builder=args.stl_builder,
             mfix_version=args.mfix_version,

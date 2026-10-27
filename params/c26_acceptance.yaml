@@ -724,3 +724,79 @@ sweep_source_choice:
               suffix _apex_v232), PIV window 2.4-3.0 s, wall box 0.64"
     supersedes: "result_2026_10_26.action; notes/c26_sweep_source_choice.py
                  --submit refuses"
+
+fullface_smoke:
+  # One-cell FULL-FACE nozzle (notes "Full-face nozzle (2026-10-27)").  The
+  # C26 authors (personal communication 2026-10-27): "the point sources were
+  # defined as mass flow with velocity vector and point.  Velocity mag is
+  # calculated based on the local mesh characteristics."  With C26 2.2.1's
+  # dx = 2.1 mm ~ the 2.38 mm nozzle, that makes one cell face the nozzle.
+  # Our one-cell point runs (c02_point_*_v232) put the source in a tip cell
+  # 1.5 mm off the axis, open to its three neighbours (up share 0.27 / 0.58)
+  # with a quarter-disc top opening; the spout leaned 2.4-2.5 mm.  The
+  # full-face deck puts the source in the AXIS cell of the odd 25-cell box,
+  # walled on its sides and bottom (neighbours are < 1 % slivers MFiX blocks),
+  # open through its whole top face dx^2, with ps_v_g = Q / dx^2 = 45.35 m/s.
+  # Pre-registered 2026-10-27 BEFORE the dry run or any smoke.
+  case: c02_fullface_bore_mom_v232_smoke05
+                                        # run_C26_3d --case c02 --stl-builder
+                                        # parametric_fullface --ps-momentum
+                                        # --tstop 0.5 --vtk-dt-background 0.005
+  geometry_change_2026_10_27: "The first deck (c02_fullface_mom_v232_smoke05)
+    joined a square duct to the cone with a flat ledge at y = 0.754 mm (STL
+    md5 4f06d245, 8,494 facets).  User decision: replace it with the
+    closed-apex cone and a square bore cut into its tip (no horizontal
+    surface but the bore floor; identical to the control's STL above
+    y = 1.91 mm).  Its smoke (job b7ff700a) was terminated at t = 0.061 s,
+    not pulled, not scored.  The criteria below are unchanged except the
+    case name and D4's facet count; nothing had been scored."
+  comparator: c02_point_mom_v232_smoke05  # 23.2, same flow, same window, one-cell
+                                          # momentum source (44.91 m/s) in the
+                                          # off-axis apex tip cell
+  window_s: [0.10, 0.50]
+  dry_run:
+    # Local, 1 ms, docker 23.2 image, the deck as submitted (4 ranks) except
+    # tstop and a 0.5 ms gas VTK so the fluid mesh is written.
+    D1_exit: "exit 0, t = 0.001 s reached, no errors (the 4 known 'description
+              truncated' warnings allowed)"
+    D2_ps_cell: "PS in ONE cell, I = K = 14 (the axis cell of 25), J = 5 (row
+                 y in [-2.1, 0] mm); PS volume = dx^3 = 9.261e-9 m3 within 0.1 %
+                 (a standard, uncut cell)"
+    D3_walled_in: "no fluid cell in the source row other than the source cell
+                   within |x|, |z| < 3.15 mm, and none in the rows below it
+                   (BACKGROUND VTU cell list); the cell above the source is
+                   fluid"
+    D4_stl: "8,816 facets read, 0 ignored"
+    D5_parcels: "seeding successful; seeded count within 1 % of the control
+                 c02_apex_v232's 27,765 (the 25-cell box shifts the HEXA
+                 lattice by half a cell)"
+  smoke_criteria:
+    H_health: "exit 0, 0.5 s reached, dt >= dt_min, no Error 1100 /
+               PS_VOLUME; parcel loss <= 0.1 % (the known 23.2 cut-cell
+               deletion is ~8 in 0.5 s)"
+    M_up_share: "notes/c26_source_split.py up share >= 0.95 over 0.10-0.50 s,
+                 with the source cell's north area = dx^2 (the script clips by
+                 the cone circle, which does not apply to the duct)"
+    L_lean: "upward-gas-flux centroid offset sqrt(x^2 + z^2), mean over the
+             centroid rows with y in [9, 18] mm, <= 0.7 mm (comparator 2.4 mm,
+             2 x 2 apex 1.3 mm, C26 maps <= 0.5 mm)"
+  report_not_gated: "axis v_g max at 9.4 / 11.5 mm (comparator 17.3 / 14.0
+    m/s); breathing, EP_G_mid, S_mid frequency, d20 (ps_point_smoke
+    definitions; comparator 0.042, 0.493, 15.0 Hz, 0.23); fountain top and
+    exit v_p; wall-layer parcel v_y; lattice kept at 0.25 / 0.5 s; P_inlet
+    (sits in the source cell, not a bed dP)"
+  prediction_written_first: "D1-D5 pass.  M passes (~1.0) by construction if
+    D3 does.  L passes: the source is on the axis, and on the 27-cell odd
+    layout the momentum run c01 had a 0.10 mm offset (the odd-layout -x lean
+    of the mass-only runs came from staggered U cut cells and the momentum
+    jet hid it).  The jet should be at least the comparator's (all the
+    momentum leaves upward through one face) and the annulus at least as
+    packed (breathing <= 0.042)."
+  decision: "D1-D5 pass -> submit the 0.5 s smoke (MFiX 23.2, 4 vCPU).  H, M
+    and L pass -> propose a 3 s c02 full-face run scored at 2.4-3.0 s with
+    the PIVlab pipeline (C26-style frames + PIVlab defaults, the headline of
+    notes/c26_pivlab_rerun.md) against C26 Fig. 4 and Fig. 6d, next to the
+    control and the one-cell momentum run rescored the same way (user
+    decision).  M fails -> the nozzle leaks: diagnose the mesh before any
+    change (CLAUDE.md rule 9).  L fails with M passing -> the lean is not the
+    source's position; report."
