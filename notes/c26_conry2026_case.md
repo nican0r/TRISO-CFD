@@ -3381,6 +3381,229 @@ were refreshed from the current PIV CSVs, as a watcher rerun would.
 windows enter the time mean, the two assumptions that move CC. CES25 gives
 no PIVlab settings, and its maps are of the wall, not the spout.
 
+## Control-configuration sweep results (2026-10-27)
+
+The c01–c09 sweep in the control configuration (2×2 mass-only tip source,
+closed-apex STL md5 19b84e9e, MFiX 23.2, 3 s, 4 vCPU; "Sweep source choice",
+Decision) landed overnight: all eight jobs SUCCEEDED (11.9–16.7 h; c02 is
+the 2026-10-24 control, 12.94 h). Pulled and scored 2026-10-27 08:24–08:48
+EDT with `notes/c26_watch_post.py --tag apex_v232 --baseline-suffix
+_momentum24` (the control's baseline), PIV window 2.4–3.0 s, wall box 0.64;
+`results/c26_compare_apex_v232.csv` (nine rows), `results/c26_piv_c0X_apex_v232.csv`,
+maps and figures; `notes/c26_sweep_summary.py --suffix _apex_v232 --tag
+apex_v232` wrote `results/c26_sweep_summary_apex_v232.csv` and the three
+factor-block figures `results/fig_c26_sweep_{flow,diameter,charge}_apex_v232.png`
+(time averages and PSD over t = 2.4–3.0 s, the last 0.6 s).
+
+**Health.** Every run reached t = 3.0 s at dt = 1e-5 s. Parcel loss (the 23.2
+cut-cell deletion, "Point-source smoke results"): c01 0.15 %, c02 0.24 %,
+c03 0.29 %, c04 0, c05 0.07 %, c06 0.29 %, c07 0, c08 **0.57 %** (18023 →
+17921), c09 0.13 %. c08 is the only run over the 0.5 % gate used for the
+source choice; it is reported, not gated here. The watcher's "health:
+NO-GO (check_smoke)" on every row is the known mass-only convention (the
+inlet criteria were set on momentum-source runs and are reported, not
+gated; "AWS production runs: mass-only point source"). `reached_t` is None
+on every row: the parser reads the 26.1.2 run.log line, which 23.2 does
+not write; t_end was checked from SOLIDS_INVENTORY instead.
+
+**C26 cases (Table 3 targets), 2.4–3.0 s.** Open-apex values are the same
+case on the 24-cell layout with the mass-only source (`_massonly_axisface`,
+26.1.2; `results/c26_compare_axisface.csv`).
+
+| | c01, 10 slpm | c02, 12 slpm (control) | c03, 14 slpm |
+|---|---|---|---|
+| map vs exp CC / SSI / MSE | 0.356 / 0.702 / 0.0053 | 0.914 / 0.883 / 0.0015 | 0.634 / 0.782 / 0.0075 |
+| C26 Table 3 floor (model vs exp) | 0.390 / 0.609 / 0.0068 | 0.817 / 0.740 / 0.0042 | 0.829 / 0.741 / 0.0049 |
+| verdict | NO MATCH (CC) | MATCH | NO MATCH (CC, MSE) |
+| open apex, same source: CC / MSE | 0.457 / 0.0046 | 0.820 / 0.0043 | 0.691 / 0.0050 |
+| map mean / C26 model | 0.77 | 0.98 | 0.93 |
+| row-mean vs C26 model, fifths bottom to top | 0.78 0.79 0.70 0.76 0.80 | 0.98 1.14 0.97 0.85 0.85 | 1.26 1.17 0.85 0.63 0.57 |
+| fountain reach (C26 model / exp) | 0.25 (0.37 / 0.60) | 0.69 (0.97 / 0.91) | 0.65 (0.99 / 0.88) |
+| wall PIV [m/s], × exp / × C26 model | 2.09e-2, 22.4 / 6.3 | 1.46e-2, 8.0 / 2.9 | 2.98e-2, 11.7 / 4.3 |
+| wall PIV, open apex | 1.61e-2 | 2.86e-2 | 3.66e-2 |
+| step-3 D wall [m/s] (open apex) | 1.82e-2 (1.78e-2) | 2.10e-2 (2.81e-2) | 2.82e-2 (3.40e-2) |
+| axis v_p peak [m/s] at y | 0.475 at 20 mm | 0.494 at 10 mm | 0.544 at 30 mm |
+| ΔP PSD peak [Hz] | 13.3 | 11.7 | 11.7 |
+
+- The closed apex is a c02 result, not a sweep result. c02 is the only
+  case whose map matches C26's floors, and it is the case the source and
+  apex were tuned on. c01 and c03 are *worse* than on the open apex (CC
+  0.36 vs 0.46 and 0.63 vs 0.69).
+- c01 is too slow everywhere (0.77× the model in every fifth) with a
+  fountain that stops at a quarter of the map (model 0.37, exp 0.60). c03
+  is the opposite in shape: 1.2–1.3× too fast in the lower two fifths and
+  0.6× in the upper two, i.e. the jet carries C26's momentum at the bottom
+  but the fountain collapses (reach 0.65 vs 0.99). Both are the
+  fountain-height miss of the control, in the direction the flow sets.
+- Wall velocities are 2.9–6.3× C26's model and 8–22× the experiment; the
+  closed apex changed them by −20 to +30 % against the open apex, no
+  trend. The wall gap is untouched, as predicted in the Decision.
+
+**Coating stages at 12 slpm (c04 buffer 612 µm, c05 IPyC 692 µm, c06 SiC
+762 µm, c07 OPyC 842 µm), 60 g, 2.4–3.0 s.** No C26 data; reference only.
+
+| | c02 bare | c04 | c05 | c06 | c07 |
+|---|---|---|---|---|---|
+| parcels (W = 10) | 27765 | 19977 | 14542 | 10349 | 8072 |
+| spout (watcher) | no* | no* | yes | yes | no |
+| fountain frames / median parcels / share of bed | 100 % / 640 / 2.3 % | 27 % / 17 / 0.09 % | 100 % / 106 / 0.7 % | 100 % / 858 / 8.3 % | 0 / 0 / 0 |
+| axis v_p at 10 / 20 / 30 mm [m/s] | 0.49 / 0.43 / 0.49 | 0.17 / 0.15 / 0.15 | 0.13 / 0.09 / 0.05 | 0.04 / 0.03 / 0.03 | 0.16 / 0.02 / 0.00 |
+| mid-bed centreline v_g [m/s] | 4.16 | 1.65 | 0.91 | 0.87 | 0.78 |
+| PIV map mean [m/s] | 0.178 | 0.046 | 0.028 | 0.040 | (empty view) |
+| wall PIV / step-3 D [m/s] | 1.46e-2 / 2.10e-2 | 1.56e-2 / 1.46e-2 | 4.9e-3 / 8.7e-3 | 1.57e-2 / 1.35e-2 | ~0 / 1.3e-3 |
+| ΔP mean ± sd [Pa] | 4335 ± 568 | 3943 ± 251 | 4122 ± 499 | 4312 ± 547 | 4153 ± 488 |
+| ΔP PSD peak [Hz] | 11.7 | 15.0 | 3.3 | 25.0 | 11.7 |
+| open apex, same source: axis v_p peak / fountain frames | 0.67 / 100 % | 0.59 / 16 % | 0.29 / 100 % | 0.04 / 100 % | – |
+
+\* the watcher's "NO SPOUT" on c02 and c04 is the mass-only inlet
+convention above; c02 spouts (fountain in every frame, axis 0.49 m/s).
+
+- At 12 slpm the coated stages do not spout on this layout. c04 has a
+  weak, intermittent spout (fountain in 27 % of frames, axis 0.17 m/s);
+  c05 and c06 keep a thin stream of parcels above the bed (the watcher's
+  "spout yes") at 0.03–0.13 m/s, a bubbling or channelling bed rather than
+  a spout; c07 does not move the bed at all, as in every earlier layout.
+  The mid-bed gas velocity falls from 4.2 m/s (bare) to 0.8–1.7 m/s: the
+  jet is absorbed within the first few cells of the coarser, lighter bed.
+- Against the open apex, c04's spout is much weaker (axis peak 0.59 →
+  0.17 m/s), c05's weaker (0.29 → 0.13), c06 unchanged. The closed apex
+  does not help the coarse beds; it may hurt them. The 2026-10-19 plan
+  expected c05–c07 to need more than 12 slpm (the c07_q18 smoke); that
+  stands.
+- c06's 8.3 % fountain share with a 0.04 m/s axis is parcels sitting
+  above a heaving surface, not a fountain; its 25 Hz ΔP peak and c05's
+  3.3 Hz are bed-heave modes, not spout pulsation.
+
+**Charge at 12 slpm, bare YSZ (c08 40 g, c02 60 g, c09 80 g).**
+
+| | c08, 40 g | c02, 60 g | c09, 80 g |
+|---|---|---|---|
+| parcels / static bed [mm] | 18023 / 30.2 | 27765 / 34.8 | 34612 / 38.6 |
+| fountain median parcels / share | 735 / 4.1 % | 640 / 2.3 % | 414 / 1.2 % |
+| fountain reach (map) | 0.74 | 0.69 | 0.42 |
+| axis v_p at 10 / 20 / 30 mm [m/s] | 0.50 / 0.45 / 0.60 | 0.49 / 0.43 / 0.49 | 0.42 / 0.43 / 0.45 |
+| mid-bed centreline v_g [m/s] | 4.20 | 4.16 | 3.48 |
+| PIV map mean [m/s] | 0.180 | 0.178 | 0.144 |
+| wall PIV / step-3 D [m/s] | 1.63e-2 / 2.77e-2 | 1.46e-2 / 2.10e-2 | 1.37e-2 / 1.84e-2 |
+| ΔP mean ± sd [Pa] | 4358 ± 900 | 4335 ± 568 | 4370 ± 383 |
+| ΔP PSD peak [Hz] | 11.7 | 11.7 | 13.3 |
+| open apex, same source: axis peak / D | 0.66 / 3.24e-2 | 0.67 / 2.81e-2 | (c09 not run) |
+
+- Charge moves the fountain and the wall layer the way a spouted bed
+  should: more bed, smaller fountain (share 4.1 → 2.3 → 1.2 %), lower
+  reach, slower wall layer (D 2.8 → 2.1 → 1.8e-2 m/s). The mean ΔP does
+  not change with charge (4335–4370 Pa) while its fluctuation halves (sd
+  900 → 383 Pa): the mean is set by the jet, not the bed weight, which is
+  the probe artifact below.
+- c08 lost 0.57 % of its parcels, the most of any 23.2 run so far; the
+  lighter bed exposes more of the cone wall node where 23.2 deletes
+  parcels.
+
+**ΔP/(W/A) is 8–14.6 on every closed-apex run against 2.0–3.0 on the
+open apex.** This is the probe, not the physics: the inlet monitor
+(`monitor 1`, P_inlet) sits in the tip row y ∈ [−2.1, 0] mm, which on the
+closed apex *is* the point-source cell, so it reads the pressure that
+accelerates 45 m/s of argon out of a 1.9e-9 m³ cell. On the open apex the
+same monitor sat one row above the source. The control's 10.5 was already
+in its row. The closed-apex ΔP is therefore not comparable with the
+open-apex runs or with C26's W/A bound (acceptance `step3` ΔP ≤ 3.0 W/A,
+where applied); the ΔP trends within this sweep (flow, charge) are still
+usable. Fix for the next decks: move monitor 1 to the row above the
+source (y ∈ [0, 2.1] mm) so the two layouts read the same quantity; not
+done here.
+
+**Standing.** The control configuration reproduces C26's c02 map and
+nothing else: c01 and c03 miss the fountain height in opposite directions,
+the coated stages do not spout at 12 slpm, and the wall layer is 3–6× C26's
+model everywhere. The fountain height is the first item for the C26 cases
+(the one-cell momentum source resolved it on c02 at the cost of a 30 %
+overspeed and a grid lean); the coated stages need the flow sweep the
+2026-10-19 plan already called for.
+
+
+## Sweep comparison quantities: circulation, spouting margin, bed dP (2026-10-27)
+
+The sweep summary scored c04–c09 with the C26 PIV metric set, which was
+built for c01–c03 against the experiment. For the one-factor-at-a-time
+comparison with c02 (no experiment for c04–c09) three quantities were added
+to `notes/c26_sweep_summary.py` and `results/c26_sweep_summary_apex_v232.csv`
+(same window, t = 2.4–3.0 s; `tests/test_c26_sweep_summary.py`):
+
+1. **Solids circulation.** Parcels transiting the plane y = H_static/2 by
+   `Particle_ID` between consecutive 2 ms PIV frames, with a dx/2
+   hysteresis band so a parcel jiggling about the plane is not counted.
+   Up-transits × parcel mass / window = solids mass rate up through the
+   plane (the spout in a spouting bed, bubbles otherwise); bed mass / rate
+   = turnover time; distinct parcels with ≥ 1 up-transit / parcels seen =
+   fraction of the bed that cycled in the 0.6 s window.
+2. **Spouting margin.** U_sup / U_ms with Mathur–Gishler (1955) on the
+   column cross-section (D_c 50.4 mm, D_i 2.38 mm, the case's own d_p,
+   ρ_p, H_static), plus U_sup / U_mf (Wen–Yu) and Ar. Mathur–Gishler is a
+   cylindrical-column correlation and D_c/D_i = 21 here, so the absolute
+   value is not calibrated to this cone; the ranking is what is used.
+3. **Bed-only ΔP.** P_G of the annulus cells (r > 2 dx) in rows y = 4.2–8.4
+   mm minus the slab at the static bed top, from the 13 BACKGROUND frames
+   in the window, over W/A (top-of-bed area, the summary's convention).
+   The two bottom rows are excluded: the source cell reads the source's
+   acceleration pressure (the inlet monitor's ΔP, 3300–5600 Pa) and the
+   row above it is inside the 45 m/s jet, 500–600 Pa *below* the annulus.
+   From row 2 up jet and annulus agree within a few Pa. 13 frames at 50 ms
+   alias the ~12 Hz pulsation, so the spouting cases carry a standard
+   error of ±110–220 Pa (±0.3–0.5 in the ratio); the coated beds ±4–20 Pa.
+
+| | c01 10 slpm | **c02** | c03 14 slpm | c04 buffer | c05 IPyC | c06 SiC | c07 OPyC | c08 40 g | c09 80 g |
+|---|---|---|---|---|---|---|---|---|---|
+| U_sup / U_ms (M–G) | 0.56 | 0.68 | 0.79 | 0.60 | 0.54 | 0.48 | 0.44 | 0.73 | 0.64 |
+| U_sup / U_mf (Wen–Yu) | 0.35 | 0.42 | 0.49 | 0.47 | 0.41 | 0.33 | 0.30 | 0.42 | 0.42 |
+| Ar [10³] | 12.6 | 12.6 | 12.6 | 17.4 | 23.3 | 34.0 | 42.9 | 12.6 | 12.6 |
+| solids up through H/2 [g/s] | 19.6 | 26.5 | 32.3 | 14.2 | 5.7 | 3.7 | 0 | 24.8 | 27.9 |
+| up / down transits | 5339 / 5335 | 7221 / 6707 | 8789 / 8352 | 2805 / 2325 | 840 / 611 | 372 / 299 | 0 / 0 | 6750 / 6478 | 7570 / 6190 |
+| turnover time [s] | 3.1 | 2.3 | 1.9 | 4.3 | 10.4 | 16.6 | ∞ | 1.6 | 2.7 |
+| bed fraction cycled in 0.6 s | 0.18 | 0.21 | 0.25 | 0.14 | 0.06 | 0.03 | 0 | 0.27 | 0.21 |
+| bed ΔP ± s.e. [Pa] | 829 ± 114 | 804 ± 169 | 772 ± 216 | 486 ± 21 | 415 ± 4 | 440 ± 9 | 513 ± 6 | 582 ± 194 | 885 ± 134 |
+| W/A [Pa] | 413 | 413 | 413 | 295 | 295 | 295 | 295 | 360 | 454 |
+| bed ΔP / (W/A) | 2.0 | 1.9 | 1.9 | 1.6 | 1.4 | 1.5 | 1.7 | 1.6 | 1.9 |
+| inlet-monitor ΔP [Pa] (probe) | 3296 | 4335 | 5585 | 3943 | 4122 | 4312 | 4153 | 4358 | 4370 |
+
+- **Circulation is the cleanest discriminator.** c02 turns its bed over in
+  2.3 s (26 g/s up through mid-bed, a fifth of the bed in the window).
+  The coated stages fall to 14 / 5.7 / 3.7 / 0 g/s (turnover 4.3 / 10 / 17
+  s / none): c04's intermittent spout still moves half of c02's solids,
+  c05 and c06 move a fifth to a seventh of it by bubbling, c07 nothing.
+  Across the flow block the rate is linear in flow (19.6 / 26.5 / 32.3 g/s
+  at 10 / 12 / 14 slpm). Across the charge block the rate is flat (24.8 /
+  26.5 / 27.9 g/s), so the turnover time scales with bed mass (1.6 / 2.3 /
+  2.7 s): the jet sets the solids flux, the charge sets how long a
+  particle waits in the annulus. Down/up closure is 0.93–1.00 for the
+  bare beds and 0.73–0.83 for c04–c06 and c09, which is the window
+  (parcels in the fountain at the window edges) plus, for c04–c06, a
+  surface that is still rising ("bed expansion", stationarity not yet
+  checked).
+- **The spouting margin ranks the sweep monotonically.** In Mathur–Gishler
+  units every spouting case sits at U/U_ms ≥ 0.56 (c01, the weakest) and
+  every non-spouting coated bed at ≤ 0.54 (c05), with c04 at 0.60 the
+  intermittent case between. Taking 0.56–0.68 (c01 weak, c02 full) as the
+  empirical onset band on this cone, the flow that would bring each stage
+  to c02's margin is 12 × 0.68 / (U/U_ms): c04 13.6, c05 15, c06 17, c07
+  18.4 slpm, and to c01's 0.56: 11.2 / 12.4 / 14 / 15.2 slpm. The 2026-10-19
+  plan's c07_q18 smoke sits at the top of that range. These are
+  predictions to pre-register for the coated-stage flow sweep, not results.
+- **Bed ΔP now tracks the bed, which the inlet monitor did not.** Across the
+  charge block the bed ΔP rises 582 / 804 / 885 Pa at 40 / 60 / 80 g while
+  the monitor read a flat 4335–4370 Pa; the coated beds (same 60 g, taller
+  and lighter per area) read 415–513 Pa against W/A 295 Pa. The ratio is
+  1.4–2.0 everywhere and does not separate spouting from packed beds: in a
+  30° cone the annulus-bottom pressure supports more than W over the
+  top-of-bed area, so the W/A convention is not the discriminator it is in
+  a cylindrical column. What does separate them is the fluctuation: the
+  spouting beds swing ±400–780 Pa frame to frame (c08 reads ~0 Pa above 10
+  mm in one frame and the full weight in another, the 11.7 Hz pulsation),
+  the coated beds ±13–75 Pa.
+
+Figures `results/fig_c26_sweep_{flow,diameter,charge}_apex_v232.png` carry
+the three new rows of panels (bed ΔP/(W/A), U/U_ms, circulation, turnover,
+bed fraction cycled); caption states the window.
+
 ## Open items (not done here)
 
 - momentum24 runs (2026-10-22): c05 and c07 done, the other seven running
@@ -3389,6 +3612,13 @@ no PIVlab settings, and its maps are of the wall, not the spout.
   (2026-10-26, "Sweep source choice", Decision): the 2×2 mass-only tip
   source on the closed-apex 23.2 layout; `geometry.yaml` `ps_momentum:
   false` stands. The momentum24 pulls remain for the record only.
+- Control-configuration sweep (2026-10-27): c01 and c03 maps do not match
+  C26 (fountain too short; c03 lower map 1.2–1.3× too fast); c04–c07 do
+  not spout at 12 slpm on the closed apex; c08 lost 0.57 % of its parcels
+  (23.2 cut-cell deletion); the inlet pressure monitor sits in the source
+  cell on the closed apex, so ΔP/(W/A) (8–14.6) is not comparable with
+  the open-apex runs; move it one row up in the next decks. See
+  "Control-configuration sweep results".
 - Wall-layer restraint (ranked cause 2): wall friction, rolling resistance
   and wall roughness are untested. Pre-register a criterion on D before any
   such run. 2026-10-24: the spout-closure cycle points here first; see
