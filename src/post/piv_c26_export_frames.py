@@ -42,6 +42,7 @@ All values SI; image quantities in pixels [px].
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 from pathlib import Path
@@ -104,10 +105,14 @@ def view_record(view, step, wins, in_roi=None, box=None):
     return rec
 
 
-def export_run(run, out, stride=1, max_frames=None, write_layout=True, params=None):
+def export_run(run, out, stride=1, max_frames=None, write_layout=True, params=None, pixel_m=None,
+               name_suffix=""):
     p = params or P.load_params()
+    if pixel_m is not None:                      # camera resolution check (notes/c26_pivlab_rerun.md)
+        p = copy.deepcopy(p)
+        p["camera"]["pixel_m"] = float(pixel_m)
     run = Path(run)
-    name = run.parent.name if run.name == "aws_out" else run.name
+    name = (run.parent.name if run.name == "aws_out" else run.name) + name_suffix
     out_run = Path(out) / name
     for v in VIEWS:
         (out_run / v).mkdir(parents=True, exist_ok=True)
@@ -208,11 +213,13 @@ def main(argv=None):
     ap.add_argument("--max-frames", type=int, default=None)
     ap.add_argument("--no-layout", action="store_true", help="skip the PIVlab-layout ASCII of the engine")
     ap.add_argument("--shift-check", action="store_true", help="also write the known-shift pair")
+    ap.add_argument("--pixel-m", type=float, default=None, help="camera pixel size [m] (default params camera.pixel_m)")
+    ap.add_argument("--name-suffix", default="", help="appended to the export dir name, e.g. _px50")
     a = ap.parse_args(argv)
     if a.shift_check:
         export_shift_check(a.out_dir)
     if a.run is not None:
-        export_run(a.run, a.out_dir, a.stride, a.max_frames, not a.no_layout)
+        export_run(a.run, a.out_dir, a.stride, a.max_frames, not a.no_layout, pixel_m=a.pixel_m, name_suffix=a.name_suffix)
     elif not a.shift_check:
         ap.error("give a run dir and/or --shift-check")
     return 0

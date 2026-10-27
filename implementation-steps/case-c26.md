@@ -207,6 +207,13 @@ Design, parameter sources and recipe deviations: `notes/c26_conry2026_case.md`.
      same failure); the headline wall velocity is the parcels in the box,
      as C26 reports its model (2.09 / 1.53 / 3.04e-2 m/s), which PIVlab on
      the shaded frames reproduces within 2 %.
+     Checks of why C26's model map is speckled and ours smooth (notes
+     "Why is our map smooth"): their vector spacing measured on Fig. 4d is
+     2.0 parcel diameters, same as ours; a finer-grid run (0.05 mm/px,
+     64/32/16) stays smooth (CLAHE off: CC 0.870 / SSI 0.874 / MSE 0.0026,
+     equal to C26's own model); only a mean over original vectors ("skip")
+     reproduces the speckle, but it leaves blanks their maps do not have.
+     Headline convention unchanged (per-pair interpolation, then mean).
 5. **Coating-stage / charge sweep c04–c09** (one factor at a time around c02:
    YSZ, 60 g, 12 slpm, W = 10). It replaces C26's wall-friction,
    statistical-weight and steel cases.

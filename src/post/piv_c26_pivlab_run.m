@@ -58,6 +58,9 @@ arguments
     opts.binarize_dilate_px (1,1) double = 1   % dilation radius [px] (CES25 gives none)
     opts.image_class (1,1) string = "uint16"  % 'uint8': 8-bit frames, as a screenshot / video frame (C26 Fig. 4d)
     opts.clahe (1,1) double = 1               % PIVlab default on; 0 only for the diagnostic A/B
+    opts.passes (1,1) double = 2              % PIVlab default 2 (64 -> 32 px); 3 adds int3
+    opts.int3 (1,1) double = 32               % pass 3 window [px] (used when passes >= 3)
+    opts.int4 (1,1) double = 32               % pass 4 window [px] (used when passes >= 4)
     opts.max_pairs (1,1) double = Inf
     opts.pivlab_root (1,1) string = fullfile(userpath, 'PIVlab')
     opts.quiet (1,1) logical = false
@@ -88,8 +91,8 @@ s.pre.roirect = [];                             % no ROI
 % PIV
 s.piv.algorithm = 'FFT window deformation (piv_FFTmulti)';
 s.piv.interrogationarea = 64; s.piv.step = 32;  % pass 1
-s.piv.passes = 2; s.piv.int2 = 32;              % pass 2 (step = int2/2 inside piv_FFTmulti)
-s.piv.int3 = 32; s.piv.int4 = 32;               % unused (passes 3-4 off)
+s.piv.passes = opts.passes; s.piv.int2 = 32;    % pass 2 (step = int2/2 inside piv_FFTmulti)
+s.piv.int3 = opts.int3; s.piv.int4 = opts.int4;  % passes 3-4 (default off)
 s.piv.subpixfinder = 1;                         % Gauss 2x3-point
 s.piv.corr_quality = 'standard';                % CorrQuality 1 ->
 s.piv.imdeform = '*linear'; s.piv.repeat = 0; s.piv.do_linear_correlation = 0;

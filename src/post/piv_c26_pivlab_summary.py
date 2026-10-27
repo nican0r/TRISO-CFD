@@ -33,7 +33,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 EXPORT_ROOT = REPO / "results" / "pivlab_export"
 VARIANTS = ("pivlab_default", "pivlab_noclahe", "pivlab_ces25", "pivlab_ces25_noclahe",
-            "pivlab_c26img", "pivlab_c26img_noclahe")
+            "pivlab_c26img", "pivlab_c26img_noclahe", "pivlab_c26res", "pivlab_c26res_noclahe")
 VARIANT_LABEL = {
     "pivlab_default": "PIVlab defaults (CLAHE on)",
     "pivlab_noclahe": "PIVlab defaults, CLAHE off",
@@ -41,6 +41,8 @@ VARIANT_LABEL = {
     "pivlab_ces25_noclahe": "CES25 binarization, CLAHE off",
     "pivlab_c26img": "C26-style frames (binary disks, 8-bit)\n+ PIVlab defaults",
     "pivlab_c26img_noclahe": "C26-style frames, CLAHE off",
+    "pivlab_c26res": "C26-style frames at 0.05 mm/px,\n64/32/16 px + PIVlab defaults",
+    "pivlab_c26res_noclahe": "C26-style frames at 0.05 mm/px,\n64/32/16 px, CLAHE off",
 }
 METRICS = ("CC", "SSI", "MSE_m2_s2")
 
@@ -87,6 +89,14 @@ def collect(export_root, runs, variants=VARIANTS):
                 row[f"{m}_c26model_same_pipeline"] = s["metrics_c26_model_vs_exp"][m]
                 row[f"{m}_table3"] = table3.get(str(s["case"]), {}).get(m, np.nan)
                 row[f"{m}_vs_c26model"] = s["metrics_vs_c26_model"][m]
+            # time-mean conventions (score.json time_mean_conventions): how the
+            # empty windows enter the 300-pair mean; 'interp' is the headline
+            for conv in ("skip", "pivlab_mean", "skip_fill"):
+                c = (s.get("time_mean_conventions") or {}).get(conv)
+                for m in METRICS:
+                    row[f"{m}_{conv}"] = c["metrics_vs_exp"][m] if c else np.nan
+                    row[f"{m}_{conv}_vs_c26model"] = c["metrics_vs_c26_model"][m] if c else np.nan
+                row[f"nan_frac_{conv}"] = c["nan_frac_on_grid"] if c else np.nan
             row["wall_piv_m_s"] = s["wall_piv_m_s"]
             row["wall_piv_sd_m_s"] = s["wall_piv_sd_m_s"]
             row["wall_vectors_in_box"] = s["wall_vectors_in_box"]
@@ -105,6 +115,10 @@ def collect(export_root, runs, variants=VARIANTS):
             mf = d / v / "map_fig4grid.csv"
             if mf.exists():
                 maps[(run, v)] = np.loadtxt(mf, delimiter=",")
+            for conv in ("skip", "pivlab_mean", "skip_fill"):
+                mf = d / v / f"map_fig4grid_{conv}.csv"
+                if mf.exists():
+                    maps[(run, v, conv)] = np.loadtxt(mf, delimiter=",")
     return rows, maps
 
 
@@ -170,6 +184,54 @@ def plot_maps(rows, maps, path, variants=("pivlab_c26img", "pivlab_c26img_noclah
     plt.close(fig)
 
 
+def plot_timemean(rows, maps, path, variant="pivlab_c26img"):
+    """C26 model map next to our map under each time-mean convention (how the
+    empty windows enter the 300-pair mean), for one PIVlab variant."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    p = yaml.safe_load((REPO / "params" / "piv_c26.yaml").read_text())["fig4"]
+    vmin, vmax = p["v_min_m_s"], p["v_max_m_s"]
+    runs = sorted({(r["run"], r["flow_slpm"]) for r in rows if r["variant"] == variant}, key=lambda t: t[1])
+    if not runs:
+        return
+    by = {(r["run"], r["variant"]): r for r in rows}
+    cols = [("C26 model (Fig. 4b, digitized)", None),
+            ("interp: per-pair interpolation, then mean\n(headline)", "interp"),
+            ("skip: original vectors only, never-valid = 0", "skip"),
+            ("skip + inpaint of never-valid points", "skip_fill"),
+            ("PIVlab temporal mean rule:\n> 75 % interpolated -> NaN (= 0)", "pivlab_mean")]
+    fig, axes = plt.subplots(len(runs), len(cols), figsize=(3.2 * len(cols), 3.3 * len(runs)), squeeze=False,
+                             constrained_layout=True)
+    for i, (run, flow) in enumerate(runs):
+        r = by[(run, variant)]
+        for j, (title, conv) in enumerate(cols):
+            ax = axes[i, j]
+            if conv is None:
+                a = digitized("model", flow)
+                sub = (f"\nvs exp: CC {r['CC_c26model_same_pipeline']:.2f} SSI {r['SSI_c26model_same_pipeline']:.2f}"
+                       f" MSE {r['MSE_m2_s2_c26model_same_pipeline']:.4f}")
+            elif conv == "interp":
+                a = maps.get((run, variant))
+                sub = f"\nvs exp: CC {r['CC']:.2f} SSI {r['SSI']:.2f} MSE {r['MSE_m2_s2']:.4f}"
+            else:
+                a = maps.get((run, variant, conv))
+                sub = (f"\nvs exp: CC {r[f'CC_{conv}']:.2f} SSI {r[f'SSI_{conv}']:.2f} MSE {r[f'MSE_m2_s2_{conv}']:.4f}"
+                       f"; NaN {100 * r[f'nan_frac_{conv}']:.0f} %")
+            if a is None:
+                ax.set_axis_off()
+                continue
+            im = ax.imshow(a, cmap="jet", vmin=vmin, vmax=vmax, aspect="auto", extent=(-25.2, 25.2, 0, 39.8))
+            ax.set_title((f"{run}, {flow:g} slpm: " if j == 0 else "") + title + sub, fontsize=7)
+            ax.tick_params(labelsize=6)
+    fig.colorbar(im, ax=axes.ravel().tolist(), shrink=0.6, label="|time-mean velocity| [m/s]")
+    r0 = rows[0]
+    fig.text(0.5, -0.03, f"Time-mean conventions for the {VARIANT_LABEL[variant].replace(chr(10), ' ')} run, "
+             f"t = {r0['window_s']} s; see notes/c26_pivlab_rerun.md.", ha="center", fontsize=7)
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_wall(rows, path):
     import matplotlib
     matplotlib.use("Agg")
@@ -177,6 +239,7 @@ def plot_wall(rows, path):
     runs = sorted({(r["run"], r["flow_slpm"]) for r in rows}, key=lambda t: t[1])
     variants = [v for v in VARIANTS if any(r["variant"] == v for r in rows)]
     by = {(r["run"], r["variant"]): r for r in rows}
+    runs = [rf for rf in runs if all((rf[0], v) in by for v in variants[:1])]
     fig, ax = plt.subplots(figsize=(8, 5.5))
     x = np.arange(len(runs))
     w = 0.8 / (len(variants) + 4)
@@ -209,12 +272,16 @@ def main(argv=None):
     ap.add_argument("--runs", nargs="+", default=["c01_apex_v232", "c02_apex_v232", "c03_apex_v232"])
     ap.add_argument("--out-dir", type=Path, default=REPO / "results")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--map-variants", nargs="+", default=["pivlab_c26img", "pivlab_c26img_noclahe", "pivlab_default", "pivlab_noclahe"],
+                    help="PIVlab variants drawn as columns of the maps figure")
+    ap.add_argument("--timemean-variant", default="pivlab_c26img", help="variant drawn in the time-mean figure")
     a = ap.parse_args(argv)
     rows, maps = collect(a.export_root, a.runs)
     csv_path = a.out_dir / f"c26_pivlab_rerun{a.tag}.csv"
     write_csv(rows, csv_path)
-    plot_maps(rows, maps, a.out_dir / f"fig_c26_pivlab_maps{a.tag}.png")
+    plot_maps(rows, maps, a.out_dir / f"fig_c26_pivlab_maps{a.tag}.png", variants=tuple(a.map_variants))
     plot_wall(rows, a.out_dir / f"fig_c26_pivlab_wall{a.tag}.png")
+    plot_timemean(rows, maps, a.out_dir / f"fig_c26_pivlab_timemean{a.tag}.png", variant=a.timemean_variant)
     for r in rows:
         print(f"{r['run']:14s} {r['variant']:22s} map {r['map_mean_m_s']:.3f} m/s | CC {r['CC']:.3f} SSI {r['SSI']:.3f} "
               f"MSE {r['MSE_m2_s2']:.4f} | Table 3 {r['CC_table3']:.3f} {r['SSI_table3']:.3f} {r['MSE_m2_s2_table3']:.4f} "

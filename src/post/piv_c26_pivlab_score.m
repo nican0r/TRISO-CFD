@@ -46,7 +46,7 @@ score = struct('run', meta.run, 'case', meta.case, 'flow_slpm', meta.flow_slpm, 
     'pixel_m', px, 'frame_dt_s', dt, 'window_t0_s', meta.frame_times_s(1), 'window_t1_s', meta.frame_times_s(end));
 
 %% ---- spout map -----------------------------------------------------------------
-S = load(fullfile(export_dir, variant, 'spout', 'fields.mat'), 'x', 'y', 'u', 'v', 'stats');
+S = load(fullfile(export_dir, variant, 'spout', 'fields.mat'), 'x', 'y', 'u', 'v', 'u_raw', 'v_raw', 'tv', 'stats');
 score.n_pairs_spout = size(S.u, 3);
 Um = mean(S.u, 3, 'omitnan') * cal;         % time mean of the vectors [m/s], x right
 Vm = mean(S.v, 3, 'omitnan') * cal;         % y down (C26 downward positive)
@@ -80,6 +80,47 @@ if abs(flow_panel - meta.flow_slpm) > 1e-9
 end
 writematrix(map, fullfile(export_dir, variant, 'map_fig4grid.csv'));
 
+% ---- time-mean conventions (how empty windows enter the 300-pair mean) ----
+%   interp      : mean of the validated + interpolated fields (above; every
+%                 window carries a vector in every pair).
+%   pivlab_mean : PIVlab's own "temporal mean" (+plot/temporal_operation_Callback):
+%                 mean of the validated + interpolated fields, omitnan, but a
+%                 point whose vector was interpolated / rejected (typevector 2)
+%                 in more than 75 % of the pairs is set to NaN ("less than 25 %
+%                 valid measurements"); NaN -> 0 for the scoring.
+%   skip        : mean over the pairs in which the window had an original
+%                 vector (typevector 1 or 3; raw PIV output, no interpolation),
+%                 omitnan; what PIVlab's temporal mean gives when the
+%                 validation was never applied (rows 3-5 of its results, raw
+%                 fields with NaN); NaN -> 0 for the scoring.
+valid = (S.tv == 1) | (S.tv == 3);
+frac_valid = mean(valid, 3);
+conv = struct();
+% pivlab_mean
+Um2 = Um; Vm2 = Vm; blank = frac_valid < 0.25;
+Um2(blank) = NaN; Vm2(blank) = NaN;
+conv.pivlab_mean = score_convention(Um2, Vm2, XG, YG, XI, YI, exp_map, mod_map);
+conv.pivlab_mean.blank_frac = mean(blank(:));
+% skip
+Ur = S.u_raw; Vr = S.v_raw; Ur(~valid) = NaN; Vr(~valid) = NaN;
+Um3 = mean(Ur, 3, 'omitnan') * cal; Vm3 = mean(Vr, 3, 'omitnan') * cal;
+conv.skip = score_convention(Um3, Vm3, XG, YG, XI, YI, exp_map, mod_map);
+conv.skip.never_valid_frac = mean(frac_valid(:) == 0);
+conv.skip.median_valid_pairs = median(sum(valid, 3), 'all');
+%   skip_fill   : the skip mean with its never-valid points filled from the
+%                 neighbours (misc.inpaint_nans 4, PIVlab's interpolation),
+%                 i.e. a dense map built from original vectors only.
+Uf = misc.inpaint_nans(Um3, 4); Vf = misc.inpaint_nans(Vm3, 4);
+conv.skip_fill = score_convention(Uf, Vf, XG, YG, XI, YI, exp_map, mod_map);
+conv.interp = score_convention(Um, Vm, XG, YG, XI, YI, exp_map, mod_map);
+score.time_mean_conventions = conv;
+for c = {'pivlab_mean', 'skip', 'skip_fill'}
+    writematrix(conv.(c{1}).map, fullfile(export_dir, variant, ['map_fig4grid_' c{1} '.csv']));
+    conv.(c{1}) = rmfield(conv.(c{1}), 'map');
+end
+conv.interp = rmfield(conv.interp, 'map');
+score.time_mean_conventions = conv;
+
 %% ---- wall velocity ---------------------------------------------------------------
 W = load(fullfile(export_dir, variant, 'wall', 'fields.mat'), 'x', 'y', 'v', 'stats');
 box = meta.views.wall.pivlab_box_px;
@@ -112,6 +153,22 @@ fprintf('%s %s: map mean %.4f m/s; vs exp CC %.3f SSI %.3f MSE %.4f (C26 model v
     meta.run, variant, score.map_mean_m_s, score.metrics_vs_exp.CC, score.metrics_vs_exp.SSI, score.metrics_vs_exp.MSE_m2_s2, ...
     score.metrics_c26_model_vs_exp.CC, score.metrics_c26_model_vs_exp.SSI, score.metrics_c26_model_vs_exp.MSE_m2_s2, ...
     score.wall_piv_m_s, score.wall_piv_sd_m_s, nnz(BW), n_pairs_w);
+for c = {'interp', 'pivlab_mean', 'skip', 'skip_fill'}
+    k = conv.(c{1});
+    fprintf('    time mean %-12s: map mean %.4f, NaN on grid %.2f; vs exp CC %.3f SSI %.3f MSE %.4f; vs C26 model CC %.3f SSI %.3f MSE %.4f\n', ...
+        c{1}, k.map_mean_m_s, k.nan_frac_on_grid, k.metrics_vs_exp.CC, k.metrics_vs_exp.SSI, k.metrics_vs_exp.MSE_m2_s2, ...
+        k.metrics_vs_c26_model.CC, k.metrics_vs_c26_model.SSI, k.metrics_vs_c26_model.MSE_m2_s2);
+end
+end
+
+function c = score_convention(Um, Vm, XG, YG, XI, YI, exp_map, mod_map)
+% |mean vector| of one time-mean convention on the Fig. 4 grid and its metrics
+mag = hypot(Um, Vm);
+map = interp2(XG, YG, mag, XI, YI);             % NaN propagates through interp2
+nan_frac = mean(isnan(map(:)));
+map(isnan(map)) = 0;
+c = struct('map', map, 'map_mean_m_s', mean(map(:)), 'nan_frac_on_grid', nan_frac, ...
+    'metrics_vs_exp', metrics(map, exp_map), 'metrics_vs_c26_model', metrics(map, mod_map));
 end
 
 function m = metrics(a, ref)

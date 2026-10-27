@@ -221,3 +221,75 @@ Reading:
 - Figure `results/fig_c26_pivlab_maps.png` now shows, per flow: experiment,
   C26 model, C26-style frames + defaults, C26-style frames CLAHE off, shaded
   frames + defaults (artefact), shaded frames CLAHE off.
+
+## Why is our map smooth where C26's model map is speckled? (2026-10-27, later)
+
+Two candidate causes were tested: a finer PIV grid in C26, and a different
+time-mean convention.  Figures: `results/fig_c26_pivlab_maps_px50.png`,
+`results/fig_c26_pivlab_timemean.png`, `fig_c26_pivlab_timemean_px50.png`;
+numbers: `results/c26_pivlab_rerun.csv` (columns `*_skip`, `*_pivlab_mean`,
+`*_skip_fill`, `nan_frac_*`) and `results/c26_pivlab_rerun_px50.csv`.
+
+**Their grid is not finer than ours.**  Measured on the embedded Fig. 4d
+(p.6): isolated parcel disks are 7.0 px across (median of 296 blobs) and the
+vector grid repeats every 14 px in x and y (autocorrelation of the arrow
+overlay), i.e. a vector spacing of **2.0 parcel diameters ≈ 1.7 mm**.  Ours
+is 16 px at 0.1 mm/px with 9 px parcels: 1.8 parcel diameters, 1.6 mm.  So
+C26 ran PIVlab's default 64/32 passes on images with ~7-8 px parcels, close
+to our camera model.  (The 0.35 mm spacing read earlier from Fig. 1c is the
+wall-view session, a different zoom.)
+
+**Finer-grid check anyway (c02 only).**  Frames exported at 0.05 mm/px
+(`--pixel-m 5e-5 --name-suffix _px50`, parcels 18 px), C26-style binary
+8-bit, PIVlab with a third pass 64/32/16 px = 0.4 mm vector spacing
+(variants `pivlab_c26res`, `pivlab_c26res_noclahe`):
+
+| c02, 12 slpm | CC | SSI | MSE | map mean [m/s] | NaN before interp. |
+|---|---|---|---|---|---|
+| 0.05 mm/px, 64/32/16, defaults (CLAHE on) | 0.349 | 0.723 | 0.0108 | 0.177 | 14 % |
+| 0.05 mm/px, 64/32/16, CLAHE off | 0.870 | 0.874 | 0.0026 | 0.158 | 89 % |
+| 0.1 mm/px, 64/32, defaults (headline) | 0.778 | 0.825 | 0.0048 | 0.144 | 75 % |
+| 0.1 mm/px, 64/32, CLAHE off | 0.856 | 0.871 | 0.0025 | 0.167 | 76 % |
+| C26 model (Fig. 4b) | 0.872 | 0.740 | 0.0022 | | |
+
+- The finer grid does **not** add speckle: the CLAHE-off map stays smooth and
+  scores the same as C26's own model (0.870 / 0.874 / 0.0026 vs 0.872 /
+  0.740 / 0.0022).  Resolution is not the cause.
+- With CLAHE on, the 16 px final pass brings the constant-background
+  artefact back on the 8-bit frames (NaN before interpolation drops from
+  75 % to 14 %, i.e. most empty windows get a spurious vector again): the
+  NaN route the 8-bit frames take at 64/32 is not robust to the window size.
+- The wall PIV on these frames is exactly 0 (the box is one white field at
+  this resolution); the parcel wall velocity is unchanged (1.53e-2 m/s).
+
+**Time-mean convention (all runs, C26-style frames + defaults).**  Four ways
+the empty windows can enter the 300-pair mean, from the same PIVlab fields
+(`piv_c26_pivlab_score.m` `time_mean_conventions`):
+
+| | dense? | texture | c02 vs exp CC / SSI / MSE | c02 vs C26 model CC / SSI |
+|---|---|---|---|---|
+| interp: per-pair "interpolate missing data", then mean (headline) | yes | smooth | 0.778 / 0.825 / 0.0048 | 0.794 / 0.709 |
+| skip: original vectors only, omitnan; never-valid = 0 | no (22–73 % NaN) | parcel-scale speckle | 0.510 / 0.468 / 0.0146 | 0.493 / 0.429 |
+| skip + inpaint of the never-valid points | yes | speckle + extrapolation blobs | 0.551 / 0.633 / 0.0111 | 0.624 / 0.588 |
+| PIVlab temporal-mean rule (> 75 % interpolated → NaN = 0) | no (59–87 % NaN) | smooth inside, blank outside | 0.235 / 0.229 / 0.0294 | 0.301 / 0.219 |
+
+- The speckle in C26's Fig. 4b has the texture of the **skip** mean: cells
+  that saw a parcel in only a few of the 300 pairs keep that parcel's
+  velocity, which is what the authors themselves say (3.1: the model's
+  "pixel-to-pixel variation" in the summed map comes from the coarsening).
+  But every skip-type mean leaves the never-visited region blank, and C26's
+  maps are dense and smooth there (c01's whole upper half is a uniform
+  0.15 m/s), which only the interpolated per-pair fields give.  PIVlab's
+  own temporal mean (which also drops points interpolated in > 75 % of the
+  frames) cannot have produced Fig. 4b as printed.
+- No single convention reproduces both the density and the texture of
+  their model map, so how C26 averaged is not fully recoverable from the
+  paper.  The headline stays **interp**: it is what Fig. 4d shows per frame
+  (dense interpolated vectors), it is the only convention that gives a dense
+  map, and its magnitudes match the experiment and their model
+  (c02 0.778 vs exp; 0.794 vs their model).  The CC and MSE columns are the
+  metrics to read across this uncertainty; SSI penalises the texture
+  difference that is averaging, not physics.
+- No change to our pipeline follows from these checks.  Frame type, grid
+  spacing relative to the parcel, pass sizes and the per-frame
+  interpolation already match what the paper shows.

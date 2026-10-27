@@ -19,6 +19,10 @@
 #                    8-bit white parcel-sized disks on black (CES25
 #                    binarization of the render, no dilation) + defaults
 #   pivlab_c26img_noclahe : same frames, CLAHE off
+#   pivlab_c26res  : resolution check: C26-style frames exported at 0.05 mm/px
+#                    (--pixel-m 5e-5 --name-suffix _px50) with a third pass
+#                    64/32/16 px, i.e. 0.4 mm vector spacing; run only on
+#                    <run>_px50 exports (pivlab_c26res_noclahe: CLAHE off)
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 RUN="${1:?run name, e.g. c02_apex_v232}"
@@ -34,6 +38,8 @@ declare -A OPTS=(
   [pivlab_ces25_noclahe]=", binarize=1, clahe=0"
   [pivlab_c26img]=", binarize=1, binarize_thresh=0, binarize_dilate_px=0, image_class='uint8'"
   [pivlab_c26img_noclahe]=", binarize=1, binarize_thresh=0, binarize_dilate_px=0, image_class='uint8', clahe=0"
+  [pivlab_c26res]=", binarize=1, binarize_thresh=0, binarize_dilate_px=0, image_class='uint8', passes=3, int3=16"
+  [pivlab_c26res_noclahe]=", binarize=1, binarize_thresh=0, binarize_dilate_px=0, image_class='uint8', passes=3, int3=16, clahe=0"
 )
 VARIANTS=(pivlab_default pivlab_noclahe pivlab_ces25 pivlab_ces25_noclahe pivlab_c26img pivlab_c26img_noclahe)
 [ -n "$ONLY" ] && VARIANTS=("$ONLY")
