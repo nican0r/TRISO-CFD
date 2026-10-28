@@ -854,14 +854,20 @@ spouted_bed_C26_3d_dem:
                            # Valid 26.1.2 DRAG_TYPE (init_namelist.f valid
                            # list; des/drag_gp_des.f:221).
                            # source: C26 p.3 (2.2.1).
-  des_interp_scheme: 'LINEAR_HAT'
-                           # not reported in C26.  MFiX's own default is
-                           # 'NONE' (cell-centred exchange, no filter, with
-                           # des_interp_on / des_interp_mean_fields false);
-                           # run_C26_3d --interp-scheme NONE writes that
-                           # combination for the interpolation A/B
-                           # (c02_momentum24_nointerp, 2026-10-23).
-                           # source: assumed; spouted-bed recipe Rule 13.
+  des_interp_scheme: 'NONE'
+                           # MFiX's own default (des/des_init_namelist.f in
+                           # 23.2 and 26.1.2): cell-centred exchange, no
+                           # filter, written with des_interp_on /
+                           # des_interp_mean_fields false.  Not reported in
+                           # C26.  Was 'LINEAR_HAT' (spouted-bed recipe Rule
+                           # 13) until 2026-10-27; user decision 2026-10-27
+                           # after the interpolation A/B
+                           # (c02_momentum24_nointerp, 26.1.2: wall D
+                           # 0.0264 -> 0.0133 m/s, annulus unchanged, CC
+                           # 0.825 -> 0.783; notes "Interpolation A/B
+                           # result").  run_C26_3d --interp-scheme
+                           # LINEAR_HAT re-renders the earlier runs.
+                           # source: MFiX default; not reported in C26.
   des_epg_clip: 0.42       # floor on the whole gas-fraction field [-]:
                            # EP_G = 1 - min(1 - DES_EPG_CLIP, sum EP_S)
                            # (des/calc_epg_des.f:142, identical in 23.2 and

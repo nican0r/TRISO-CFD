@@ -3775,15 +3775,316 @@ frames over 0–0.5 s.
 - The comparator is `c02_point_mom_v232_smoke05`. The prediction (written
   first) is that all pass.
 
+### Bore smoke result (2026-10-27)
+
+The job finished with exit 0 at 0.5 s in 9058 s wall (2.52 h). It is scored
+against `fullface_smoke`, unchanged, over 0.10–0.50 s (80 gas frames at
+5 ms). The tools were `notes/c26_source_split.py` (it now takes the source
+cell's north area as dx² when the manifest has a bore, and prints the
+9–18 mm lean), `notes/c26_spout_cycle.py` (`jet`, `cycle`, `lattice`) and
+the scratch `score_smoke.py` (fountain, exit v_p, wall layer, bed EP_G).
+The comparator's recorded values reproduce exactly with the same tools.
+
+**Gates: all three pass.**
+- **H (health):** exit 0, 0.5 s reached. Median dt is 1e-5 s with median
+  NIT 2 in every sixth of the run, and the minimum dt is 5.9e-6 s. There
+  are no errors. Parcels went from 27,760 to 27,755 (−5, 0.018 %).
+- **M (up share):** 1.000 (frames 1.000–1.001), closure 1.000. All the
+  source gas leaves through the top face.
+- **L (lean):** 0.14 mm. The flux centroid sits 0.10–0.17 mm off the axis,
+  toward +x/−z, over 9.4–17.8 mm. The comparator leans 2.43 mm.
+
+| 0.10–0.50 s | full-face bore | one-cell off-axis momentum (comparator) | 2 × 2 baseline (26.1.2) |
+|---|---|---|---|
+| source up share | **1.000** | 0.58 | 1.00 |
+| spout lean, 9–18 mm | **0.14 mm** | 2.43 mm | 1.3 mm |
+| axis v_g max at 9.4 / 11.5 mm [m/s] | 26.0 / 23.6 | 17.3 / 14.0 | 13.1 / 11.2 |
+| EP_G_mid closed / open | 0.443 / 0.502 | 0.461 / 0.503 | 0.478 / 0.585 |
+| breathing | 0.059 (0.046 from 0.15 s) | 0.042 (0.040) | 0.107 |
+| EP_G_mid, all frames | 0.491 | 0.493 | 0.550 |
+| S_mid frequency (FFT, ±2.5 Hz) | 17.5 Hz | 15.0 Hz | 10.0 Hz (±5) |
+| d20 | 0.19 | 0.23 | 0.33 |
+| fountain top (99th pct above the annulus) | 67 mm (46 / 71 / 77 / 74 by 0.1 s) | 28.1 mm | 28.3 mm |
+| exit v_p [m/s] | 0.91 | 0.53 | 0.52 |
+| wall-layer v_y [m/s] | −0.016 | −0.019 | −0.014 |
+| bed EP_G | 0.493 | 0.604 | 0.537 |
+| lattice keep, all parcels, 0.25 / 0.5 s | 0.39 / 0.25 | 0.38 / 0.16 | 0.33 / – |
+| P_inlet − P_top_bed (source cell) | −679 Pa | +2942 Pa | – |
+
+**Prediction.** D1–D5, M and L were right, and so was "a jet at least the
+comparator's". "An annulus at least as packed (breathing ≤ 0.042)" was
+wrong: breathing is 0.059 in the registered window. From 0.15 s it is
+0.046, because the bore run's 0.10–0.13 s frames are still startup
+(EP_G_mid 0.60–0.65). That cut is post hoc and is not the criterion. The
+mean annulus voidage is the same as the comparator's (0.491 vs 0.493).
+
+**What the full-face source changes.**
+- The spout is centred: the lean that the off-axis tip cell caused (2.4 mm)
+  is gone, as C26's maps require (≤ 0.5 mm).
+- The jet is about 1.5× the comparator's at 9.4–11.5 mm, and above the
+  c01-27 single-cell reference (22.0 / 19.0 m/s).
+- The spout-closure cycle is still there: the spout share at 20 mm drops to
+  0.00–0.24 each cycle, and S_mid peaks at 1.9–3.0. The cycle is faster
+  (17.5 Hz, nearest so far to C26's ~20 Hz) and the closed share is smaller
+  (d20 0.19).
+- **The fountain is too tall.** Its 99th-percentile parcel height sits
+  about 75 mm above the annulus after 0.2 s, with no sign of settling by
+  0.5 s. The comparator's is 28 mm. Exit v_p is 0.91 m/s, and three parcels
+  reached the top outlet at y = 210 mm. The size of the excess relative to
+  C26 is in "Fountain height: like-for-like and mechanism" below.
+
+**Fountain height: like-for-like and mechanism (2026-10-27).**
+
+*Metric correction.* The ~40 mm credited to C26 (`fountain_top_improved_mm`)
+is the reach of their Fig. 4 map: experiment 0.91, model 0.97 of the 39.8 mm
+panel. Our 99th-percentile parcel height is a different measure. The
+comparator's 3 s run read 24 mm by ours and reach 0.99 by theirs. So
+"75 mm ≈ 1.9× C26", written above earlier today, compared mismatched
+metrics, and the PIV reach saturates at the panel top.
+
+*Common scale.* I re-measured reach above the panel with parcel velocities.
+They are binned on the Fig. 4 grid (same bed surface, map bottom and row
+height), extended to 3 panel heights. The quantity is the time mean of each
+bin's mean velocity over frames where the bin is occupied ≥ 5 % of the
+time. Reach is the top of the highest row with max |v| ≥ 0.2 m/s (scratch
+`parcel_reach.py`). It reads 0.57–0.58× the PIV reach on both 3 s runs
+where both exist, so it serves as a relative scale.
+
+| parcel reach (fraction of the 39.8 mm panel) | value | PIV reach |
+|---|---|---|
+| control, 3 s, 2.4–3.0 s | 0.39 | 0.69 |
+| one-cell momentum, 3 s, 2.4–3.0 s | 0.57 | 0.99 (C26 model 0.97) |
+| one-cell momentum, smoke, 0.1–0.5 s | 0.72 | – |
+| **full-face bore, smoke, 0.1–0.5 s** | **1.18** | (see below) |
+
+The parcel reach puts the bore smoke's fountain at 1.6× the comparator's
+in the same window. That is a comparison between our runs only. The PIV
+maps below are the only measure on C26's footing, and they show no such
+excess.
+
+*Like-for-like with C26 (user question, 2026-10-27).* C26 states no
+fountain height. Its text says only that "the spout height and structure
+are in agreement with experiments" (3.1, Fig. 3 frames). Every C26 number
+we use comes from the digitized Fig. 4 maps:
+- colour inversion of the PDF's JPEG through its jet colorbar, linear
+  0–0.4 m/s;
+- a 79 × 100 grid of 0.5 mm cells;
+- height from the panel aspect ratio, 39.8 mm;
+- bottom at the annulus mask.
+
+I scored the smokes' native synthetic-PIV maps (0.1–0.5 s) on the same
+grid next to the digitized panels and the 3 s maps:
+
+| map | reach at 0.15 / 0.18 / 0.20 / 0.22 / 0.25 m/s | top-row max | upper band (rows 0.70–0.95) / exp |
+|---|---|---|---|
+| C26 experiment (digitized) | 0.97 / 0.94 / 0.91 / 0.77 / 0.65 | 0.14 m/s | 1.00 |
+| C26 model (digitized) | 1.00 / 1.00 / 0.97 / 0.92 / 0.92 | 0.19 m/s | 1.17 |
+| control, 3 s | 1.00 / 0.80 / 0.70 / 0.62 / 0.52 | 0.17 m/s | 0.85 |
+| one-cell momentum, 3 s | 1.00 / 1.00 / 1.00 / 0.91 / 0.73 | 0.22 m/s | 1.12 |
+| one-cell momentum, smoke | 1.00 / 1.00 / 0.70 / 0.62 / 0.56 | 0.18 m/s | 0.89 |
+| **full-face bore, smoke** | 1.00 / 1.00 / 0.73 / 0.70 / 0.62 | 0.18 m/s | 0.89 |
+
+- **Inside C26's window the bore smoke looks like the comparator's
+  smoke**, and its upper band (0.89) sits below C26's model (1.17). The
+  extra height in the parcel metrics belongs to a sparse population above
+  the panel: fewer fountain parcels (984–1359 vs ~2000), thrown higher. The
+  time-mean PIV map barely registers it.
+- **The ~40 mm is the window's height, not a fountain top.** Every map,
+  C26's experiment included, still moves at 0.14–0.22 m/s in its top row.
+  The fountain continues above the panel, so Fig. 4 gives at best a lower
+  bound.
+- **Reach is threshold-sensitive near the panel top.** The experiment's top
+  rows sit at 0.14–0.21 m/s, so its reach runs from 0.65 to 0.97 over
+  0.15–0.25 m/s. A ±0.02 m/s colour-inversion error alone moves it between
+  0.77 and 0.94.
+- **Other digitization limits:**
+  - the digitized maps reproduce C26's Table 3 only partly (12 slpm CC
+    within 0.06; SSI / MSE not), so they approximate the matrices C26
+    scored;
+  - values above 0.4 m/s are clipped;
+  - the panel bottom against our bed surface is uncertain by about ±3 mm
+    (the mask strip is 3.4 mm), about ±8 % of the panel;
+  - the height scale is good to about 1 %.
+
+So "75 mm vs C26's ~40 mm" and "1.6× C26's model reach" both overstate
+what C26's data can show. The supported statements are narrower:
+- the bore's fountain is taller than the comparator's by our own particle
+  measures;
+- inside C26's window both smokes read alike and below C26's model;
+- how high C26's fountain goes above 40 mm is unknown from the paper.
+
+Next steps:
+- Compare with C26 through the map-based measures, reported over a
+  threshold range: reach, top-row speed, band ratios.
+- Ask the authors for the raw PIV matrices or the camera window height.
+
+*Mechanism (0.10–0.50 s).*
+
+| | full-face bore | comparator |
+|---|---|---|
+| upward gas momentum flux / source m_dot v at 5.2 / 11.5 / 24.2 / 36.8 / 45.2 mm | 0.51 / 0.35 / 0.18 / 0.07 / 0.04 | 0.49 / 0.18 / 0.07 / 0.03 / 0.01 |
+| axis gas v_y at 36 / 40 / 45 / 50 mm [m/s] | 6.5 / 5.0 / 3.9 / 3.2 | 3.1 / 2.3 / 1.6 / 0.9 |
+| spout solids up-flux at 25 mm, r < 3.15 mm [m_dot_g] | 23–38 (mean 31.5) | 20–38 (mean 28.5) |
+
+- Both jets hold about half the source momentum at 5 mm. Above that, the
+  bore jet loses it about half as fast, and 2–2.5× more gas momentum
+  leaves the bed surface.
+- The spout carries the same solids load, so this is not a starved spout.
+  The same load is pushed by a faster jet.
+- At the bed surface the bore run's axis gas (5.9–7.3 m/s by 0.1 s) is
+  above the single-particle terminal velocity, 4.53 m/s
+  (`correlations.terminal_velocity`, 411.6 µm, 6000 kg/m³, the deck's
+  argon). Fountain parcels are therefore still carried by gas, not only
+  thrown. The comparator's gas is below u_t there.
+- Why the bore jet keeps its momentum: all of ṁU enters one centred
+  column whose core stays nearly particle-free (axis EP_G 0.93–0.96 at
+  3–15 mm), so momentum leaves only across the spout wall. In the
+  comparator the same typed ṁU went into an off-axis cut tip cell. 42 % of
+  its gas left sideways, the cell sat at +2.9 kPa, and the jet leaned
+  2.4 mm, so it delivered less upward momentum and spread it over more
+  bed.
+- C26 ran the same release, grid size, closures and W = 10. Its ~0.97
+  reach therefore implies less effective upward momentum at the spout base
+  than our full-face source delivers: a lower typed speed (their area for
+  "local mesh characteristics") or a source cell that spreads it. This is
+  the leading hypothesis, open with the authors.
+
+*The typed speed cannot change this jet (checked 2026-10-27).* I first
+proposed a half-speed smoke, and the user asked for a sweep halving ps_v_g
+toward 0. In the walled bore that sweep is a null test:
+- `source_v_g.f` (23.2, `POINT_SOURCE_V_G`) adds ṁ·|v| only to the V
+  equation of the source cell's north face (`J = PS_J_S..PS_J_N` for
+  v > 0).
+- That face is the bore exit. With the other five faces walled, continuity
+  alone fixes its velocity at Q / (ε dx²), so the momentum source can only
+  set the pressure difference across it.
+- A 1 ms local dry run at 1/64 speed (0.709 m/s, run_log 2026-10-27)
+  against the full-speed dry run confirms it:
+  - top-face V_G 45.43 vs 45.49 m/s;
+  - every gas velocity within 0.28 m/s (0.6 %);
+  - P_G outside the source cell within 43 Pa;
+  - the source cell +3.47 kPa (≈ ρV² = 3.36 kPa).
+
+What sets the jet momentum in the bed is the width the jet occupies in the
+first open row. At fixed flow the momentum flux is ρQ²/A. A one-cell
+column (dx² ≈ the nozzle area) carries the full ṁU; a centred 2 × 2 jet
+(4 dx², the narrowest centred jet on C26's axis-on-face grid) carries at
+most ¼ of it. The typed speed matters only where the source cell has open
+side faces, as in the comparator. The sweep was not submitted (user
+decision pending).
+
+**Wall velocity (C26 Fig. 6d metric).** This is the downward speed of the
+parcels visible in the ~4 mm wall box at 0.64 of the bed height
+(`src/post/piv_c26.py` `wall_visible_parcels_m_s`, native frames), scored
+on the smoke's PIV frames. C26 at 12 slpm: experiment 1.83e-3 m/s, model
+5.05e-3 m/s.
+
+| wall box [m/s] | 0.10–0.50 s | 0.10–0.30 s | 0.30–0.50 s | 3 s run, 2.4–3.0 s |
+|---|---|---|---|---|
+| full-face bore | 1.41e-2 | 2.19e-2 | **6.4e-3** | – |
+| one-cell off-axis momentum | 0.99e-2 | 1.12e-2 | 0.89e-2 | 1.27e-2 |
+| control (2 × 2, mass-only) | – | – | – | 1.53e-2 |
+
+- The bore run's whole wall layer (parcels within 4 mm of the wall, below
+  the bed surface) slows through the smoke: 23.6 / 18.3 / 13.7 / 8.8 mm/s
+  by 0.1 s. The comparator's does not (20.1 / 19.2 / 23.1 / 13.9 mm/s).
+- The late-half 6.4e-3 m/s is 1.3× C26's model and 3.5× the experiment.
+  The 23.2 c02 3 s runs sit at 2.5–5× C26's model (one-cell momentum
+  1.27e-2, control 1.53e-2, one-cell mass-only 2.55e-2).
+- It is not settled, and smoke values have not carried over before: the
+  comparator went from 0.89e-2 in its late half to 1.27e-2 at 2.4–3.0 s.
+  Only the 3 s run can tell.
+
+**No parcel entered the bore.** No parcel centre was below y = 0 (the
+source cell's top) in any of the 250 PIV frames (2 ms, 0–0.5 s). The lowest
+was +0.615 mm at t = 0.064 s, during startup. A centre fell below 1.05 mm in
+7 frames, with at most 2 at once.
+
+**Smoke validation (`notes/smoke_validate_c26.py`): NO-GO as run, on two
+checks.**
+- **S6, dP = P_inlet − P_top_bed = −679 Pa (−1.65 W/A).** The inlet monitor
+  sits in the source cell. Both `ps_point_smoke` and `fullface_smoke` had
+  already recorded, before any result, that this is not a bed dP. To test
+  bed support directly I read the P_G field:
+  - the row above the source (y = 0–2.1 mm) sits +794 Pa (annulus cells)
+    and +891 Pa (axis cell) above the bed top, 1.9–2.2 W/A, inside the
+    skill's [0.2, 3] W/A band;
+  - from 5 to 20 mm the profile is within 35 Pa of the comparator's.
+
+  The bed is supported. The source cell is walled on five sides and fed
+  only by mass, so the momentum source on its top face sets its pressure.
+  In the comparator the four tip cells averaged +2448 Pa and the four
+  cells above them −870 Pa, so it too had sub-ambient gas at the jet base,
+  one row higher. The fix is the open item already recorded:
+  move the inlet monitor one row up. This deck still has it in the source
+  cell.
+- **P2, inventory: 5 parcels lost.**
+  - 3 left through the top outlet: last seen at y = 205–209 mm, moving up
+    at 0.7–3.5 m/s.
+  - 2 were deleted 0.5–0.9 mm inside the cone wall at grid nodes
+    (y = 35.7 / 37.8 mm). This is the known 23.2 cut-cell deletion, which
+    the 25-cell grid moves to new nodes.
+  - H's ≤ 0.1 % allowance covers both. P2 requires every loss to go
+    through the outlet, and the comparator failed it the same way.
+- **Everything else passes:** S3 v ratio 1.01 (source cell) / 0.89 (exit
+  row); exit EP_G 0.954; dP noise 1.4 W/A; 7 % of dP power above 100 Hz;
+  spout flux 31.8 ṁ_g through r < 3.15 mm with the centroid 0.05 mm off
+  the axis; mid-bed centreline v_g 17.8 m/s.
+
+**Decision (pre-registered).** H, M and L pass, so the next step is to
+*propose* a 3 s c02 full-face run scored at 2.4–3.0 s with the PIVlab
+pipeline, next to the control and the one-cell momentum run rescored the
+same way. That is the user's decision; nothing has been launched. Two
+points go with the proposal:
+- **The fountain.** By our particle measures it is taller than the
+  comparator's. Inside C26's 39.8 mm window both smokes read alike and
+  below C26's model ("Like-for-like with C26"). The 3 s window decides.
+- **The inlet monitor.** It should move one row up in the 3 s deck, so
+  that S6 measures the bed. This is a monitor-only change.
+
+### Full-face 3 s runs switched to MFiX's default interpolation (2026-10-27)
+
+User decision, ~19:10 EDT, after reviewing the interpolation A/B
+("Interpolation A/B result": wall D −50 % in c02_momentum24_nointerp,
+annulus unchanged, CC 0.825 → 0.783, verdict INCONCLUSIVE): the c01–c09
+full-face runs use MFiX's default gas–solids exchange.
+
+- `params/geometry.yaml` C26 `des_interp_scheme`: `'LINEAR_HAT'` →
+  `'NONE'`. NONE is MFiX's default in `des/des_init_namelist.f` (23.2 and
+  26.1.2), and the generator writes `des_interp_on` and
+  `des_interp_mean_fields` `.False.` with it. `--interp-scheme LINEAR_HAT`
+  re-renders the earlier runs. `tests/test_make_case_c26.py` now pins the
+  NONE default and the LINEAR_HAT override (283 passed).
+- The nine LINEAR_HAT jobs `c26-c0X-fullface-bore-mom-v232` were
+  terminated at ~19:13 EDT, 20–28 min after start (c07 still RUNNABLE).
+  They were not pulled or scored.
+- The new decks `c0X_fullface_bore_mom_nointerp_v232` differ from the
+  terminated ones only in the three interpolation lines (diffed; STL md5
+  59ddf7c1, gridmap identical). The 1 ms docker dry runs (23.2 image,
+  4 ranks) all reached 0.0010 s with no errors or warnings, and every
+  seeded parcel count held at 1 ms.
+- Submitted ~19:20 EDT as `c26-c0X-fullface-bore-mom-nointerp-v232`,
+  in the order c02, c01, c03–c06, c08, c09, then c07. Job IDs are in
+  `results/run_log.csv`.
+- Criteria: `params/c26_acceptance.yaml` `fullface_3s_nointerp` carries
+  over `fullface_3s` and `fullface_3s_sweep` unchanged. Every reference
+  run used LINEAR_HAT, so each comparison now mixes the source change with
+  the interpolation change. NONE has not been smoke-tested on 23.2; the
+  26.1.2 A/B ran 3 s without trouble.
+
 ## Open items (not done here)
 
-- Full-face nozzle (2026-10-27): score the bore smoke
-  (`c26-c02-fullface-bore-mom-v232-smoke05`, job 9ddc0be0, expected
-  ~15:30–15:45 EDT) against `fullface_smoke` (H, M, L). Before any 3 s
-  run, apply the smoke-validate skill, and report parcels entering the bore
-  and how long they stay. If H, M and L pass, a 3 s c02 run scored with
-  PIVlab next to the control and the one-cell momentum run, both rescored
-  with PIVlab (user decision).
+- Full-face nozzle (2026-10-27): the bore smoke passed H, M and L (lean
+  0.14 mm; "Bore smoke result"). No parcel entered the bore. Smoke
+  validation is NO-GO as run, on the source-cell dP monitor and the 23.2
+  parcel deletion. User decision pending: a 3 s c02 full-face run scored
+  with PIVlab next to the control and the one-cell momentum run (both
+  rescored with PIVlab). The deck would move the inlet monitor one row up.
+  Fountain: taller than the comparator's by our particle measures (full ṁU
+  up one particle-free column). Inside C26's map window it reads like the
+  comparator and below C26's model. C26 gives no fountain height; its Fig. 4
+  window cuts off while the fountain is still moving ("Like-for-like with
+  C26").
 - Production point-source defaults: the authors' reply rules out the
   mass-only reading, but `ps_momentum` / `ps_point` stay false (the
   production sweep's settings) until the user decides.

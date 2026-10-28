@@ -15,7 +15,8 @@ cartesian_grid/vtk_out.f l.197):
   centroid  upward-gas-flux centroid (x, z) in rows 2-9 (y = 4.2-18.9 mm),
           over cells whose north face lies wholly inside the cone.
 
-North-face areas are the cell square clipped by the cone circle
+North-face areas are the cell square clipped by the cone circle (the full
+face dx^2 for a full-face-nozzle source cell, whose top lies in the bore)
 r = R_t + y tan(half-angle) at the face height, using straight chords
 between the edge intersections, as MFiX builds cut faces.  This is an
 approximation of MFiX's STL cut faces; the closure checks it.
@@ -74,12 +75,17 @@ def main(run, t0, t1):
         sys.exit(f'no BACKGROUND frames in [{t0}, {t1}] s')
     area_cache = {}
 
+    a_bore = m.get('nozzle_half_width_m')   # full-face nozzle: square bore |x|, |z| < a
+
     def north_area(i, j, k):
         if (i, j, k) not in area_cache:
             y_n = y_min + (j + 1) * dx
             R = m['R_t_m'] + max(y_n, 0.0) * tan
             xa, za = x_min + i * dx, z_min + k * dx
-            area_cache[(i, j, k)] = clipped_square_area(xa, xa + dx, za, za + dx, R)
+            if a_bore and j == j_ps and max(abs(xa), abs(xa + dx), abs(za), abs(za + dx)) <= a_bore + 1e-12:
+                area_cache[(i, j, k)] = dx * dx   # source-cell top face lies in the bore
+            else:
+                area_cache[(i, j, k)] = clipped_square_area(xa, xa + dx, za, za + dx, R)
         return area_cache[(i, j, k)]
 
     ups, clos, cx, cz, cents = [], [], [], [], {r: [] for r in CENTROID_ROWS}
@@ -129,6 +135,9 @@ def main(run, t0, t1):
             y_c = m['ps_cell_y_s_m'] + (r + 0.5) * dx
             centroids[y_c] = (a[0] * 1e-3, a[1] * 1e-3)
             print(f'  upward-flux centroid y = {y_c*1e3:5.1f} mm: x {a[0]:+.2f} mm, z {a[1]:+.2f} mm')
+    lean = [math.hypot(*c) for y, c in centroids.items() if 9e-3 <= y <= 18e-3]
+    if lean:
+        print(f'  spout lean (mean centroid offset, y = 9-18 mm) {np.mean(lean) * 1e3:.2f} mm')
     return {'n_frames': len(frames), 'up_share': float(ups.mean()), 'closure': float(np.mean(clos)),
             'cross_x': float(np.mean(cx)) if cx else None, 'cross_z': float(np.mean(cz)) if cz else None,
             'centroids_m': centroids}

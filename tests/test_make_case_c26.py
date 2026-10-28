@@ -227,24 +227,27 @@ def test_interp_scheme_switch_writes_width(p01, tmp_path):
 
 
 def test_interp_scheme_none_turns_interpolation_off(p01, tmp_path):
-    """NONE (MFiX's default) must come with des_interp_on and
-    des_interp_mean_fields false, or MFiX stops at the input check."""
-    assert p01["des_interp_on"] and p01["des_interp_mean_fields"]
+    """NONE (MFiX's default, the geometry.yaml default since 2026-10-27) must
+    come with des_interp_on and des_interp_mean_fields false, or MFiX stops
+    at the input check."""
+    assert p01["des_interp_scheme"] == "NONE"
+    assert not p01["des_interp_on"] and not p01["des_interp_mean_fields"]
+    assert p01["des_interp_width_m"] is None
     out = tmp_path / "default.mfx"
     render_case(C26_TEMPLATE, p01, out)
-    txt = out.read_text()
-    assert re.search(r"^\s*des_interp_on\s*=\s*\.True\.\s*$", txt, re.M)
-    assert re.search(r"^\s*des_interp_mean_fields\s*=\s*\.True\.\s*$", txt, re.M)
-    p = build_C26_3d_params(_case("c01"), interp_scheme="NONE")
-    assert not p["des_interp_on"] and not p["des_interp_mean_fields"]
-    assert p["des_interp_width_m"] is None
-    out = tmp_path / "none.mfx"
-    render_case(C26_TEMPLATE, p, out)
     txt = out.read_text()
     assert re.search(r"des_interp_scheme\s*=\s*'NONE'", txt)
     assert re.search(r"^\s*des_interp_on\s*=\s*\.False\.\s*$", txt, re.M)
     assert re.search(r"^\s*des_interp_mean_fields\s*=\s*\.False\.\s*$", txt, re.M)
     assert not re.search(r"^\s*des_interp_width\s*=", txt, re.M)
+    p = build_C26_3d_params(_case("c01"), interp_scheme="LINEAR_HAT")
+    assert p["des_interp_on"] and p["des_interp_mean_fields"]
+    out = tmp_path / "hat.mfx"
+    render_case(C26_TEMPLATE, p, out)
+    txt = out.read_text()
+    assert re.search(r"des_interp_scheme\s*=\s*'LINEAR_HAT'", txt)
+    assert re.search(r"^\s*des_interp_on\s*=\s*\.True\.\s*$", txt, re.M)
+    assert re.search(r"^\s*des_interp_mean_fields\s*=\s*\.True\.\s*$", txt, re.M)
 
 
 

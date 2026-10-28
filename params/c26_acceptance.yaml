@@ -800,3 +800,253 @@ fullface_smoke:
     decision).  M fails -> the nozzle leaks: diagnose the mesh before any
     change (CLAUDE.md rule 9).  L fails with M passing -> the lean is not the
     source's position; report."
+  result_2026_10_27:
+    # Scored after the job finished, against the criteria above unchanged.
+    # Window 0.10-0.50 s, 80 gas frames at 5 ms.  Tools: notes/c26_source_split.py
+    # (M, L; bore branch added for the source cell's north area),
+    # notes/c26_spout_cycle.py (jet, cycle, lattice) and the scratch
+    # score_smoke.py (fountain, exit v_p, wall layer, bed EP_G).  The
+    # comparator's recorded values (ps_point_smoke.result_2026_10_24.b)
+    # reproduce exactly with the same tools.
+    aws_job: 9ddc0be0-c08f-47f6-913b-6d239485bcbd   # 9058 s wall, exit 0
+    criteria:
+      H_health: "pass: exit 0, 0.5 s reached, dt >= 5.9e-6 s (1e-5 most of
+                 the time), no errors in the LOG or run.log; parcels 27,760 ->
+                 27,755 (-5, 0.018 %)"
+      M_up_share: "pass: 1.000 (frames 1.000-1.001); closure 1.000"
+      L_lean: "pass: 0.14 mm (rows 9.4-17.8 mm, 0.10-0.17 mm, at +x/-z);
+               comparator 2.43 mm"
+    prediction: "D1-D5, M, L and 'jet at least the comparator's' right;
+      'annulus at least as packed (breathing <= 0.042)' wrong: 0.059"
+    report_not_gated:   # value; comparator c02_point_mom_v232_smoke05
+      axis_vg_max_m_s: {y_9p4mm: [26.0, 17.3], y_11p5mm: [23.6, 14.0]}
+      epg_mid_closed_open: [[0.443, 0.502], [0.461, 0.503]]
+      breathing: [0.059, 0.042]      # 0.046 / 0.040 from 0.15 s (the bore run's
+                                     # 0.10-0.13 s frames are startup, EP_G_mid
+                                     # 0.60-0.65); post hoc, not the criterion
+      epg_mid_all_frames: [0.491, 0.493]
+      s_mid_freq_hz_fft: [17.5, 15.0]  # resolution 2.5 Hz
+      d20: [0.19, 0.23]
+      fountain_top_mm: [67.0, 28.1]  # 99th pct above the annulus surface; the
+                                     # bore run's by 0.1 s: 46 / 71 / 77 / 74 mm;
+                                     # not comparable with C26's ~40 mm, which is
+                                     # their map reach (see fountain_like_for_like)
+      exit_vp_m_s: [0.91, 0.53]
+      wall_layer_vy_m_s: [-0.016, -0.019]
+      bed_epg: [0.493, 0.604]
+      lattice_keep_all: {t_0p25: [0.39, 0.38], t_0p50: [0.25, 0.16]}
+      p_inlet_minus_p_top_bed_pa: [-679, 2942]  # source cell walled on five
+                                     # sides: its pressure is set by the momentum
+                                     # source, not by the bed
+    decision: "H, M and L pass -> the pre-registered next step is to PROPOSE a
+      3 s c02 full-face run scored at 2.4-3.0 s with the PIVlab pipeline next
+      to the control and the one-cell momentum run (user decision; not
+      launched).  Caveat for that proposal: by our particle measures the
+      fountain is taller than the comparator's (parcel reach 1.6 x), but
+      inside C26's Fig. 4 window both smokes read alike and below C26's model
+      (fountain_like_for_like.map_measures).  C26 states no fountain height
+      and its window cuts off while the fountain still moves, so the earlier
+      '~1.9 x C26's model' and '1.6 x C26's reach' are withdrawn."
+    bore_parcels: "no parcel centre below y = 0 (the source cell's top) in any
+      of the 250 PIV frames (2 ms, 0-0.5 s); lowest +0.615 mm at t = 0.064 s;
+      a centre below 1.05 mm in 7 frames, at most 2 at once"
+    smoke_validate: "notes/smoke_validate_c26.py exits NO-GO as run, on two
+      checks.  S6: dP = P_inlet - P_top_bed = -679 Pa (-1.65 W/A); the inlet
+      monitor sits in the source cell (pre-registered above as not a bed dP;
+      open item: move it one row up).  Measured from the P_G field instead,
+      the row above the source (y 0-2.1 mm) sits +794 Pa (annulus cells) /
+      +891 Pa (axis cell) above the bed top = 1.9-2.2 W/A, inside [0.2, 3]
+      W/A, and the profile at 5-20 mm is within 35 Pa of the comparator's.
+      P2: 5 parcels lost, 3 through the top outlet (last seen at y = 205-209
+      mm moving up at 0.7-3.5 m/s) and 2 deleted 0.5-0.9 mm inside the cone
+      wall at grid nodes (y = 35.7 / 37.8 mm), the known 23.2 cut-cell
+      deletion that H allows.  Everything else passes: median dt 1e-5 s and
+      median NIT 2 in every sixth of the run; S3 v ratio 1.01 / 0.89; exit
+      EP_G 0.954; dP noise 1.4 W/A; 7 % of dP power above 100 Hz; P3 spout
+      flux 31.8 m_dot_g with centroid 0.05 mm; P4 17.8 m/s."
+    wall_box_m_s:   # src/post/piv_c26.py wall_visible_parcels_m_s on the smoke's
+                    # PIV frames; C26 12 slpm exp 1.83e-3, model 5.05e-3
+      bore: {t_0p1_0p5: 1.41e-2, t_0p1_0p3: 2.19e-2, t_0p3_0p5: 6.4e-3}
+      comparator: {t_0p1_0p5: 0.99e-2, t_0p1_0p3: 1.12e-2, t_0p3_0p5: 0.89e-2,
+                   run_3s_2p4_3p0: 1.27e-2}
+      note: "the bore run's wall layer slows through the smoke (23.6 / 18.3 /
+        13.7 / 8.8 mm/s by 0.1 s); not settled, and the comparator's
+        late-half value rose 1.4 x by its 3 s window"
+    fountain_like_for_like:   # 2026-10-27, after the user asked what causes the
+                              # excess height; scratch parcel_reach.py
+      method: "parcel velocities binned on the Fig. 4 grid (src/post/piv_c26
+        run_geometry: bed surface, map bottom, row height), extended to 3
+        panel heights; time mean of the bin-mean velocity over frames with
+        the bin occupied >= 5 %; reach = top of the highest row with max |v|
+        >= 0.2 m/s, / panel height 39.8 mm.  Reads 0.57-0.58 x the PIV reach
+        on both 3 s runs where both exist."
+      parcel_reach: {control_3s: 0.39, comparator_3s: 0.57, comparator_smoke: 0.72,
+                     bore_smoke: 1.18}
+      piv_reach: {control_3s: 0.69, comparator_3s: 0.99, c26_model: 0.97, c26_exp: 0.91}
+      mechanism: "gas momentum flux / source m_dot v at 5.2 / 11.5 / 24.2 /
+        36.8 / 45.2 mm: bore 0.51 / 0.35 / 0.18 / 0.07 / 0.04, comparator
+        0.49 / 0.18 / 0.07 / 0.03 / 0.01.  Axis gas at the bed surface 5.9-7.3
+        m/s (bore) vs 3.0-3.2 (comparator); single-particle u_t 4.53 m/s.
+        Spout solids up-flux at 25 mm about equal (31.5 vs 28.5 m_dot_g).
+        Leading hypothesis: the full m_dot U up one particle-free centred
+        column (axis EP_G 0.93-0.96) is more effective upward momentum than
+        C26 delivered; open with the authors."
+      map_measures:   # native synthetic-PIV maps on the digitized Fig. 4 grid;
+                      # reach at 0.15 / 0.18 / 0.20 / 0.22 / 0.25 m/s, top-row
+                      # max [m/s], upper band (rows 0.70-0.95) / exp
+        c26_exp: {reach: [0.97, 0.94, 0.91, 0.77, 0.65], top_row: 0.14, upper_band: 1.00}
+        c26_model: {reach: [1.00, 1.00, 0.97, 0.92, 0.92], top_row: 0.19, upper_band: 1.17}
+        control_3s: {reach: [1.00, 0.80, 0.70, 0.62, 0.52], top_row: 0.17, upper_band: 0.85}
+        comparator_3s: {reach: [1.00, 1.00, 1.00, 0.91, 0.73], top_row: 0.22, upper_band: 1.12}
+        comparator_smoke: {reach: [1.00, 1.00, 0.70, 0.62, 0.56], top_row: 0.18, upper_band: 0.89}
+        bore_smoke: {reach: [1.00, 1.00, 0.73, 0.70, 0.62], top_row: 0.18, upper_band: 0.89}
+      c26_reference_note: "C26 gives no fountain height (3.1: 'the spout height
+        and structure are in agreement with experiments').  The ~40 mm is the
+        height of the digitized Fig. 4 panel (aspect ratio x 2 in. width), not
+        a fountain top: every map still moves at 0.14-0.22 m/s in its top
+        row.  The experiment's reach spans 0.65-0.97 over thresholds
+        0.15-0.25 m/s (+-0.02 m/s digitization error -> 0.77-0.94)."
+
+fullface_3s:
+  # 3 s run of the full-face bore.  fullface_smoke passed H, M and L; its
+  # decision was to propose this run.  User request 2026-10-27: "now queue up
+  # the full 3s runs on aws batch".  Pre-registered 2026-10-27 BEFORE the deck
+  # was rendered and before any 3 s full-face output exists.
+  case: c02_fullface_bore_mom_v232   # the c02_fullface_bore_mom_v232_smoke05 deck
+                                     # at tstop 3 s with the production output
+                                     # (gas VTK 50 ms, PIV frames 2.4-3.0 s);
+                                     # ps_v_g 45.35 m/s kept (in the walled bore it
+                                     # only sets the source-cell pressure)
+  reference_runs:                    # 3 s, MFiX 23.2, same window, rescored the
+                                     # same way as the full-face run
+    control: c02_apex_v232           # 2 x 2 tip source, mass-only
+    one_cell_momentum: c02_point_mom_v232
+  window_s: [2.4, 3.0]
+  scoring:
+    maps: "src/post/piv_c26.py (native) and the PIVlab pipeline of
+      notes/c26_pivlab_rerun.md (C26-style frames + PIVlab defaults; the
+      CLAHE-off variant reported too) on the digitized Fig. 4 grid: CC / SSI /
+      MSE against Fig. 4a and C26's model through the same pipeline; map mean
+      / C26 model; band ratios (rows 0.70-0.95 / 0.5-0.7 / < 0.5); reach at
+      0.15 / 0.18 / 0.20 / 0.22 / 0.25 m/s and the top-row max
+      (fullface_smoke.result_2026_10_27.fountain_like_for_like.map_measures)"
+    wall: "parcels visible in the ~4 mm wall box at 0.64 of the bed height
+      (wall_visible_parcels_m_s, the PIVlab-rerun headline); C26 Fig. 6d,
+      12 slpm: model 5.05e-3, exp 1.83e-3 m/s"
+    also_report: "breathing and d20 over 0.5-3.0 s (notes/c26_spout_cycle.py
+      cycle); spout lean 9-18 mm and up share (notes/c26_source_split.py);
+      parcel reach above the panel (fountain_like_for_like.method); 99th-pct
+      fountain top; exit v_p; gas momentum flux at the bed surface; bed dP
+      from the P_G field one row above the source (the inlet monitor sits in
+      the source cell); parcel inventory"
+  criteria:
+    H_health: "exit 0, 3.0 s reached, dt >= dt_min, no Error 1100 /
+      PS_VOLUME; parcel loss <= 0.5 % (<= 139 of 27,760), split into
+      top-outlet and wall-node losses"
+    M_map_match: "CC >= 0.817 AND SSI >= 0.740 AND MSE <= 0.0042 (Table 3 CC
+      and MSE; C26-model SSI through the same pipeline), headline on the
+      PIVlab pipeline, native reported alongside"
+    F_fountain_resolved: "reach at 0.20 m/s >= 0.85 (point_3s); the
+      threshold range is reported, not gated (digitized-map sensitivity)"
+    W_wall_resolved: "wall parcels <= 2 x C26 model (<= 1.01e-2 m/s)"
+    W_wall_improved: "wall parcels <= 0.7 x the control's (<= 1.07e-2 m/s;
+      control 1.53e-2)"
+    L_lean: "<= 0.7 mm (fullface_smoke)"
+  prediction_written_first: "H passes (loss ~0.1-0.2 %: wall-node deletion
+    plus a few ballistic parcels through the outlet); lean <= 0.3 mm; up
+    share 1.000.  Fountain resolved (reach at 0.20 >= 0.95), and the map at
+    least as fast as the one-cell momentum run (native map mean 1.1-1.3 x
+    C26's model); MATCH uncertain, as that run missed on MSE (0.0044, lower
+    map too fast).  Wall: the smoke's late half read 6.4e-3 and the
+    comparator's rose x 1.4 from smoke to 3 s, so 0.7-1.1e-2 m/s, a coin flip
+    on W_wall_resolved and likely W_wall_improved.  Parcel fountain top above
+    the panel, 45-65 mm."
+  decision: "MATCH and W_wall_resolved -> the full-face bore is the candidate
+    production source: propose 3 s runs at 10 and 14 slpm (c01, c03) and the
+    production-default change (user decision).  MATCH without the wall ->
+    the source is settled for the map; the wall stays the annulus item.  No
+    MATCH -> report which band fails; no further full-face runs without a
+    user decision."
+
+fullface_3s_sweep:
+  # The rest of the c01-c09 sweep (params/sweep_C26.yaml) in the full-face
+  # configuration of fullface_3s.  User request 2026-10-27 ~19:00 EDT: "run all
+  # the other jobs from the c01-c09 sweeps", while c02_fullface_bore_mom_v232
+  # was still queued.  This launches c01 and c03 before c02's result, which
+  # fullface_3s.decision had made conditional on c02 (user decision supersedes).
+  # Pre-registered BEFORE any of these decks was rendered.
+  cases: [c01, c03, c04, c05, c06, c07, c08, c09]  # run dirs c0X_fullface_bore_mom_v232
+                                     # (run_C26_3d --case c0X --stl-builder
+                                     # parametric_fullface --ps-momentum); same
+                                     # STL, mesh and output as fullface_3s.case
+  reference_runs: "the same cases in the control configuration (c0X_apex_v232,
+    3 s, 23.2; results/c26_compare_apex_v232.csv, notes 'Control-configuration
+    sweep results') and c02_fullface_bore_mom_v232 (fullface_3s)"
+  window_s: [2.4, 3.0]
+  scoring: "as fullface_3s.scoring; c01 and c03 also against C26 Fig. 4 /
+    Table 3 / Fig. 6d at 10 and 14 slpm; c04-c09 have no C26 data and are
+    reported against their control-configuration runs (spout yes/no, fountain,
+    wall, breathing, health) with notes/c26_watch_post.py and
+    notes/c26_sweep_summary.py"
+  criteria:
+    H_health: "every case: exit 0, 3.0 s reached, dt >= dt_min, no Error
+      1100 / PS_VOLUME; parcel loss <= 0.5 %, split into top-outlet and
+      wall-node losses; parcels entering the bore (centre below y = 0)
+      reported"
+    M_map_match_c01_c03: "CC, SSI, MSE each at least the floor used for the
+      control-configuration sweep (the weaker of C26 Table 3 and C26's model
+      through the same pipeline): c01 0.390 / 0.609 / 0.0068, c03 0.829 /
+      0.741 / 0.0049"
+    F_fountain_c01_c03: "reach at 0.20 m/s >= the experiment's reach - 0.06
+      (as c02: 0.91 - 0.06 = 0.85): c01 >= 0.54 (exp 0.60), c03 >= 0.82
+      (exp 0.88); threshold range reported"
+    W_wall_c01_c03: "resolved: wall parcels <= 2 x C26 model (c01 <= 6.6e-3,
+      c03 <= 1.39e-2 m/s); improved: <= 0.7 x the control-configuration run's
+      wall value at that flow"
+    L_lean: "every case <= 0.7 mm"
+  prediction_written_first: "H passes everywhere except possibly c08 (40 g;
+    lost 0.57 % in the control configuration).  Lean <= 0.3 mm everywhere.
+    c01 (Q/dx^2 = 37.8 m/s): the fountain rises from the control's reach
+    0.25 toward the experiment's 0.60 (F likely), map still slow in the
+    upper half; MATCH uncertain.  c03 (52.9 m/s): the lower map, already
+    1.2-1.3 x C26's model in the control, gets faster; MSE likely fails
+    (no MATCH), fountain F likely.  c04-c07 (parcels 1.32-1.81 mm vs the
+    2.12 mm bore): spout more often than in the control configuration
+    (full jet momentum); parcels entering the bore possible only if the
+    spout collapses, expected 0 for c04-c06, uncertain for c07.  Wall:
+    0.5-1.0 x the control-configuration values."
+  decision: "report every case against these criteria; nothing further is
+    launched without a user decision"
+
+fullface_3s_nointerp:
+  # The c01-c09 full-face 3 s runs (fullface_3s, fullface_3s_sweep) rerun with
+  # MFiX's default gas-solids exchange.  User request 2026-10-27 ~19:10 EDT:
+  # "set this to the default for the c01-c09 runs, cancel the currently
+  # running ones on aws batch and submit these new ones with the mfix default
+  # instead".  The nine LINEAR_HAT jobs (c0X_fullface_bore_mom_v232) were
+  # terminated ~19:13 EDT, 20-28 min after start (c07 never started); not
+  # pulled, not scored.  Written 2026-10-27 after submission, before any
+  # output of these runs exists.
+  cases: [c01, c02, c03, c04, c05, c06, c07, c08, c09]  # run dirs
+                                     # c0X_fullface_bore_mom_nointerp_v232
+  change: "des_interp_scheme 'NONE' with des_interp_on and
+    des_interp_mean_fields .False. (geometry.yaml default since 2026-10-27);
+    decks otherwise identical to c0X_fullface_bore_mom_v232 (diffed; STL md5
+    59ddf7c1, same gridmap)"
+  criteria: "fullface_3s (c02) and fullface_3s_sweep (the other eight),
+    unchanged"
+  reference_runs: "as fullface_3s / fullface_3s_sweep.  Every reference run
+    (c0X_apex_v232, c02_point_mom_v232) used LINEAR_HAT, so each comparison
+    now carries two changes, source and interpolation; no full-face
+    LINEAR_HAT 3 s run exists to separate them.  The only
+    interpolation-only reference is interp_ab (26.1.2, 24-cell momentum
+    point source, c02)"
+  prediction_written_first: "if interp_ab carries over to 23.2 and the
+    full-face source: annulus fluidization (bed EP_G, spout gas share)
+    unchanged; wall parcels slower than a LINEAR_HAT full-face run would
+    give, by up to ~0.5x; CC a few hundredths lower.  So W_wall_resolved and
+    W_wall_improved are more likely than in fullface_3s, M_map_match less
+    likely.  NONE has not been smoke-tested on 23.2 (interp_ab ran 3 s on
+    26.1.2 without trouble)"
+  decision: "report every case against the carried-over criteria with the
+    confound stated; nothing further is launched without a user decision"
