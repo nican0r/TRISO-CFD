@@ -55,3 +55,4 @@ cases/**/.wall_end
 
 # PIVlab frame export (raw rendered frames and PIVlab outputs; src/post/piv_c26_export_frames.py)
 results/pivlab_export/
+results/parcel_truth/

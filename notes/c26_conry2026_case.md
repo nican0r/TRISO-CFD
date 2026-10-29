@@ -1501,6 +1501,12 @@ Step 3, the PIV and the sweep use t = [2.4, 3.0] s; health uses t ≥ 0.1 s.
     sweep;
   - C26's spout-regime observations (fountain; 10–20 Hz pulsation).
 - The sweep result itself is relative to c02.
+- Correction (2026-10-29): the C26 12 slpm values above are for YSZ at
+  60 g only, the c02 condition. C26 did not test the coating stages or the
+  40 and 80 g charges, so dividing a c04–c09 wall velocity by them is a
+  scale factor relative to c02's reference, not a comparison with C26. The
+  "wall ÷ C26 exp / model" column below should be read against c02's row
+  only, and the charge conclusion is restated in that relative form below.
 
 **Results, axis-face [old layout].** C26 12 slpm YSZ 60 g reference:
 experiment 1.83e-3 m/s, model 5.05e-3 m/s.
@@ -1529,6 +1535,13 @@ experiment 1.83e-3 m/s, model 5.05e-3 m/s.
   12 slpm experiment and 5.8–7.6× its model at 40, 60 and 80 g, the same
   gap as c02. This adds to the evidence that the gap is not a bed-depth
   effect.
+  - Correction (2026-10-29): C26 measured the wall velocity only at 60 g,
+    so the 40 and 80 g ratios use a C26 value for a bed C26 did not run.
+    What the runs show is relative: the model's wall velocity changes
+    little with charge (c08 +6 to +8 %, c09 −18 % against c02 on the same
+    layout). Whether C26's wall velocity would change with charge is
+    unknown, so this does not show that the gap to C26 is independent of
+    bed depth.
 
 **Diameter block (60 g, 12 slpm).** At a fixed 12 slpm the coated beds
 stop spouting.
@@ -1548,6 +1561,10 @@ stop spouting.
 - The lower wall velocity of c05 and c06 (2.8–5.0× C26's 12 slpm
   experiment, 1.0–1.8× its model) comes from a bed that barely circulates. It is **not** better
   agreement with C26.
+  - Correction (2026-10-29): C26 did not run these coatings, so these
+    ratios only rescale c05 and c06 against c02's reference; read them as
+    "c05 and c06 walls are 0.14–0.27× c02's on the same layout" (5.1–9.1e-3
+    against 3.2–3.6e-2 m/s), not as any agreement or disagreement with C26.
 - **Confound** (design note above): at 60 g the coated beds are 13–15 mm
   deeper (47.7–49.7 mm, above the 41.6 mm cone top). So the loss of the
   spout is not attributable to diameter alone. TGS U_mf (ε 0.42) is 0.129
@@ -4072,19 +4089,434 @@ full-face runs use MFiX's default gas–solids exchange.
   the interpolation change. NONE has not been smoke-tested on 23.2; the
   26.1.2 A/B ran 3 s without trouble.
 
-## Open items (not done here)
+## Full-face 3 s sweep results, MFiX default interpolation (2026-10-29)
 
-- Full-face nozzle (2026-10-27): the bore smoke passed H, M and L (lean
-  0.14 mm; "Bore smoke result"). No parcel entered the bore. Smoke
-  validation is NO-GO as run, on the source-cell dP monitor and the 23.2
-  parcel deletion. User decision pending: a 3 s c02 full-face run scored
-  with PIVlab next to the control and the one-cell momentum run (both
-  rescored with PIVlab). The deck would move the inlet monitor one row up.
-  Fountain: taller than the comparator's by our particle measures (full ṁU
-  up one particle-free column). Inside C26's map window it reads like the
-  comparator and below C26's model. C26 gives no fountain height; its Fig. 4
-  window cuts off while the fountain is still moving ("Like-for-like with
-  C26").
+All nine `c26-c0X-fullface-bore-mom-nointerp-v232` jobs SUCCEEDED with
+exit 0 (12.1–29.9 h on 4 vCPU; c07 first, 2026-10-28 07:29 EDT; c06 last,
+2026-10-29 01:18). Pulled and scored 2026-10-29 08:03–08:51 EDT:
+
+- `notes/c26_watch_post.py --tag fullface_nointerp_v232 --baseline-suffix
+  _apex_v232` wrote `results/c26_compare_fullface_nointerp_v232.csv` and, per
+  case, `results/c26_piv_c0X_fullface_bore_mom_nointerp_v232.csv`, the map
+  CSV and the figure.
+- PIVlab `pivlab_c26img` (headline) and `pivlab_c26img_noclahe`
+  (`src/post/piv_c26_pivlab_batch.sh`; exports under the gitignored
+  `results/pivlab_export/`).
+- `notes/c26_sweep_summary.py --suffix _fullface_bore_mom_nointerp_v232 --tag
+  fullface_nointerp_v232` wrote
+  `results/c26_sweep_summary_fullface_nointerp_v232.csv` and
+  `results/fig_c26_sweep_{flow,diameter,charge}_fullface_nointerp_v232.png`.
+- `notes/c26_spout_cycle.py cycle` over 0.5–3.0 s on each run and its
+  control.
+
+Maps, wall velocities and sweep quantities are time averages over
+t = 2.4–3.0 s; the closure duty d20 is over 0.5–3.0 s. Criteria:
+`params/c26_acceptance.yaml` `fullface_3s_nointerp`, which carries over
+`fullface_3s` (c02) and `fullface_3s_sweep` (the rest) unchanged. Every
+reference run (`c0X_apex_v232`) used LINEAR_HAT, so each comparison below
+carries two changes, the source and the interpolation; no full-face
+LINEAR_HAT 3 s run exists to separate them.
+
+**Run time.** The runs took 1.5–2.5× as long as the control sweep
+(11.9–16.7 h). The cost per outer iteration is unchanged; with NONE the
+solver needs more outer iterations per step and cuts dt. Medians over
+2.5–3.0 s: NIT 3 at dt 8.1e-6 s (c01–c03, c08, c09), NIT 4 at 8.1e-6 (c04),
+NIT 5 at 9e-6 (c05), NIT 6 at 1e-5 (c06), against NIT 2 at 1e-5 in the
+controls. c07's bed never moves (NIT 2), so it finished first.
+
+**Local raw output.** The disk had 2.5 GB free, too little for the pulls.
+On 2026-10-29 (user decision) the local `aws_out/` of 34 superseded runs
+was deleted after a dry-run `aws s3 sync` had confirmed every file was on
+`s3://triso-cfd-mfix/results/<run>/` with the same size (only the local
+`pull.log` was not; it and `post/` were kept). The `_apex_v232` controls
+stay (the watcher's baseline), as do the 13 local-only smoke runs, which
+are not on S3. Re-pull from S3 to re-analyse any of the others.
+
+**Health (H): passes on all nine, c08 at the limit.** Exit 0; t = 3.0 s
+(health S0; `reached_t` is None, as in the control sweep); min dt
+0.89–3.5e-6 s against dt_min 1e-7; no Error 1100, no PS_VOLUME. No parcel
+centre went below y = 0 in any of the 362 PARTICLES and PIV frames (lowest
++0.54 to +1.59 mm), so no parcel entered the bore.
+
+| | c01 | c02 | c03 | c04 | c05 | c06 | c07 | c08 | c09 |
+|---|---|---|---|---|---|---|---|---|---|
+| parcels, seeded → end | 27772 → 27770 | 27763 → 27753 | 27759 → 27713 | 19978 → 19977 | 14543 → 14535 | 10350 → 10320 | 8073 → 8073 | 18027 → 17937 | 34611 → 34601 |
+| lost: outlet / wall nodes | 0 / 2 | 2 / 8 | 4 / 42 | 0 / 1 | 2 / 6 | 5 / 25 | 0 / 0 | 12 / 78 | 0 / 10 |
+| loss [% of seeded mass] | 0.007 | 0.035 | 0.164 | 0.005 | 0.055 | 0.288 | 0 | 0.502 | 0.028 |
+
+c08 lost 0.499 % by count (the criterion's basis, ≤ 0.5 %) and 0.502 % by
+mass; its control lost 0.57 %. `smoke_validate` is NO-GO on all nine, on
+S6 (the inlet monitor reads −0.2 to −4.2 W/A because it still sits in the
+source cell; open item) and P2 (losses not through the outlet: the 23.2
+wall-node deletion).
+
+**C26 cases, 2.4–3.0 s.** Headline: PIVlab `pivlab_c26img`; the CLAHE-off
+variant and the in-repo PIV alongside. c03 is scored on the 90th-percentile
+map bottom (below, "Map bottom for the full-face runs").
+
+| | c01, 10 slpm | c02, 12 slpm | c03, 14 slpm (p90 surface) |
+|---|---|---|---|
+| CC / SSI / MSE, PIVlab | 0.509 / 0.691 / 0.0140 | 0.829 / 0.732 / 0.0075 | 0.730 / 0.643 / 0.0175 |
+| CLAHE off | 0.513 / 0.675 / 0.0171 | 0.822 / 0.727 / 0.0089 | 0.746 / 0.641 / 0.0188 |
+| in-repo PIV | 0.411 / 0.650 / 0.0220 | 0.834 / 0.711 / 0.0109 | 0.750 / 0.639 / 0.0210 |
+| floor (M) | 0.390 / 0.609 / 0.0068 | 0.817 / 0.740 / 0.0042 | 0.829 / 0.741 / 0.0049 |
+| M verdict | NO MATCH (MSE) | NO MATCH (SSI, MSE) | NO MATCH (CC, SSI, MSE) |
+| control, PIVlab / in-repo | 0.273 / 0.647 / 0.0070; 0.356 / 0.702 / 0.0053 | 0.778 / 0.825 / 0.0048; 0.914 / 0.883 / 0.0015 | 0.559 / 0.738 / 0.0085; 0.634 / 0.782 / 0.0075 |
+| map mean / C26 model, PIVlab / in-repo | 1.40 / 1.60 | 1.29 / 1.40 | 1.35 / 1.44 |
+| band row-max / exp, rows .70–.95 / .5–.7 / < .5 (PIVlab) | 1.64 / 1.18 / 1.42 | 1.26 / 1.35 / 1.31 | 1.31 / 1.47 / 1.58 |
+| F: reach at 0.20 m/s, PIVlab / in-repo | 0.88 / 0.99 ≥ 0.54: PASS | 0.99 / 0.99 ≥ 0.85: PASS | 0.99 / 0.99 ≥ 0.82: PASS |
+| W: wall, visible parcels [m/s] (× C26 model, × exp) | 3.50e-3 (1.06, 3.7) | 3.23e-3 (0.64, 1.8) | 5.38e-3 (0.77, 2.1) |
+| W resolved / improved (≤ 0.7 × control) | ≤ 6.6e-3 PASS / ≤ 1.46e-2 PASS | ≤ 1.01e-2 PASS / ≤ 1.07e-2 PASS | ≤ 1.39e-2 PASS / ≤ 2.13e-2 PASS |
+| L: lean (y = 9–18 mm), up share | 0.07 mm, 1.000 | 0.08 mm, 1.000 | 0.09 mm, 1.000 |
+
+- The maps have C26's shape but not its speed. PIVlab CC rose over the
+  control at every flow (0.27 → 0.51, 0.78 → 0.83, 0.56 → 0.73); every
+  map runs 1.3–1.6× C26's model on average and 1.2–1.6× the experiment
+  in every band, so MSE fails everywhere. In c02 the side lobes exceed 0.4 m/s and the axis above the
+  bed runs 0.15–0.25 m/s, where the experiment is nearly still.
+- The wall layer is at C26's model level for the first time (0.64–1.06×
+  the model; 1.8–3.7× the experiment), against 2.9–6.3× the model in the
+  controls. The wall trace is net downward creep interrupted by brief
+  upward lifts of about 1e-2 m/s, so its mean depends on the window.
+
+**Cases C26 did not test (c04–c09).** C26 measured maps and wall
+velocities only for YSZ at 60 g and 10, 12 and 14 slpm (c01–c03). The
+coating stages (c04–c07) and the 40 and 80 g charges (c08, c09) have no C26
+data, so `fullface_3s_sweep` compares them only with their own control
+runs, and nothing in this section compares them with C26. One pipeline
+output looks like such a comparison and is not used: the PIVlab scorer
+(`src/post/piv_c26_pivlab_score.m`) scores every run against the digitized
+Fig. 4 panel of its flow, so each c04–c09 `score.json` holds CC / SSI / MSE
+against C26's 12 slpm, 60 g YSZ map. Those numbers are not reported.
+`src/post/piv_c26.py` leaves them NaN and draws no C26 panel or Fig. 6d
+line for these cases (it keys on the manifest's `piv_targets_table3`).
+
+**Every case against its control.**
+
+| | spout (full-face / control) | d20 | axis v_p at 20 mm [m/s] | spout FWHM at 20 mm [mm] | step-3 D wall [m/s] | fountain share [%] | circulation [g/s] |
+|---|---|---|---|---|---|---|---|
+| c01 | yes / yes | 0.02 / 0.36 | 0.96 / 0.48 | 3.0 / 6.0 | 5.5e-3 / 1.8e-2 | 1.38 / 0.52 | 8.5 / 19.6 |
+| c02 | yes / yes | 0.14 / 0.32 | 1.31 / 0.43 | 2.8 / 7.5 | 5.6e-3 / 2.1e-2 | 2.47 / 2.31 | 9.5 / 26.4 |
+| c03 | yes / yes | 0.02 / 0.32 | 1.56 / 0.48 | 2.8 / 4.0 | 7.5e-3 / 2.8e-2 | 3.50 / 4.26 | 10.8 / 32.3 |
+| c04 buffer | internal jet, fountain in 5 % of frames / fountain in 27 % | 0.00 / 0.06 | 0.98 / 0.15 | 3.1 / 7.2 | 7.2e-3 / 1.5e-2 | 0.05 / 0.09 | 7.9 / 14.2 |
+| c05 IPyC | no / no | 1.00 / 1.00 | 0.08 / 0.09 | – | 2.3e-3 / 8.7e-3 | 0.47 / 0.73 | 0 / 5.7 |
+| c06 SiC | no / no | 1.00 / 1.00 | 0.03 / 0.03 | – | 9.1e-3 / 1.4e-2 | 6.66 / 8.31 | 2.0 / 3.7 |
+| c07 OPyC | static / static | 1.00 / 1.00 | 0.00 / 0.02 | – | 3.7e-4 / 1.3e-3 | 0 / 0 | 0 / 0 |
+| c08 40 g | yes / yes | 0.06 / 0.32 | 1.23 / 0.45 | 3.0 / – | 6.4e-3 / 2.8e-2 | 4.06 / 4.10 | 8.0 / 24.8 |
+| c09 80 g | yes / yes | 0.06 / 0.28 | 1.28 / 0.43 | 2.7 / 7.0 | 6.4e-3 / 1.8e-2 | 1.72 / 1.20 | 11.2 / 27.9 |
+
+(c08's control FWHM, 51.8 mm, is the probe failing on a profile with no
+half-maximum crossing, not a spout width.)
+
+- Wherever the bed spouts (c01–c03, c08, c09) the bore sends the whole
+  jet up one centred column: about 3× the control's axis speed, half its
+  width (2.7–3.0 mm at 20 mm), and almost never closed (d20 0.02–0.14
+  against 0.28–0.36). The gas leaves through the spout instead of pulsing
+  through the annulus, which stays near packed (EP_G_mid 0.44 in c01,
+  c02, c03 at p90 and c09, against 0.47–0.49 closed and 0.51–0.59 open in
+  their controls; c08's band is not comparable, below). The packed annulus creeps
+  65–77 % slower (step-3 D); the extra momentum goes into the fountain, so
+  the maps run fast.
+- The coarser coated parcels damp the jet. c04's jet stays open but dies
+  inside the bed (axis 0.98 m/s at 20 mm, 0.60 at 30 mm, H_static 48 mm),
+  with less fountain than its control. c05 and c06 still do not spout and
+  c05 is less mobile than its control (circulation 0 against 5.7 g/s). c07
+  is static, as in every layout.
+- The circulation rates are uncertain for the full-face runs: downward
+  crossings at the circulation plane are only 0.51–0.65 of the upward
+  ones (0.73–1.0 in the controls).
+- The ΔP PSD peaks (22–113 Hz) and the inlet ΔP come from the source-cell
+  monitor and are not comparable with the controls. The sweep summary's
+  bed ΔP/(W/A) is 1.07–1.53 against 1.37–2.01 in the controls; from the
+  P_G field (row above the source minus the bed-surface row) it is
+  0.95–2.34 (c01 2.16, c02 2.01).
+
+### Map bottom for the full-face runs: 95th → 90th percentile (user decision 2026-10-29)
+
+As first scored, c03 and c08 put the bed surface at 57.4 and 81.0 mm,
+against static beds of 34.8 and 30.2 mm (controls 36.7 and 32.2 mm). The
+map starts at the surface and the wall box sits at x = 0, 0.64 × the
+surface, so both landed above the bed: the maps covered the upper fountain
+instead of the region just above the bed, and the box saw the rising
+fountain column instead of the bed wall, hence the upward "wall"
+velocities (−0.11 and −0.27 m/s, visible parcels). The problem is where
+the measurement sits relative to each run's own bed, not a comparison with
+C26.
+
+**Why the 95th percentile.** `params/piv_c26.yaml`
+`spout_map.bed_surface_percentile: 95` is marked "source: assumed (as smoke
+check P5)". P5 in `notes/smoke_validate_c26.py` reports the settled-bed
+height as the 95th percentile of parcel y on the still bed at
+t = 0.04–0.08 s, where it marks the top of the packed bed while ignoring
+the few loose parcels above it. The synthetic PIV (2026-10-23) reused that
+definition for the map bottom, over all parcels. When the fountain was found
+to raise it by 1.6–6.3 mm, the rule was restricted to the annulus parcels
+(r ≥ 15 mm, "Map bottom moved to the annulus surface") and the 95 was kept.
+On every earlier layout the fountain put almost no parcels out past
+r = 15 mm (≤ 1 % airborne in every control below), so the 95th percentile
+stayed on the bed.
+
+**Why it fails here.** The full-face fountain is taller and rains parcels
+out over the annulus. Once more than 5 % of the r ≥ 15 mm parcels are in the
+air, the 95th percentile lands in the fountain. Time medians over the PIV
+frames (2.4–3.0 s, every 10th frame); airborne = parcels at r ≥ 15 mm more
+than 10 mm above the 90th-percentile surface:
+
+| | p90 [mm] | p95 [mm] | airborne | control p90 / p95 [mm] | control airborne |
+|---|---|---|---|---|---|
+| c01 | 33.7 | 34.2 | 0.8 % | 34.6 / 35.0 | 0.0 % |
+| c02 | 34.1 | 36.2 | 3.8 % | 35.1 / 35.7 | 0.1 % |
+| c03 | 34.5 | 57.1 | 7.0 % | 35.7 / 36.7 | 0.5 % |
+| c04 | 45.4 | 46.2 | 0.1 % | 46.3 / 47.4 | 0.2 % |
+| c05 | 48.0 | 50.1 | 0.9 % | 49.8 / 52.2 | 1.0 % |
+| c06 | 57.3 | 62.2 | 2.8 % | 58.8 / 63.9 | 2.8 % |
+| c07 | 44.6 | 45.5 | 0.0 % | 45.5 / 46.2 | 0.0 % |
+| c08 | 60.0 | 80.9 | 7.3 % | 31.3 / 32.3 | 0.6 % |
+| c09 | 36.4 | 36.9 | 1.4 % | 37.3 / 37.8 | 0.0 % |
+
+**Rescore of c03 and c08 at the 90th percentile** (user request
+2026-10-29). `--bed-surface-percentile` was added to `src/post/piv_c26.py`
+and `src/post/piv_c26_export_frames.py` (default: the params value, so no
+other run changes; the figure caption now states the percentile), and an
+optional `pct` argument to `notes/c26_spout_cycle.py cycle` for its
+annulus band. Outputs carry the tag `_p90`:
+`results/c26_piv_c0X_fullface_bore_mom_nointerp_v232_p90.csv`, the map and
+figure, and `results/pivlab_export/c0X_fullface_bore_mom_nointerp_v232_p90/`.
+The 95th-percentile files stay as first scored. For c03 the p90 rescore
+supersedes their PIV columns (and that row of
+`results/c26_compare_fullface_nointerp_v232.csv`); for c08 the PIV columns
+measure the wrong region at either percentile (below).
+
+- **c03** at p90: surface 34.5 mm, map bottom with it; the scores are in the
+  C26 table above (NO MATCH on all three; W passes). The superseded p95
+  score (PIVlab 0.499 / 0.716 / 0.0073) looked better on MSE only because
+  the window sat in the slower upper fountain. At p90 the cycle's
+  mid-annulus band reads EP_G_mid 0.437 closed / 0.442 open and S_mid
+  1.88 / 0.69, in line with c01, c02 and c09.
+- **c08** has no C26 data (40 g; C26 ran only 60 g), so its map is not
+  scored against C26 and no criterion depends on it; its only comparison
+  is with its control, `c08_apex_v232`. That comparison needs both maps and
+  wall boxes placed the same way relative to each bed. At p90 c08's
+  surface still reads 60.8 mm (p95 80.9) against its 30.2 mm static bed
+  and the control's 31–32 mm: the 40 g bed is shallow, so few bed parcels
+  sit at r ≥ 15 mm in the narrow lower cone, and 7 % airborne moves even
+  the 90th percentile. Its map therefore shows the upper fountain while the
+  control's starts at the bed, and its wall box (39–52 mm up) sees the
+  rising fountain (−0.29 m/s). c08's PIV map, PIV wall and cycle annulus
+  band (EP_G_mid 0.70 at either percentile) are not comparable with its
+  control and are not used. Its step-3 D wall, d20, axis speeds and
+  sweep-summary quantities do not use the PIV surface; they are the c08
+  comparison (table above).
+- A surface rule that ignores airborne parcels was tried (exploratory,
+  2026-10-29, not adopted): the 95th percentile of y over r ≥ 15 mm parcels
+  moving slower than 0.05 m/s. It reads 28.9 mm for c08 and 33.5 mm for
+  c03 (p90 34.5), and moves the C26-scored controls by 0.2–1.3 mm and c01
+  full-face by 0.3 mm; c02 full-face would drop 2.4 mm (score not
+  recomputed). It would make c08's PIV comparable with its control, but it
+  is not expected to change any C26 verdict: the full-face maps fail on
+  speed (1.3–1.6× C26's model), not on a millimetre of map bottom.
+- c02 keeps its pre-registered p95 score, but its p95 surface sits 2.1 mm
+  above its p90 (3.8 % airborne). The map bottom is a sensitive choice
+  (a 3.4 mm shift moved c01's CC from 0.21 to 0.62 on an earlier layout,
+  "Synthetic PIV"), so c02's score carries that caveat.
+
+**Against the predictions written first** (`fullface_3s`,
+`fullface_3s_sweep`, `fullface_3s_nointerp`).
+
+- Right: H passes everywhere, c08 borderline; lean ≤ 0.3 mm everywhere
+  (0.03–0.28 mm, up share 1.000); F on c01; no parcel entered the bore;
+  the interpolation prediction (W more likely, M less likely).
+- Wrong: the wall came in at 0.2–0.4× the controls, not 0.5–1.0× (c02:
+  predicted 0.7–1.1e-2, measured 3.2e-3); c01's map was predicted slow in
+  the upper half and is fast throughout; c04–c07 were predicted to spout
+  more often than their controls, and only c04's lower jet does, with less
+  fountain.
+
+**Standing.** The full-face bore with MFiX's default interpolation brings
+the wall layer to C26's model level (c01 1.06×, c02 0.64×), which no
+earlier configuration did, but it overdrives the spout and fountain, so no
+C26 case matches the map. `fullface_3s.decision` for no MATCH: report the
+failing band (c02: all three bands 1.26–1.35× the experiment) and launch
+nothing further without a user decision.
+
+## Map speed excess: mapping or physics? (2026-10-29)
+
+**Question.** The full-face runs have C26's map shape (CC up at every flow)
+but run 1.3–1.9× the experiment in magnitude. Is that what the parcels do,
+or what the synthetic PIV makes of them? Three checks, none of which
+changes the pipeline.
+
+**1. A parcel-truth map, no PIV** (`notes/c26_parcel_truth_map.py`; outputs in
+`results/parcel_truth/`, gitignored like `results/pivlab_export/`; the
+numbers below are its printout). For every PIV frame the camera-visible parcels
+(the renderer's owner map, nearest surface wins) are binned on the PIV grid,
+the per-frame bin-mean vector is inpainted where empty (the pipeline's
+`interpolate` convention), the vectors are averaged over t = 2.4–3.0 s and
+the magnitude is resampled onto the Fig. 4 grid. It is the quantity the PIV
+is meant to measure, computed without correlating images.
+
+| run | PIV map / truth map, mean | CC, PIV vs truth | fifths PIV / truth, bottom → top | PIV map / exp |
+|---|---|---|---|---|
+| c01 full-face | 1.02 | 0.96 | 1.07 0.99 1.01 1.03 1.02 | 1.89 |
+| c02 full-face | 0.96 | 0.98 | 0.90 0.95 0.99 1.01 0.98 | 1.44 |
+| c03 full-face (p90) | 0.96 | 0.95 | 0.83 0.95 1.01 1.05 1.03 | 1.73 |
+| c01 control | 0.88 | 0.91 | 1.00 0.90 0.85 0.83 0.81 | 0.91 |
+| c02 control | 1.06 | 0.96 | 1.18 1.05 1.05 1.02 0.97 | 1.00 |
+| c03 control | 1.03 | 0.96 | 1.12 1.02 1.00 0.98 0.95 | 1.12 |
+
+The PIV reports the parcel field within 6 % on the full-face runs and 12 %
+on the controls (the controls' maps are sparser: 57–82 % of bins hold a
+parcel in fewer than 10 % of frames, against 1–35 % for the full-face
+runs, so more of their map is inpainted). The same pipeline, unchanged,
+scores the c02 control at 1.00× the experiment and 0.98× C26's model. What
+changed between control and full-face is in the parcels.
+
+**2. The parcels are faster and the fountain is taller than the
+experiment's.** Parcel-side quantities over the same window, and the
+fountain height read from C26's Fig. 3 snapshots (single frames; the
+height where the dark fraction per row exceeds 0.05 / 0.02; the 14 slpm
+experiment panel may be cropped at the top):
+
+| | 10 slpm | 12 slpm | 14 slpm |
+|---|---|---|---|
+| experiment fountain, Fig. 3a [mm above the annulus] | 13 / 14 | 24 / 29 | 36 / 47 |
+| C26 model fountain, Fig. 3b [mm] | 33 / 34 | 32 / 42 | 40 / 49 |
+| control fountain, parcel p99 / max, time median [mm] | 12 / 15 | 17 / 29 | 21 / 39 |
+| full-face fountain, parcel p99 / max [mm] | 30 / 69 | 72 / 139 | 94 / 152 |
+| visible parcels in the box, p90 speed, control / full-face [m/s] | 0.29 / 0.45 | 0.35 / 0.67 | 0.42 / 0.77 |
+| share of visible parcels above 0.4 m/s, control / full-face | 0.02 / 0.14 | 0.06 / 0.35 | 0.12 / 0.40 |
+| launch v_y at the spout root, p90, control / full-face [m/s] | 0.32 / 0.36 | 0.39 / 0.60 | 0.46 / 0.51 |
+| axis net-down frames (|x| < 2.5 mm, first 10 mm), control / full-face | 0.16 / 0.04 | 0.27 / 0.02 | 0.34 / 0.00 |
+| axis \|mean v_y\| / mean \|v_y\|, control / full-face | 0.91 / 0.99 | 0.70 / 1.00 | 0.64 / 1.00 |
+
+- The full-face fountains are 2.5–3× the experiment's at 12 and 14 slpm
+  and 2× at 10; the controls are 0.6–0.7× at 12 and 14 and match at 10.
+  The experiment sits between the two layouts. This measurement involves
+  no PIV.
+- The map excess grows with height (c02: 1.31× in the bottom fifth,
+  1.81× in the top) because the full-face fountain is still rising where
+  the experiment's has ended.
+- On the axis the full-face jet is net upward in 96–100 % of frames, so
+  nothing cancels in the time mean (0.21–0.22 m/s against the
+  experiment's ~0.1); the controls alternate and cancel as C26 p.5
+  describes.
+
+**3. Mapping choices that could lower the full-face maps break the
+control.** c02, map mean over the experiment:
+
+| time-mean convention (visible parcels) | full-face | control |
+|---|---|---|
+| interpolate (C26's, the pipeline's) | 1.49 | 0.94 |
+| skip (occupied frames only) | 1.52 | 0.96 |
+| zero (empty = 0, all frames) | 0.72 | 0.22 |
+| time mean of \|v\| | 2.19 | 1.15 |
+| interpolate, parcels > 0.6 m/s unseen | 1.20 | 0.93 |
+| interpolate, parcels > 0.4 m/s unseen | 0.85 | 0.78 |
+
+- Only the `zero` convention brings the full-face map to the experiment,
+  and it was rejected on 2026-10-23 because it collapses the control's CC
+  to 0.2 and cannot produce C26's dense maps.
+- A PIV velocity ceiling in the experiment is the one mapping effect that
+  acts on the full-face runs and not on the controls. C26 gives no camera
+  resolution. Measured on the embedded Fig. 4c: the experiment's vector
+  grid repeats every 14–15 figure px over a 556–561 px wall-to-wall field,
+  i.e. 1.3 mm; with PIVlab's default 50 % overlap that is a ~2.6 mm final
+  window and ~5.3 mm first pass, and the quarter-window rule at 430 fps
+  gives a ceiling near 0.6 m/s (the same measurement on Fig. 4d gives
+  1.3 mm for the model, consistent with the 1.7 mm read earlier from the
+  parcel size). Our pipeline (0.1 mm/px, 64 px first pass, 2 ms) resolves
+  up to ~0.8 m/s, so it sees fast parcels the experiment's PIV may have
+  dropped. Re-scored with parcels above 0.6 m/s unseen, the full-face
+  maps stay 1.20–1.26× the experiment at 12–14 slpm (1.74× at 10) while
+  the controls move < 5 %. A ceiling can trim 20–30 % of the excess at
+  most; the fountain height is immune to it.
+- The map bottom moves CC, not the mean ("Synthetic PIV", "Map bottom
+  moved to the annulus surface"); ±3 mm cannot make 40–90 %.
+
+**Verdict.** The discrepancy is physical. The full-face bore overdrives
+the spout: all of the inlet momentum goes up the axis (up share 1.0), the
+jet never closes (d20 0.02–0.14), the spout stays one cell wide and carries
+few parcels (circulation 8.5–10.8 g/s against 20–32 in the controls), so
+the gas spends its momentum on a small solids flux and throws it 2.5–3×
+higher than the experiment. The mapping reproduces the parcel field within
+6 % and scores the control at the experiment's level. Across the c02
+source variants with the same mapping, map mean over experiment: 2×2
+mass-only LINEAR_HAT 1.00; 2×2 momentum 0.88; one-cell point 1.09;
+one-cell point + momentum 1.19; point source NONE (momentum24_nointerp)
+0.95; full-face bore NONE 1.44. The quantity that orders them is how much
+of the inlet momentum survives above the bed.
+
+**What the mapping still owns.** The CC sensitivity to the map bottom
+(unchanged), SSI's texture penalty (averaging, not physics; "Why is our
+map smooth"), and the experiment's unknown PIV ceiling. None of them is
+large enough to turn a 1.4–1.9× magnitude excess into a match.
+
+**Recommendation and a correction.** The direction is to deliver less of
+the inlet momentum above the bed without re-fluidizing the annulus, which
+the full-face bore got right (wall 0.64–1.06× C26's model). The closest
+unrun reading of the authors' reply (momentum, a point, speed from the
+mesh, MFiX's default interpolation) is the one-cell momentum point source
+on the closed apex with NONE; its LINEAR_HAT version scored 1.19× and
+NONE alone lowered a point-source map by 5 % and halved the wall. A
+first draft of this recommendation stated that C26's source cell was
+open-sided and leaked ~40 % of its momentum into the cone tip, with an
+up share of 0.58. **That is not in the paper or the reply.** C26 2.2.1
+says only that the inlet is a point source "centered with the reactor and
+placed at the bottom" of the cone, with dx chosen to match the nozzle; the
+reply gives the source type and the speed's origin, nothing about the
+cell's sides. The 0.58 is our `c02_point_mom_v232` on our apex STL. Whether
+C26's cell was whole or cut by the cone, and so how much momentum left it
+sideways, is the open question already drafted for the authors ("Which
+area set their speed"). Until it is answered, the up share of any
+point-source deck is a free parameter, and the recommendation above is a
+direction, not a reproduction of C26's deck.
+
+Pre-registered, mapping-independent targets for whatever is run next, at
+12 slpm: fountain p99 24–29 mm above the annulus (Fig. 3a; a single frame,
+so ±5 mm), launch v_y p90 near 0.45 m/s, axis net-down frames > 0.15,
+wall ≤ 2× C26's model. A 1.5 s run reads the fountain height after the
+startup transient. Second tier, if the fountain stays tall with the
+annulus packed: the annulus is not taking its gas share, which points at
+the drag closure at dense packing (annulus EP_G 0.44), already on the
+open-items list. The full-face bore with LINEAR_HAT remains the missing
+A/B that separates source from interpolation; it is worth running for the
+record, but LINEAR_HAT's entrainment came with the controls' annulus
+over-fluidization.
+
+Scratch inputs for this section (not in the repo): the C26 PDF text and
+figure crops under the session scratchpad; Fig. 3/4 measurements are
+reproducible from the embedded page-6 JPEGs (`pdfimages -j -f 6 -l 6`).
+
+## Open items (not done here)
+- Map speed excess (2026-10-29, "Map speed excess: mapping or physics?"):
+  physical, not the mapping. The synthetic PIV reproduces the parcel field
+  within 6 %; the full-face fountain is 2.5–3× the experiment's (Fig. 3a)
+  and the controls' 0.6–0.7×. Open: C26's source cell, whole or cut by the
+  cone (its up share is unknown; the 0.58 is ours); the experiment's PIV
+  velocity ceiling (~0.6 m/s estimated from Fig. 4c's 1.3 mm vector grid);
+  the one-cell momentum point source with NONE interpolation has not been
+  run; pre-registered fountain / launch / closure targets are in that
+  section.
+
+- Full-face 3 s sweep with MFiX's default interpolation (2026-10-29, "Full-face
+  3 s sweep results"): H passes on all nine (c08 at the 0.5 % loss limit);
+  W passes on c01–c03 (wall at 0.64–1.06× C26's model); M fails on c01–c03
+  (maps 1.3–1.6× C26's model); c04–c07 still do not spout. Per the
+  pre-registered decision, nothing further is launched without a user
+  decision. Still open from this sweep:
+  - the source and the interpolation changed together; no full-face
+    LINEAR_HAT 3 s run separates them;
+  - the inlet monitor still sits in the source cell (S6 NO-GO on all nine);
+    move it one row up in the next decks;
+  - the PIV map bottom for full-face runs: the 95th percentile fails on c03
+    and c08, the 90th fixes c03 but not c08, and c02 sits 2.1 mm high at
+    the 95th. c08's PIV map and wall stay not comparable with its control
+    (no C26 criterion depends on them); a slow-parcel surface would fix
+    that but is not adopted (user decision);
+  - the PIVlab scorer scores cases C26 did not test (c04–c09) against the
+    12 slpm panel; make it skip them as `src/post/piv_c26.py` does;
+  - the circulation closure (down / up 0.51–0.65) makes the full-face
+    circulation rates uncertain.
 - Production point-source defaults: the authors' reply rules out the
   mass-only reading, but `ps_momentum` / `ps_point` stay false (the
   production sweep's settings) until the user decides.
