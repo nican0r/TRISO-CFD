@@ -4487,7 +4487,148 @@ Scratch inputs for this section (not in the repo): the C26 PDF text and
 figure crops under the session scratchpad; Fig. 3/4 measurements are
 reproducible from the embedded page-6 JPEGs (`pdfimages -j -f 6 -l 6`).
 
+## Bore interpolation A/B at matched times; drag closure test (2026-10-29)
+
+**Pull.** `c02_fullface_bore_mom_v232_smoke05` (the LINEAR_HAT bore smoke
+scored on 2026-10-27) was pulled from
+`s3://triso-cfd-mfix/results/c02_fullface_bore_mom_v232_smoke05/` to
+`cases/C26_3d/c02_fullface_bore_mom_v232_smoke05/aws_out` (400 files,
+752 MB; `pull.log` there). Its deck differs from the NONE 3 s run
+`c02_fullface_bore_mom_nointerp_v232` only in `des_interp_scheme`,
+`des_interp_on` and `des_interp_mean_fields` (grep of both decks; same
+`ps_massflow_g`, `ps_v_g` 45.35 m/s, `drag_type` TGS).
+
+**Question.** Is the interpolation the knob that lets the bore jet keep its
+momentum ("Map speed excess", recommendation item 1)?
+
+**Matched times, 0.30–0.50 s** (`notes/c26_interp_matched_times.py`: the
+smoke's PARTICLES_PIV frames every 10 ms, the 3 s runs' PARTICLES frames
+every 50 ms; medians over frames; gas from `notes/c26_spout_cycle.py jet`):
+
+| | LINEAR_HAT bore (smoke) | NONE bore (3 s run) | control (2×2 mass-only, LINEAR_HAT) |
+|---|---|---|---|
+| fountain p99 / max above the annulus [mm] | 72 / 137 | 74 / 146 | 18 / 38 |
+| parcels above the surface | 1220 | 1300 | 2650 |
+| p90 speed above the surface [m/s] | 0.63 | 0.63 | 0.36 |
+| share of those above 0.4 m/s | 0.35 | 0.39 | 0.09 |
+| launch v_y p90 at the spout root [m/s] | 0.46 | 0.45 | 0.43 |
+| axis net-down frames | 0.00 | 0.00 | 0.00 |
+| axis gas v_y max at 1.1 / 9.4 / 24.1 mm [m/s] | 40 / 27 / 13 | 44 / 32 / 11 | 25 / 15 / 6 |
+| axis EP_G at 5–16 mm | 0.93–0.96 | 0.90–1.00 | 0.83–0.95 |
+
+- The two bore runs are the same fountain, the same fast sparse
+  population and the same jet, at twice the control's gas velocity all the
+  way up the bed. The NONE run's fountain history (p99 every 50 ms) sits at
+  60–80 mm from 0.25 s to 3.0 s, so the smoke window is representative and
+  nothing settles later. The LINEAR_HAT smoke shows the same closure cycle
+  (spout share at 20 mm dips to 0.24–0.29 about every 50 ms, S_mid peaking
+  at 1.6, EP_G_mid 0.44–0.49).
+- The wall layer differs at these times (6.5 against 11.2 mm/s) but both
+  are still in transient (the control reads −6 to +44 mm/s over the same
+  windows), so it is not read here.
+
+**Reading.** The interpolation is not the fountain knob. It acts on the
+annulus and the wall layer (the interp A/B of 2026-10-25), not on how much
+momentum the jet keeps. Both bore jets hold a near particle-free core
+(axis EP_G 0.90–0.96 to 20 mm) and lose momentum only across the spout
+wall, as the 2026-10-27 mechanism note found for the smoke. Recommendation
+item 1 of "Map speed excess" (bore with LINEAR_HAT) is therefore answered
+for the fountain and dropped. With the inlet fixed by continuity and the
+interpolation ruled out, the quantity still wrong is the momentum sink
+inside the bed: the spout carries too few solids and too little gas crosses
+into the annulus. That leaves resolving the spout (finer cells with a lower
+statistical weight, C26's cases 7–9) and the annulus gas share, which on
+this grid is governed by the drag closure at the annulus packing.
+
+**Drag closures at the bed states.** `notes/c26_drag_closure_table.py`
+ports the 23.2 `drag_gs.f` routines and evaluates them with the real
+particle diameter and the deck's argon. lDgA relative to the deck's TGS:
+
+| closure | annulus packed (EP_g 0.44, slip 0.25 m/s) | annulus, slow (0.44, 0.10) | annulus loosened (0.55, 0.30) | spout core (0.95, 15 m/s) | fountain (0.99, 2 m/s) |
+|---|---|---|---|---|---|
+| TGS (deck) | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| WEN_YU | 0.41 | 0.37 | 0.44 | 0.98 | 0.96 |
+| GIDASPOW | 0.39 | 0.39 | 0.48 | 0.98 | 0.96 |
+| BVK | 0.45 | 0.47 | 0.56 | 1.49 | 1.09 |
+| KOCH_HILL | 0.45 | 0.46 | 0.54 | 1.44 | 0.70 |
+| SYAM_OBRIEN | 0.23 | 0.23 | 0.37 | 1.34 | 1.09 |
+
+Superficial gas velocity a packed annulus at EP_g 0.44 passes at the
+fluidization pressure gradient: TGS 0.34 m/s, Wen-Yu 0.59, Gidaspow 0.70,
+BVK 0.66, Koch-Hill 0.67 (U_sup at 12 slpm is 0.10 m/s).
+
+- At the annulus packing TGS is 2.2–2.6× every other closure, and 4.3×
+  Syamlal-O'Brien. Tenneti et al. 2011 fitted TGS for solids fractions up
+  to 0.5; at EP_g 0.44 (solids 0.56) it is extrapolated, and the
+  0.48 φ^(1/3)/EP_g^4 term dominates. The bore runs' annulus sits at
+  0.44, 0.02 above the `des_epg_clip` floor of 0.42, so the whole
+  annulus is evaluated there.
+- In the spout core Wen-Yu and Gidaspow equal TGS within 2 %; BVK and
+  Koch-Hill are 1.45× (more momentum to the spout parcels).
+- So the closures separate cleanly: Gidaspow changes only the annulus
+  resistance (0.39× TGS); BVK changes both (0.45× annulus, 1.49× core).
+- C26 also ran TGS and reports a shorter fountain, so TGS alone is not
+  what separates us from C26's model; with their source leakage unknown
+  ("Which area set their speed"), this test is about the experiment, not
+  a replication.
+
+**Test design (proposed, not launched).**
+- *Decks.* The production c02 bore deck (full-face, momentum, NONE
+  interpolation) with `drag_type` changed; nothing else. `run_C26_3d` has
+  no drag flag; add `--drag-type` writing the `drag_type` keyword, with
+  the choices taken from `check_solids_common_all.f` (23.2: SYAM_OBRIEN,
+  GIDASPOW, GIDASPOW_PCF, GIDASPOW_BLEND, GIDASPOW_BLEND_PCF, WEN_YU,
+  WEN_YU_PCF, KOCH_HILL, KOCH_HILL_PCF, BVK, TPKKV, HYS, GAO, SARKAR,
+  RADL, TGS, DIFELICE, DIFELICE_GANSER, SQP_DIFELICE_GANSER,
+  SQP_DIFELICE_HOLZER_SOMMERFELD, USER_DRAG). Dry-run locally (1 ms,
+  D1–D5) and diff the deck against the NONE bore deck: only `drag_type`
+  and the run name may differ.
+- *Runs.* Two 0.5 s smokes, as the bore smoke was built (0.5 s, gas VTK
+  every 5 ms, PIV frames over 0–0.5 s, 4 vCPU; the bore smoke took
+  2.52 h): `c02_fullface_bore_mom_nointerp_gidaspow_smoke05` and
+  `..._bvk_smoke05`. Gidaspow isolates the annulus resistance; BVK adds
+  the spout-core drag. Both at 12 slpm only.
+- *Comparators.* The NONE bore 3 s run at 0.30–0.50 s (identical deck but
+  the closure; PARTICLES frames every 50 ms, gas every 50 ms) and the
+  LINEAR_HAT bore smoke (2 ms and 5 ms frames). The fountain is
+  established by 0.25 s in both.
+- *Quantities, 0.30–0.50 s* (`notes/c26_interp_matched_times.py`,
+  `notes/c26_spout_cycle.py cycle` and `jet`): fountain p99 above the
+  annulus; spout gas share at 20 and 30 mm (annulus share = 1 − share);
+  axis gas v_y at 9.4 and 24.1 mm; parcels above the surface and their p90
+  speed; launch v_y p90; closure duty d20; EP_G_mid and S_mid; the wall
+  layer reported but not scored (transient at 0.5 s).
+- *Criteria, written before any run.* Baselines: fountain p99 74 mm,
+  spout share at 30 mm 0.72–0.87, axis v_y 32 / 11 m/s, EP_G_mid 0.44.
+  - *Supports* "the annulus cross-flow is drag-limited": fountain p99
+    ≤ 50 mm (−30 %) and spout share at 30 mm ≤ 0.60, with parcels above the
+    surface ≥ 1500 (the spout loads up rather than empties).
+  - *No effect:* fountain within 62–85 mm and share at 30 mm within 0.10
+    of the baseline.
+  - Otherwise inconclusive; report the gas profile.
+  - *Health as `fullface_smoke`:* exit 0, 0.5 s reached, parcel loss
+    ≤ 0.1 %, no parcel centre below y = 0, lean ≤ 0.7 mm, up share
+    ≥ 0.95.
+  - The experiment's fountain at 12 slpm is 24–29 mm (Fig. 3a, one
+    frame); a closure that lands there with EP_G_mid ≤ 0.47 is the
+    candidate for a 3 s run scored with the PIVlab pipeline next to
+    Table 3.
+- *Cost.* About 5 h of AWS wall time for the two smokes, or local docker
+  at the dry-run rate (22 s per simulated ms: about 3 h each, 4 ranks).
+- *What a positive result does not settle.* Whether C26's fountain match
+  under TGS came from its source leakage; the authors' answer on the
+  source cell is still needed for that. A closure change is a sensitivity
+  screen here, not a production change: C26 Table 1 says TGS.
+
 ## Open items (not done here)
+- Bore interpolation A/B and drag closure (2026-10-29, "Bore interpolation
+  A/B at matched times; drag closure test"): LINEAR_HAT and NONE give the
+  same bore fountain (72 / 74 mm) and jet at 0.30–0.50 s, so the
+  interpolation is not the fountain knob. TGS is 2.2–2.6× every other
+  closure at the annulus packing (EP_g 0.44, outside its fitted range).
+  Proposed and not launched: two 0.5 s c02 bore smokes with `drag_type`
+  GIDASPOW and BVK, criteria pre-registered there; needs a `--drag-type`
+  flag in `run_C26_3d`. The LINEAR_HAT bore smoke is back on disk.
 - Map speed excess (2026-10-29, "Map speed excess: mapping or physics?"):
   physical, not the mapping. The synthetic PIV reproduces the parcel field
   within 6 %; the full-face fountain is 2.5–3× the experiment's (Fig. 3a)
