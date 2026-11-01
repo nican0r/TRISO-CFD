@@ -2,8 +2,9 @@
 
 A cold-flow CFD model of the spouted bed used to coat TRISO nuclear fuel
 particles. It is built in [MFiX](https://mfix.netl.doe.gov/) and
-benchmarked against the ORNL benchtop experiment and model of Conry et
-al. 2026 ("C26").
+benchmarked against the ORNL benchtop experiment and model of [Conry et
+al. 2026](https://www.sciencedirect.com/science/article/abs/pii/S002954932600261X)
+("C26").
 
 TRISO particles get their four coating layers in a conical **spouted
 bed**. A gas jet from a nozzle at the cone's apex carries particles up a
@@ -16,7 +17,8 @@ chemistry and no heat transfer.
 ## What is simulated
 
 The benchmark is C26: Conry, Dal Forno Chuahy, Oyedeji, Finney, Heldt &
-López-Honorato, *Nucl. Eng. Des.* 456:115009 (2026). The rig is a 60° glass
+López-Honorato, [*Nucl. Eng. Des.* 456:115009
+(2026)](https://www.sciencedirect.com/science/article/abs/pii/S002954932600261X). The rig is a 60° glass
 cone opening into a 50 mm column, with a 2.38 mm argon nozzle and 60 g of
 YSZ kernel-surrogate particles. C26 measured particle velocities above the
 bed and at the wall by high-speed-camera PIV, and published an MFiX model
@@ -267,7 +269,8 @@ contributors and agents are in [.claude/CLAUDE.md](.claude/CLAUDE.md).
 ## References
 
 - Conry, Dal Forno Chuahy, Oyedeji, Finney, Heldt & López-Honorato (2026),
-  *Nucl. Eng. Des.* 456:115009: the benchmark experiment and model (C26).
+  [*Nucl. Eng. Des.* 456:115009](https://www.sciencedirect.com/science/article/abs/pii/S002954932600261X):
+  the benchmark experiment and model (C26).
 - Conry et al. (2025), *Chem. Eng. Sci.* 306:121197: the PIV method C26
   cites.
 - Tenneti, Garg & Subramaniam (2011), *Int. J. Multiphase Flow* 37:1072:
