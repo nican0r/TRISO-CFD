@@ -1,7 +1,7 @@
-# 8. Findings, dead ends and open items
+# 9. Findings, dead ends and open items
 
 **No C26 case is validated.** The numbers for both primary sweeps are in
-the [README](../README.md). This file explains *why* the model behaves as
+[file 08](08-results.md). This file explains *why* the model behaves as
 it does and what is left to try.
 
 ## Where the two primary inlets stand

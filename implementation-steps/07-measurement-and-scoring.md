@@ -118,7 +118,7 @@ used; its version and settings are not stated.
   - **Bed ΔP:** annulus gas pressure at y = 4.2–8.4 mm minus the bed top,
     over W/A. It reads 1.4–2.0 everywhere, so it does not separate
     spouting from packed beds in a cone. Its fluctuation does.
-- **Spout-cycle diagnostics**, used in the findings (file 08):
+- **Spout-cycle diagnostics**, used in the findings (file 09):
   - closure duty d20: the fraction of time the spout is closed at 20 mm;
   - annulus gas fraction EP_G_mid and support ratio S_mid;
   - fountain height (99th percentile of parcel height above the annulus);

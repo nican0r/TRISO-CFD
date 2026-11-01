@@ -14,7 +14,8 @@ evidence behind them.
 | [05 Solver and numerics](05-solver-and-numerics.md) | MFiX 26.1.2 → 23.2, interpolation scheme, gas-fraction floor, drag closure, time step, run cost |
 | [06 Running a case](06-running-a-case.md) | Build a deck, dry run, smoke, AWS Batch, scoring, the run log |
 | [07 Measurement and scoring](07-measurement-and-scoring.md) | C26's data, the match rule, rendering the frames, PIV with PIVlab, checks on the measurement, other metrics |
-| [08 Findings, dead ends and open items](08-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
+| [08 Results](08-results.md) | The single-cell inlet sweep: spout maps against C26, scores, wall velocities, coating-stage and charge cases; the 2 × 2 control sweep |
+| [09 Findings, dead ends and open items](09-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
 
 ## Vocabulary
 

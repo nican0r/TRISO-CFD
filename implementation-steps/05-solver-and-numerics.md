@@ -61,7 +61,7 @@ momentum too. An `ep_star` in a DEM deck silently becomes the clip.
   Case V). C26 does not report a floor.
 - **As a lever it is weak.** A 0.30 floor moved the wall velocity +15 %
   (inconclusive). A 0.50 floor (the densest state inside the TGS drag
-  fit) is running as a comparator in the drag-closure smokes (file 08).
+  fit) is running as a comparator in the drag-closure smokes (file 09).
 
 ## Drag closure
 
@@ -74,7 +74,7 @@ and Koch–Hill, and 4.3× Syamlal–O'Brien. Most of that comes from its
 5.81 φ/ε³ term, which is not an extrapolation artifact: inside its fitted
 range (ε_g 0.50–0.60) the others are still 0.42–0.60× TGS. In the spout
 core (ε_g 0.95) Wen–Yu and Gidaspow equal TGS, and BVK and Koch–Hill are
-~1.45×. A drag-closure sensitivity screen is running (file 08). TGS stays
+~1.45×. A drag-closure sensitivity screen is running (file 09). TGS stays
 the production closure.
 
 ## Time step

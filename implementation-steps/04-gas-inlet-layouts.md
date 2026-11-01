@@ -45,7 +45,7 @@ and the map scores (file 07).
 | 10 | 2 × 2 + momentum (`_apex_mom_v232`) | closed apex, 24 cells | worse than #7 (shorter fountain, faster wall layer); not explained | dropped |
 | 11 | **Full-face bore, one cell + momentum** (`_fullface_bore_mom_v232` smoke, `_fullface_bore_mom_nointerp_v232` 3 s) | bore, 25 cells | up share 1.000, lean 0.03–0.28 mm; wall at C26's model level (0.64–1.06×); maps 1.3–1.4× C26's model speed | **single-cell inlet**, c01–c09 sweep (2026-10-27) |
 
-Results for #7 and #11 are in the [README](../README.md) and file 08.
+Results for #7 and #11 are in [file 08](08-results.md).
 
 ## Why two primary inlets
 
@@ -78,7 +78,7 @@ The two primary sweeps differ in the inlet, the grid and the
 interpolation scheme (LINEAR_HAT for the control, NONE for the bore;
 file 05). No full-face LINEAR_HAT 3 s run exists, so the interpolation
 effect on the bore is known only from a 0.3–0.5 s matched-time comparison.
-There it did not change the fountain (file 08).
+There it did not change the fountain (file 09).
 
 ## Still open about the source
 
