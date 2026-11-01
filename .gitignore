@@ -52,6 +52,9 @@ cases/**/.wall_end
 .claude/scheduled_tasks.lock
 .firecrawl/
 /*.pdf
+# Working journal: local only since 2026-11-01. Design decisions and findings
+# are in implementation-steps/; the C26 scoring scripts moved to src/post/c26/.
+notes/
 
 # PIVlab frame export (raw rendered frames and PIVlab outputs; src/post/piv_c26_export_frames.py)
 results/pivlab_export/

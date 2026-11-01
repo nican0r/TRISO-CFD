@@ -1,4 +1,4 @@
-"""Unit tests for the comparison quantities of notes/c26_sweep_summary.py."""
+"""Unit tests for the comparison quantities of src/post/c26/c26_sweep_summary.py."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "notes"))
+sys.path.insert(0, str(REPO / "src" / "post" / "c26"))
 import c26_sweep_summary as S  # noqa: E402
 
 

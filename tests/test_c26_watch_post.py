@@ -1,4 +1,4 @@
-"""Unit tests for the scoring helpers of notes/c26_watch_post.py."""
+"""Unit tests for the scoring helpers of src/post/c26/c26_watch_post.py."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "notes"))
+sys.path.insert(0, str(REPO / "src" / "post" / "c26"))
 import c26_watch_post as W  # noqa: E402
 
 CRIT = yaml.safe_load((REPO / "params" / "c26_acceptance.yaml").read_text())

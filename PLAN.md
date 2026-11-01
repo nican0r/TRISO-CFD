@@ -23,7 +23,7 @@ Validation case (Case V): the ORNL/UTK cold mockup spouted bed used in the DOE A
 
 Design case (Case D): the same geometry run with (i) argon at ambient, (ii) argon at coating temperature (~1300–1600 °C), (iii) Ar/H₂ 50/50 mol at coating temperature, with the same 500 µm ZrO₂ surrogate; plus a UO₂ real-kernel sensitivity at 10 800 kg/m³. Also parametric: flow rate across U/U_ms ≈ 1.1–1.9, drag model, and particle-particle restitution coefficient (c_e is assumed in Case V, so Day 13 sweeps it).
 
-Benchmark case (Case C26): the ORNL benchtop spout-fluidized bed of Conry et al. 2026 (Nucl. Eng. Des. 456:115009), modelled as the paper did: MFiX CFD-CGDEM, 2.1 mm mesh, mass-only gas point source for the 2.38 mm nozzle (project default since 2026-10-19), argon at 298 K, 60 g YSZ (measured PSD), TGS drag. `params/sweep_C26.yaml` holds C26 Table 2 cases 1–3 (YSZ at 10/12/14 slpm, the PIV benchmark) plus this project's one-factor-at-a-time sweep around c02 (12 slpm, 60 g): TRISO coating stages on the YSZ core (+buffer, +IPyC, +SiC, +OPyC; c04–c07) and bed charge 40/80 g (c08–c09), all at W = 10. It replaces C26's wall-friction, statistical-weight and steel cases. Validation target: side-view PIV velocity maps (Table 3 CC/SSI/MSE) and wall velocity. Design and deviations from the spouted-bed recipe: `notes/c26_conry2026_case.md`; steps: `implementation-steps/case-c26.md`.
+Benchmark case (Case C26): the ORNL benchtop spout-fluidized bed of Conry et al. 2026 (Nucl. Eng. Des. 456:115009), modelled as the paper did: MFiX 23.2 CFD-CGDEM, 2.1 mm mesh, a gas point source for the 2.38 mm nozzle (the layouts tested are in `implementation-steps/04-gas-inlet-layouts.md`), argon at 298 K, 60 g YSZ (measured PSD), TGS drag. `params/sweep_C26.yaml` holds C26 Table 2 cases 1–3 (YSZ at 10/12/14 slpm, the PIV benchmark) plus this project's one-factor-at-a-time sweep around c02 (12 slpm, 60 g): TRISO coating stages on the YSZ core (+buffer, +IPyC, +SiC, +OPyC; c04–c07) and bed charge 40/80 g (c08–c09), all at W = 10. It replaces C26's wall-friction, statistical-weight and steel cases. Validation target: side-view PIV velocity maps (Table 3 CC/SSI/MSE) and wall velocity. Design, deviations from the spouted-bed recipe, and findings: `implementation-steps/` (start at its README); results: `README.md`.
 
 ## 1.4 Final deliverables (end of Day 14)
 
@@ -38,7 +38,7 @@ Benchmark case (Case C26): the ORNL benchtop spout-fluidized bed of Conry et al.
 
 ## 2.1 Software
 
-- MFiX, current release (26.1.2 installed). Install with the official conda-based instructions for your OS.
+- MFiX: 26.1.2 for Days 1–13; 23.2 (C26's release) for all C26 runs, via the `triso-cfd/mfix:23.2` docker image. Install with the official conda-based instructions for your OS.
 - ParaView for 3D visualization.
 - Python env: numpy scipy pandas matplotlib jupyter pyvista meshio cantera. Cantera provides temperature-dependent gas viscosity and density; the gri30.yaml mechanism includes Ar, H₂ and N₂ with transport data.
 
@@ -62,7 +62,8 @@ coater-cfd/
 │   ├── V_*/                # validation runs
 │   └── D_*/                # design runs
 ├── results/                # CSV + figures (small files only)
-├── notes/                  # your daily notes & self-checks
+├── implementation-steps/   # how the project works (design decisions, findings)
+├── notes/                  # local working journal (not tracked in git)
 └── tests/                  # unit tests for correlations
 
 
