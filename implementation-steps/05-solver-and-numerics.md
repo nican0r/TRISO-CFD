@@ -30,14 +30,13 @@ mesh. C26 does not report it.
 - **Until 2026-10-27:** `LINEAR_HAT` with mean-field interpolation,
   carried over from the Day-10 spouted-bed recipe. Used by the control
   sweep.
-- **Since 2026-10-27:** `NONE` (cell-centred deposition, MFiX's own
+- **Since 2026-10-27:** `NONE` (cell-centered deposition, MFiX's own
   default; user decision), written with `des_interp_on` and
   `des_interp_mean_fields` false. Used by the single-cell sweep.
   `run_C26_3d --interp-scheme LINEAR_HAT` re-renders older decks.
 - **Evidence.** On the 2 × 2 momentum layout, NONE halved the wall
   velocity (0.026 → 0.013 m/s) and left the annulus fluidization and spout
-  gas share unchanged. CC fell 0.825 → 0.783. The pre-registered verdict
-  was inconclusive.
+  gas share unchanged. The pre-registered verdict was inconclusive.
 - **Fountain.** On the bore, LINEAR_HAT and NONE give the same fountain,
   jet and parcel speeds at matched times (0.3–0.5 s). Interpolation acts on
   the annulus and wall layer, not on how much momentum the jet keeps.
@@ -56,7 +55,7 @@ momentum too. An `ep_star` in a DEM deck silently becomes the clip.
   Depositing recorded parcels the way NONE does puts ~10 cells per frame
   at ε_s ≥ 1 in every bore and closed-apex frame. Raising
   `TOL_SMALL_CELL` would not help, because a third of those cells hold two
-  or more parcel centres.
+  or more parcel centers.
 - **How much it binds.** With 0.42 the floor binds in ~900–1,250 cells per
   frame, mostly in the packed annulus. 0.42 is assumed (copied from
   Case V). C26 does not report a floor.
@@ -72,7 +71,7 @@ term. Evaluating drag at the parcel diameter would raise U_mf 3.4–3.7×.
 
 At the packed annulus (ε_g 0.44) TGS is 2.2–2.6× Wen–Yu, Gidaspow, BVK
 and Koch–Hill, and 4.3× Syamlal–O'Brien. Most of that comes from its
-5.81 φ/ε³ term, which is not an extrapolation artefact: inside its fitted
+5.81 φ/ε³ term, which is not an extrapolation artifact: inside its fitted
 range (ε_g 0.50–0.60) the others are still 0.42–0.60× TGS. In the spout
 core (ε_g 0.95) Wen–Yu and Gidaspow equal TGS, and BVK and Koch–Hill are
 ~1.45×. A drag-closure sensitivity screen is running (file 08). TGS stays

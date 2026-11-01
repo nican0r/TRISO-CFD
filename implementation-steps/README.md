@@ -1,18 +1,19 @@
 # How this project works
 
-These notes explain the model to someone new to the project. Read them in
-order. Each one is a high-level summary that keeps the design decisions and
-the evidence behind them.
+These files explain how the project works: what is modeled, how a case is
+built, run and scored, and what the runs have shown. Read them in order.
+Each one is a high-level summary that keeps the design decisions and the
+evidence behind them.
 
 | File | Covers |
 |---|---|
-| [01 Background and history](01-background-and-history.md) | Spouted-bed coaters; Days 1–13 (correlations, 2D beds, the failed ORNL/UTK "Case V" model) and the modelling rules they produced; why the project moved to the C26 benchmark |
+| [01 Background and history](01-background-and-history.md) | Spouted-bed coaters; Days 1–13 (correlations, 2D beds, the failed ORNL/UTK "Case V" model) and the modeling rules they produced; why the project moved to the C26 benchmark |
 | [02 The C26 benchmark and the model](02-c26-benchmark-and-model.md) | The experiment, the CFD-CGDEM model and its parameters, what is assumed, deviations from the earlier recipe, the c01–c09 case matrix |
 | [03 Geometry and mesh](03-geometry-and-mesh.md) | Vessel, the three cone-bottom variants (open apex, closed apex, full-face bore), the 2.1 mm grid and where the axis sits, cut-cell constraints |
 | [04 Gas inlet layouts tested](04-gas-inlet-layouts.md) | Every gas-source layout tried, what each did, why two became the primary sweeps |
 | [05 Solver and numerics](05-solver-and-numerics.md) | MFiX 26.1.2 → 23.2, interpolation scheme, gas-fraction floor, drag closure, time step, run cost |
 | [06 Running a case](06-running-a-case.md) | Build a deck, dry run, smoke, AWS Batch, scoring, the run log |
-| [07 Measurement and scoring](07-measurement-and-scoring.md) | C26's data, the match rule, synthetic PIV, the PIVlab re-run, checks on the measurement, other metrics |
+| [07 Measurement and scoring](07-measurement-and-scoring.md) | C26's data, the match rule, rendering the frames, PIV with PIVlab, checks on the measurement, other metrics |
 | [08 Findings, dead ends and open items](08-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
 
 ## Vocabulary
@@ -37,7 +38,7 @@ the evidence behind them.
   model.
 - **W/A.** Bed weight per cross-section area, the reference for pressure
   drops.
-- **slpm.** Standard litres per minute (25 °C, 1 atm here).
+- **slpm.** Standard liters per minute (25 °C, 1 atm here).
 
 ## Where things are
 
@@ -45,7 +46,7 @@ the evidence behind them.
 |---|---|
 | `params/*.yaml` | every physical and numerical input, with units and source |
 | `src/` | gas properties, correlations, case builders, STL builders, run drivers |
-| `src/post/`, `src/post/c26/` | readers, synthetic PIV, PIVlab pipeline, C26 scoring scripts |
+| `src/post/`, `src/post/c26/` | readers, frame rendering, PIVlab pipeline, C26 scoring scripts |
 | `src/aws/` | AWS Batch submit / poll / provisioning |
 | `cases/C26_3d/` | rendered decks and manifests (raw output is never committed) |
 | `results/` | primary-result CSVs and figures, `run_log.csv` |

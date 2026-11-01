@@ -4,7 +4,7 @@
 
 TRISO fuel particles are uranium kernels (~0.4–0.5 mm) coated with four
 layers (porous carbon buffer, inner pyrolytic carbon, silicon carbide, outer
-pyrolytic carbon) by chemical vapour deposition in a **spouted bed**: a
+pyrolytic carbon) by chemical vapor deposition in a **spouted bed**: a
 conical vessel with a narrow gas nozzle at its apex. The gas jet carries
 particles up a central **spout**, throws them into a **fountain** above the
 bed, and they rain back onto the **annulus**, which slides slowly down the
@@ -39,7 +39,7 @@ work is the C26 benchmark (files 02–08).
 
 ## Day 10: what the 3D spouted bed taught
 
-Day 10 is where most of the lasting modelling rules came from. These
+Day 10 is where most of the lasting modeling rules came from. These
 became the project's "spouted-bed recipe" (the
 `.claude/skills/mfix-spouted-bed-recipe` skill), and C26 departed from
 some of them on purpose (file 02).
@@ -67,7 +67,7 @@ some of them on purpose (file 02).
   5e-5 s let it penetrate.
 
 Best result (R5d): the jet penetrated and a fountain erupted, but the
-centreline gas velocity was 0.15–0.56× the S1 Pitot data. An R4 claim of a
+centerline gas velocity was 0.15–0.56× the S1 Pitot data. An R4 claim of a
 "matching" ΔP was the wrong sign and is void.
 
 ## Why the project moved to the C26 benchmark

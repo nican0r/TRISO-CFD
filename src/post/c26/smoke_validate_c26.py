@@ -50,7 +50,7 @@ T_RESPONSE = 0.1             # start of the evaluated window [s]
 PS_VOLUME_MIN_M3 = 5.0e-9    # axis cell (row 0) 7.0e-9; corner sliver 3.3e-10
 SEED_SHORTFALL_MAX = 0.10    # recipe Rule 8
 OUTLET_LOSS_MAX = 0.005      # mass fraction that may leave via the top PO (user, 2026-10-19)
-SLAB_Y = 25.2e-3             # spout-flux slab centre [m] (12 dx)
+SLAB_Y = 25.2e-3             # spout-flux slab center [m] (12 dx)
 CORE_R = 3.15e-3             # spout core radius [m] (1.5 dx)
 FLUX_MIN_MDOT = 5.0          # (i) upward solids flux >= 5 m_dot_g
 CENTROID_MAX = 1.05e-3       # (ii) half a cell [m]
@@ -101,9 +101,9 @@ def lost_parcel_exits(run, m):
 def run_check_smoke(run, m):
     bed_top_r = min(m['R_t_m'] + m['H_static_m'] * math.tan(math.radians(m['cone_half_angle_deg'])),
                     m['R_c_m'])
-    # S3/S4 average the first-row cells whose centres lie within --orifice-r.
+    # S3/S4 average the first-row cells whose centers lie within --orifice-r.
     # With the axis on a cell face (manifest ps_footprint_cells 2) the four
-    # source-cell centres sit at r = dx/sqrt(2) > R_nozzle, so widen the
+    # source-cell centers sit at r = dx/sqrt(2) > R_nozzle, so widen the
     # radius by a quarter cell past them (still inside the next ring).
     ps_cells = m.get('ps_footprint_cells', 1)
     exit_r = max(m['R_nozzle_m'], (ps_cells - 1) * m['dx_m'] / math.sqrt(2) + 0.25 * m['dx_m'])

@@ -1,6 +1,6 @@
 """C26 Fig. 4 side by side (2026-10-29; implementation-steps/07-measurement-and-scoring.md).
 Our synthetic-PIV spout maps next to C26's experiment (Fig. 4a) and model
-(Fig. 4b), on C26's colour scale.  The maps and scores are the ones
+(Fig. 4b), on C26's color scale.  The maps and scores are the ones
 src/post/piv_c26.py wrote to results/ (c26_piv_map_<name>.csv, c26_piv_<name>.csv);
 the wall trace of its per-case figure is left out.
 
@@ -34,9 +34,10 @@ sys.path.insert(0, str(REPO))
 from src.post.piv_c26 import load_fig4, load_params  # noqa: E402
 
 RESULTS = REPO / "results"
+PIVLAB_VARIANT = "pivlab_c26img"   # headline PIVlab variant: C26-style binary frames, PIVlab defaults
 
 
-def load_case(spec, tag, p):
+def load_case(spec, tag, p, engine="native"):
     case, suffix = spec[:3], spec[3:]
     name = f"{case}_{tag}{suffix}"
     with (RESULTS / f"c26_piv_{name}.csv").open() as f:
@@ -48,6 +49,15 @@ def load_case(spec, tag, p):
     if float(row["panel_flow_slpm"]) != flow:
         raise ValueError(f"{name}: no C26 Fig. 4 panel at {flow:g} slpm")
     m = json.loads(((REPO / row["run_dir"]).parent / "manifest.json").read_text())
+    if engine == "pivlab":
+        # PIVlab map and scores of the same frames (src/post/piv_c26_pivlab_batch.sh), same Fig. 4 grid
+        d = RESULTS / "pivlab_export" / name / PIVLAB_VARIANT
+        path = d / "map_fig4grid.csv"
+        s = json.loads((d / "score.json").read_text())
+        for key, metrics in (("", s["metrics_vs_exp"]), ("_c26model_same_pipeline", s["metrics_c26_model_vs_exp"])):
+            for k in ("CC", "SSI", "MSE_m2_s2"):
+                row[k + key] = metrics[k]
+        row["engine"] = "PIVlab"
     ours = np.flipud(np.loadtxt(path, delimiter=",", comments="#"))
     H = float(row["map_height_mm"])
     return dict(name=name, case=case, flow=flow, row=row, ours=ours,
@@ -91,8 +101,11 @@ def main(argv=None):
     ap.add_argument("--sweep", help="one-row layout for a one-factor sweep at one flow; names the figure")
     ap.add_argument("--label", help="configuration named in the title, e.g. '2x2-cell control inlet'")
     ap.add_argument("--no-c26", action="store_true", help="one-row layout: our maps only, no C26 panels or scores")
+    ap.add_argument("--engine", choices=("native", "pivlab"), default="native",
+                    help=f"map source: the src.post.piv_c26 map CSVs, or PIVlab's {PIVLAB_VARIANT} maps "
+                         "under results/pivlab_export (needs the PIVlab re-run)")
     ap.add_argument("--out", type=Path,
-                    help="default results/fig_c26_fig4_compose[_<sweep>]_<tag>.png")
+                    help="default results/fig_c26_fig4_compose[_<sweep>]_<tag>[_pivlab].png")
     a = ap.parse_args(argv)
     import matplotlib
     matplotlib.use("Agg")
@@ -100,7 +113,7 @@ def main(argv=None):
 
     p = load_params()
     vmin, vmax = p["fig4"]["v_min_m_s"], p["fig4"]["v_max_m_s"]
-    runs = [load_case(s, a.tag, p) for s in a.cases]
+    runs = [load_case(s, a.tag, p, a.engine) for s in a.cases]
 
     def draw(ax, m, title, ext, ylabel=None):
         ax.set_title(title, fontsize=8)
@@ -164,7 +177,8 @@ def main(argv=None):
              int(18 * fig.get_figwidth())),   # ~18 characters per inch at 7 pt
              fontsize=7)
     fig.subplots_adjust(**adjust)
-    out = a.out or RESULTS / f"fig_c26_fig4_compose{'_' + a.sweep if a.sweep else ''}_{a.tag}.png"
+    out = a.out or RESULTS / (f"fig_c26_fig4_compose{'_' + a.sweep if a.sweep else ''}_{a.tag}"
+                              f"{'_pivlab' if a.engine == 'pivlab' else ''}.png")
     fig.savefig(out, dpi=150)
     print(f"wrote {out}")
 

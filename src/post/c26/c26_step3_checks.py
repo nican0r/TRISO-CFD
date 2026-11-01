@@ -66,7 +66,7 @@ def step3_metrics(run):
 
     frames = [(t, f) for t, f in read_pvd(run / 'PARTICLES_PIV.pvd') if T0 <= t <= T1]
     fountain, n_frame, wall1, wall2 = [], [], [], []
-    xbins = np.arange(-c['R_C'] - DX / 2, c['R_C'] + DX, DX)   # axis-centred bins
+    xbins = np.arange(-c['R_C'] - DX / 2, c['R_C'] + DX, DX)   # axis-centered bins
     xc = 0.5 * (xbins[1:] + xbins[:-1])
     prof = {y: [np.zeros(len(xc)), np.zeros(len(xc)), np.zeros(len(xc))] for y in YS}
     for t, f in frames:

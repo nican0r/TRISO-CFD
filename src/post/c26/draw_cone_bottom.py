@@ -92,7 +92,7 @@ def main(argv=None):
         ax.text(0.5, -0.27, pn["note"], transform=ax.transAxes, ha="center", fontsize=8)
     axes[0].set_ylabel("y [mm]")
     fig.text(0.5, 0.01,
-             f"Section through the axis (blue). Grey: solid; orange: source cell(s), fluid part; dashed: "
+             f"Section through the axis (blue). Gray: solid; orange: source cell(s), fluid part; dashed: "
              f"{dx:g} mm grid. Cone wall 30° from the axis, throat radius {R_t:.2f} mm at y = 0.",
              ha="center", fontsize=8)
     fig.tight_layout(rect=(0, 0.05, 1, 1))

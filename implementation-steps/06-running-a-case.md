@@ -102,7 +102,7 @@ succeeds, and runs the scoring steps:
 
 - health (`smoke_validate_c26.py`);
 - step-3 spout checks (`c26_step3_checks.py`);
-- synthetic PIV (`src.post.piv_c26`);
+- frame rendering, map bottom and wall box (`src.post.piv_c26`);
 - source-gas split (`c26_source_split.py`).
 
 It then writes `results/c26_compare_<tag>.csv`. With `--local` it scores
@@ -120,9 +120,11 @@ src/post/piv_c26_pivlab_batch.sh c02_fullface_bore_mom_nointerp_v232 pivlab_c26i
 .venv/bin/python -m src.post.piv_c26_pivlab_summary --tag _fullface_nointerp_v232 \
     --runs c01_fullface_bore_mom_nointerp_v232 c02_fullface_bore_mom_nointerp_v232 \
            c03_fullface_bore_mom_nointerp_v232_p90 --map-variants pivlab_c26img pivlab_c26img_noclahe
-# Fig. 4-style composite and the cone-bottom schematic
+# Fig. 4-style composites (PIVlab maps) and the cone-bottom schematic
 MPLBACKEND=Agg .venv/bin/python src/post/c26/c26_fig4_compose.py \
-    fullface_bore_mom_nointerp_v232 c01 c02 c03_p90
+    fullface_bore_mom_nointerp_v232 c01 c02 c03_p90 --engine pivlab
+MPLBACKEND=Agg .venv/bin/python src/post/c26/c26_fig4_compose.py \
+    fullface_bore_mom_nointerp_v232 c04 c05 c06 c07 --sweep diameter --no-c26 --engine pivlab
 MPLBACKEND=Agg .venv/bin/python src/post/c26/draw_cone_bottom.py
 ```
 

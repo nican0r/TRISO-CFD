@@ -4,7 +4,7 @@
 
 Conry, Dal Forno Chuahy, Oyedeji, Finney, Heldt & López-Honorato (2026),
 *Nucl. Eng. Des.* 456:115009 ("C26"), studied the ORNL benchtop
-spout-fluidized bed, a cold-flow analogue of a TRISO coater:
+spout-fluidized bed, a cold-flow analog of a TRISO coater:
 
 - glass vessel: 60° cone (30° half-angle) opening into a 50 mm column,
   one 2.38 mm (3/32 in.) nozzle at the bottom of the cone;

@@ -52,7 +52,7 @@ params/*.yaml ──► src/run_C26_3d.py ──► cases/C26_3d/<run>/  (deck, 
                                                ▼
                        local dry run & smoke ──► AWS Batch (MFiX 23.2 image)
                                                              │
-results/ ◄── scoring: synthetic PIV, PIVlab, sweep summary ◄─┘ pull
+results/ ◄── scoring: frames → PIVlab maps, sweep summary  ◄─┘ pull
 ```
 
 Every input lives in `params/*.yaml` with units and a source. The case
@@ -61,7 +61,7 @@ dry-run and smoke-tested locally, then run on AWS Batch. The output is
 scored the way C26 measured the experiment:
 
 - the parcels are rendered as side-view camera frames;
-- PIV (an in-repo engine and PIVlab) turns the frames into time-averaged
+- PIVlab, the PIV tool C26 used, turns the frames into time-averaged
   velocity maps;
 - the maps are compared with C26's maps using correlation (CC), structural
   similarity (SSI) and mean squared error (MSE);
@@ -69,15 +69,14 @@ scored the way C26 measured the experiment:
 
 Every run is logged in [results/run_log.csv](results/run_log.csv).
 
-**[implementation-steps/](implementation-steps/README.md) explains the
-project for a new reader:** the model, the geometry and mesh, every gas
-inlet layout tried, the solver settings, how to run and score a case, and
-what has been learned.
+**[implementation-steps/](implementation-steps/README.md) explains how
+the project works:** the model and its parameters, the geometry and mesh,
+every gas inlet layout tried and why, the solver settings, how a case is
+run and scored, and what the runs have shown.
 
 ## Results: single-cell gas inlet
 
-The gas inlet turned out to control most of the bed's behaviour, and
-C26 describes it in one sentence. This sweep uses the closest reading of
+The gas inlet turned out to control most of the bed's behavior. This sweep uses the closest reading of
 the C26 authors' description ("mass flow with velocity vector and point",
 personal communication 2026-10-27):
 
@@ -85,7 +84,7 @@ personal communication 2026-10-27):
   of a one-cell-wide (2.1 mm) square bore cut into the cone tip;
 - the gas leaves through the cell's whole top face (4.41 mm², against the
   nozzle's 4.45 mm²) with momentum `ps_v_g` = Q/dx² (37.8 / 45.4 / 52.9 m/s);
-- a 25 × 104 × 25 grid with the axis at a cell centre, and MFiX's default
+- a 25 × 104 × 25 grid with the axis at a cell center, and MFiX's default
   particle–mesh interpolation (NONE).
 
 Run suffix: `_fullface_bore_mom_nointerp_v232`. The nine 3 s runs finished
@@ -98,45 +97,42 @@ is compared with below. Left: the open apex of the earliest runs.*
 
 ### Spout maps against C26 (c01–c03)
 
-![PIVlab spout maps, single-cell inlet](results/fig_c26_pivlab_maps_fullface_nointerp_v232.png)
+![PIVlab spout maps, single-cell inlet](results/fig_c26_fig4_compose_fullface_bore_mom_nointerp_v232_pivlab.png)
 
 *Time-averaged particle speed above the bed, t = 2.4–3.0 s (299 frame
 pairs, 2 ms apart). Columns: C26's experiment (Fig. 4a, digitized), C26's
-model (Fig. 4b, digitized), this model processed by PIVlab with C26-style
-frames, and the same with PIVlab's CLAHE step off. c03 uses the
+model (Fig. 4b, digitized), and this model, processed by PIVlab from
+C26-style frames. Scores are against the experiment. c03 uses the
 90th-percentile bed surface as the map bottom (see
 [file 07](implementation-steps/07-measurement-and-scoring.md)).*
 
 | | c01, 10 slpm | c02, 12 slpm | c03, 14 slpm |
 |---|---|---|---|
-| CC / SSI / MSE [m²/s²], PIVlab (headline) | 0.509 / 0.691 / 0.0140 | 0.829 / 0.732 / 0.0075 | 0.730 / 0.643 / 0.0175 |
-| CC / SSI / MSE, in-repo PIV | 0.411 / 0.650 / 0.0220 | 0.834 / 0.711 / 0.0109 | 0.750 / 0.639 / 0.0210 |
+| CC / SSI / MSE [m²/s²] | 0.509 / 0.691 / 0.0140 | 0.829 / 0.732 / 0.0075 | 0.730 / 0.643 / 0.0175 |
 | match floor (C26's own model) | 0.390 / 0.609 / 0.0068 | 0.817 / 0.740 / 0.0042 | 0.829 / 0.741 / 0.0049 |
 | verdict | no match (MSE) | no match (SSI, MSE) | no match (CC, SSI, MSE) |
-| map mean / C26 model, PIVlab | 1.40 | 1.29 | 1.35 |
+| map mean / C26 model | 1.40 | 1.29 | 1.35 |
 | wall velocity, downward [m/s] | 3.50e-3 | 3.23e-3 | 5.38e-3 |
 | wall / C26 model, wall / experiment | 1.06, 3.7 | 0.64, 1.8 | 0.77, 2.1 |
-| 2 × 2 control, PIVlab CC / SSI / MSE | 0.273 / 0.647 / 0.0070 | 0.778 / 0.825 / 0.0048 | 0.559 / 0.738 / 0.0085 |
-| 2 × 2 control, wall / C26 model | 6.3 | 2.9 | 4.3 |
+| 2 × 2 control, CC / SSI / MSE | 0.273 / 0.647 / 0.0070 | 0.778 / 0.825 / 0.0048 | 0.559 / 0.738 / 0.0085 |
+| 2 × 2 control, wall / C26 model | 6.3 | 3.0 | 4.4 |
 
 A map **matches** when all three metrics are at least as good as the
 worse of C26's two scores of its own model (Table 3, and Fig. 4b through
 this pipeline). The wall velocity is the mean of the parcels visible in a
-4 mm box at 0.64 of the bed height. The same per-case figures with the
-wall-velocity trace, and an in-repo-PIV version of the maps, are linked
-under [Per-case data](#per-case-data).
+4 mm box at 0.64 of the bed height.
 
 **What this shows:**
 
 - **The maps have C26's shape but not its speed.** CC is higher than
-  with the 2 × 2 control at every flow. Every map runs 1.3–1.6× C26's
+  with the 2 × 2 control at every flow. Every map runs 1.3–1.4× C26's
   model on average, so MSE fails everywhere. No c01–c03 case matches.
 - **The wall layer is at C26's model level (0.64–1.06×),** the first
-  inlet layout to get there. The 2 × 2 control runs 2.9–6.3×. Both are
+  inlet layout to get there. The 2 × 2 control runs 3.0–6.3×. Both are
   still above the experiment.
-- **The cause is physical, not the PIV.** A map built from the parcels'
-  own velocities, with no image correlation, agrees with the PIV maps
-  within 6 %. The single-cell jet sends all of the gas up one centred,
+- **The cause is physical, not the PIV.** A map built directly from the
+  parcels' own velocities, with no imaging or PIV, shows the same excess
+  (1.5–1.9× the experiment). The single-cell jet sends all of the gas up one centered,
   one-cell-wide spout that almost never closes. That spout carries few
   particles (8.5–10.8 g/s, against 20–32 g/s with the 2 × 2 inlet) and
   throws them 2.5–3× higher than the experiment's fountain. The annulus
@@ -151,11 +147,11 @@ under [Per-case data](#per-case-data).
 C26 has no data for these, so they are compared only with c02 and with
 the same cases on the 2 × 2 inlet.
 
-![coating-stage maps](results/fig_c26_fig4_compose_diameter_fullface_bore_mom_nointerp_v232.png)
+![coating-stage maps](results/fig_c26_fig4_compose_diameter_fullface_bore_mom_nointerp_v232_pivlab.png)
 
-![charge maps](results/fig_c26_fig4_compose_charge_fullface_bore_mom_nointerp_v232.png)
+![charge maps](results/fig_c26_fig4_compose_charge_fullface_bore_mom_nointerp_v232_pivlab.png)
 
-*In-repo synthetic PIV, t = 2.4–3.0 s, same colour scale as above. Top:
+*PIVlab maps, t = 2.4–3.0 s, same color scale as above. Top:
 coated beds at 12 slpm. Bottom: 40 / 60 / 80 g of bare YSZ at 12 slpm.
 c08's map bottom (90th percentile) still sits in the fountain, 61 mm
 against a 30 mm static bed, so its panel shows the upper fountain and is
@@ -191,37 +187,22 @@ margin, used only to rank. All are averages over t = 2.4–3.0 s, from
   c08 (0.50 %, at the limit). MFiX 23.2 deletes a few parcels at cut-cell
   corners.
 
-### Per-case data
+### Data files
 
-Case definitions: [params/sweep_C26.yaml](params/sweep_C26.yaml). Sweep
-tables:
+Case definitions are in [params/sweep_C26.yaml](params/sweep_C26.yaml).
 
-- [c26_compare_fullface_nointerp_v232.csv](results/c26_compare_fullface_nointerp_v232.csv):
-  scoring against C26 and against the control, in-repo PIV, p95 map bottom.
 - [c26_pivlab_rerun_fullface_nointerp_v232.csv](results/c26_pivlab_rerun_fullface_nointerp_v232.csv):
-  PIVlab scores.
+  c01–c03 map scores and wall velocities.
 - [c26_sweep_summary_fullface_nointerp_v232.csv](results/c26_sweep_summary_fullface_nointerp_v232.csv):
-  sweep quantities, with figures for [flow](results/fig_c26_sweep_flow_fullface_nointerp_v232.png),
+  sweep quantities for c01–c09, with figures for the
+  [flow](results/fig_c26_sweep_flow_fullface_nointerp_v232.png),
   [diameter](results/fig_c26_sweep_diameter_fullface_nointerp_v232.png) and
-  [charge](results/fig_c26_sweep_charge_fullface_nointerp_v232.png).
-- [Map composite, in-repo PIV, c01–c03](results/fig_c26_fig4_compose_fullface_bore_mom_nointerp_v232.png).
-
-| Case | PIV table | Velocity map | Figure (maps + wall trace) |
-|---|---|---|---|
-| c01 | [csv](results/c26_piv_c01_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c01_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c01_fullface_bore_mom_nointerp_v232.png) |
-| c02 | [csv](results/c26_piv_c02_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c02_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c02_fullface_bore_mom_nointerp_v232.png) |
-| c03 (p90 surface) | [csv](results/c26_piv_c03_fullface_bore_mom_nointerp_v232_p90.csv) | [csv](results/c26_piv_map_c03_fullface_bore_mom_nointerp_v232_p90.csv) | [png](results/fig_c26_piv_c03_fullface_bore_mom_nointerp_v232_p90.png) |
-| c04 | [csv](results/c26_piv_c04_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c04_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c04_fullface_bore_mom_nointerp_v232.png) |
-| c05 | [csv](results/c26_piv_c05_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c05_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c05_fullface_bore_mom_nointerp_v232.png) |
-| c06 | [csv](results/c26_piv_c06_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c06_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c06_fullface_bore_mom_nointerp_v232.png) |
-| c07 | [csv](results/c26_piv_c07_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c07_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c07_fullface_bore_mom_nointerp_v232.png) |
-| c08 (p90 surface) | [csv](results/c26_piv_c08_fullface_bore_mom_nointerp_v232_p90.csv) | [csv](results/c26_piv_map_c08_fullface_bore_mom_nointerp_v232_p90.csv) | [png](results/fig_c26_piv_c08_fullface_bore_mom_nointerp_v232_p90.png) |
-| c09 | [csv](results/c26_piv_c09_fullface_bore_mom_nointerp_v232.csv) | [csv](results/c26_piv_map_c09_fullface_bore_mom_nointerp_v232.csv) | [png](results/fig_c26_piv_c09_fullface_bore_mom_nointerp_v232.png) |
-
-c03 and c08 also have the original 95th-percentile files (same names
-without `_p90`). Input decks are in
-`cases/C26_3d/c0X_fullface_bore_mom_nointerp_v232/`. Raw MFiX output is
-not in git; it is on `s3://triso-cfd-mfix/results/<run>/`.
+  [charge](results/fig_c26_sweep_charge_fullface_nointerp_v232.png) blocks.
+- [fig_c26_pivlab_maps_fullface_nointerp_v232.png](results/fig_c26_pivlab_maps_fullface_nointerp_v232.png):
+  the c01–c03 maps above, plus a PIVlab variant with its CLAHE contrast
+  step off (a diagnostic, [file 07](implementation-steps/07-measurement-and-scoring.md)).
+- Input decks: `cases/C26_3d/c0X_fullface_bore_mom_nointerp_v232/`. Raw
+  MFiX output is not in git; it is on `s3://triso-cfd-mfix/results/<run>/`.
 
 ### The 2 × 2 control inlet
 
@@ -231,16 +212,13 @@ The other primary sweep (`_apex_v232`, 2026-10-27) differs in three ways:
 - a 24-cell grid with the axis on a cell face;
 - LINEAR_HAT interpolation.
 
-Its c02 matches all three C26 floors on the in-repo PIV (0.914 / 0.883 /
-0.0015), but not on PIVlab (0.778 / 0.825 / 0.0048; CC below 0.817). c01
-and c03 do not match, and its wall layer runs 2.9–6.3× C26's model.
-Results:
+None of its c01–c03 maps match C26 either. Its c02 scores 0.778 / 0.825 /
+0.0048 (CC and MSE miss their floors), and its wall layer runs 3.0–6.3×
+C26's model. Results:
 
-- [c26_compare_apex_v232.csv](results/c26_compare_apex_v232.csv);
-- [c26_sweep_summary_apex_v232.csv](results/c26_sweep_summary_apex_v232.csv);
-- per-case `results/*_apex_v232*`;
-- the PIVlab re-run: [c26_pivlab_rerun.csv](results/c26_pivlab_rerun.csv)
-  and [maps](results/fig_c26_pivlab_maps.png).
+- [c26_pivlab_rerun.csv](results/c26_pivlab_rerun.csv) and
+  [maps](results/fig_c26_pivlab_maps.png);
+- [c26_sweep_summary_apex_v232.csv](results/c26_sweep_summary_apex_v232.csv).
 
 Why both inlets exist is in
 [file 04](implementation-steps/04-gas-inlet-layouts.md).

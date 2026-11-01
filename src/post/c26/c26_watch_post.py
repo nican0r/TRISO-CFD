@@ -109,7 +109,7 @@ def reached_t(run):
 def fwhm(x, v, v_axis):
     """Full width at half the axis value of a probe profile [m]: walk out from
     the bin nearest x = 0 until v drops below v_axis / 2, interpolate linearly
-    between bin centres.  NaN if the profile never drops that far or v_axis <= 0."""
+    between bin centers.  NaN if the profile never drops that far or v_axis <= 0."""
     x, v = np.asarray(x, float), np.asarray(v, float)
     if not len(x) or not v_axis > 0:
         return NAN

@@ -8,9 +8,9 @@ it does and what is left to try.
 
 | | 2 × 2 control (`_apex_v232`) | Single-cell bore (`_fullface_bore_mom_nointerp_v232`) |
 |---|---|---|
-| c02 map (12 slpm) | matches on the in-repo PIV (0.914 / 0.883 / 0.0015); PIVlab 0.778 / 0.825 / 0.0048, below the CC floor | no match (PIVlab 0.829 / 0.732 / 0.0075: SSI and MSE fail) |
-| c01, c03 maps | no match (short fountains) | no match; C26's shape, 1.3–1.6× C26's model speed |
-| Wall velocity | 2.9–6.3× C26's model | 0.64–1.06× C26's model, the first layout at that level |
+| c02 map (12 slpm) | no match (0.778 / 0.825 / 0.0048: CC and MSE fail) | no match (0.829 / 0.732 / 0.0075: SSI and MSE fail) |
+| c01, c03 maps | no match (short fountains) | no match; C26's shape, 1.3–1.4× C26's model speed |
+| Wall velocity | 3.0–6.3× C26's model | 0.64–1.06× C26's model, the first layout at that level |
 | Spout | pulses, closes ~⅓ of the time | one-cell column, almost never closes |
 | Coated beds at 12 slpm | c04 intermittent; c05–c07 do not spout | c04 internal jet; c05–c07 do not spout |
 
@@ -35,9 +35,9 @@ parcels, was rejected: drag on them is ≤ 5 % of their weight.
 
 **2. "Describes" vs "reproduces."** A one-cell momentum jet is what C26
 describes (file 04) and the only kind that keeps the spout base clear. The
-2 × 2 mass-only source is what reproduces C26's c02 map. The control sweep
-was run on the second (2026-10-26) and the single-cell sweep on the first
-(2026-10-27).
+2 × 2 mass-only source gave the c02 map closest to C26's among the layouts
+tried when the sweep inlet was chosen. The control sweep was run on the
+second (2026-10-26) and the single-cell sweep on the first (2026-10-27).
 
 **3. The single-cell bore overdrives the spout, and the excess is
 physical.** All of the inlet momentum goes up the axis (up share 1.0). The
@@ -48,18 +48,11 @@ small solids flux high: the fountain is 2.5–3× the experiment's height at
 12 and 14 slpm, while the controls are 0.6–0.7×. The annulus stays packed
 (ε_g 0.44), which is why the wall layer is right.
 
-The measurement is not the cause: a parcel-truth map agrees with the PIV
-within 6 % (file 07). Across the c02 source variants, the map mean over the
-experiment ranks with how much inlet momentum survives above the bed:
-
-| c02 source variant | Map mean / experiment |
-|---|---|
-| 2 × 2 + momentum, LINEAR_HAT | 0.88 |
-| 2 × 2 + momentum, NONE (open apex, `_momentum24_nointerp`) | 0.95 |
-| 2 × 2 mass-only, LINEAR_HAT (the control) | 1.00 |
-| one-cell point, LINEAR_HAT (`_point_v232`) | 1.09 |
-| one-cell point + momentum, LINEAR_HAT (`_point_mom_v232`) | 1.19 |
-| full-face bore + momentum, NONE | 1.44 |
+The measurement is not the cause. A map built from the visible parcels'
+own velocities, with no imaging or PIV, shows the same excess (1.5–1.9×
+the experiment; file 07). Across the c02 source variants tried, the map
+speed ranks with how much inlet momentum survives above the bed: the 2 × 2
+sources are the slowest and the full-face bore the fastest.
 
 **4. Interpolation is not the fountain knob.** At matched times
 (0.3–0.5 s) the bore with LINEAR_HAT and with NONE has the same fountain
@@ -86,15 +79,15 @@ other closures (file 05).
 source cell sideways, and the side outflows were unequal from the first
 frame. The suspected cause is MFiX's unlimited x-interpolation factor
 (`Theta_Ue` in `get_alpha.f`) in cut cells. That was never proven, and the
-centred layouts made it moot.
+centered layouts made it moot.
 
 ## Dead ends on C26 (do not retry)
 
-- **A point source.** A zero-width point at a cell centre: it snaps into a
+- **A point source.** A zero-width point at a cell center: it snaps into a
   sliver cell. A typed `ps_v_g` sweep in a walled source cell: continuity
   fixes the exit velocity. A momentum source on the open-apex 2 × 2 layout:
   only the source-cell pressure changed. A one-cell point on the
-  face-centred grid for production: 1.5 mm off axis, 5 mm map lean, dt
+  face-centered grid for production: 1.5 mm off axis, 5 mm map lean, dt
   cuts.
 - **A closed apex on the odd grid without a bore**: the tip cell is
   blocked (`PS_VOLUME == ZERO`).

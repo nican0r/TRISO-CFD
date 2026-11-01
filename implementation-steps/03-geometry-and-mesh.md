@@ -39,7 +39,7 @@ How the parametric builders are built:
   cell's faces. Every corner node of the source cell is then fluid, so
   MFiX treats it as an ordinary (uncut) cell whose only open face is its
   whole top face, dx² = 4.41 mm² against the nozzle's 4.45 mm². Its
-  neighbours keep 0.59 % slivers, below MFiX's 1 % small-cell cutoff
+  neighbors keep 0.59 % slivers, below MFiX's 1 % small-cell cutoff
   (`TOL_SMALL_CELL`), so MFiX blocks them and walls the source in.
   δ must also exceed `TOL_STL` = 1 µm. The 30° wall runs down until it
   meets the bore walls (y = −0.23 mm mid-side to +0.54 mm at the corners).
@@ -55,19 +55,19 @@ diameter (D_n/dx = 1.13), so the nozzle is about one cell. The domain is
 24 cells across the column and 100 cells from y = 0 to the outlet.
 
 Whether the vessel axis sits on a **cell face** (even cell count) or at a
-**cell centre** (odd count) decides what the gas source can look like:
+**cell center** (odd count) decides what the gas source can look like:
 
 | Layout | Box | Axis | Source footprint | Used |
 |---|---|---|---|---|
-| 27 cells | 24 + 1-cell margin each side + ½ cell each side | cell centre | one axis cell | to 2026-10-20 |
+| 27 cells | 24 + 1-cell margin each side + ½ cell each side | cell center | one axis cell | to 2026-10-20 |
 | 26 cells | 24 + 1-cell margin | on the edge shared by 4 cells | 2 × 2 cells | 2026-10-21 (`--axis-on-face`) |
 | **24 cells** | exactly D_c (column wall touches the box) | on a face | 2 × 2 cells | since 2026-10-22, the **control** (24 × 104 × 24) |
-| **25 cells** | D_c + ½ cell each side | cell centre | one axis cell | forced by the bore builder, the **single-cell inlet** (25 × 104 × 25) |
+| **25 cells** | D_c + ½ cell each side | cell center | one axis cell | forced by the bore builder, the **single-cell inlet** (25 × 104 × 25) |
 
 The 24- and 26-cell layouts have identical fluid cells (42,520, of which
 8,608 cut). The 24-cell box matches C26's "24 cells across the reactor".
-On a face-centred grid a nozzle-sized source snaps onto the 2 × 2 cells
-around the axis. On a centre-centred grid it is one cell.
+On a face-centered grid a nozzle-sized source snaps onto the 2 × 2 cells
+around the axis. On a center-centered grid it is one cell.
 
 ### Cut-cell rules learned the hard way
 
@@ -91,7 +91,7 @@ around the axis. On a centre-centred grid it is one cell.
   only makes it fatal. Check the first-vs-last parcel count on every 23.2
   run; losses stay ≤ 0.5 % of the bed.
 - **A literal point snaps off-axis.** MFiX maps a zero-width point source
-  to the cell whose face is nearest. On the face-centred grid that is the
+  to the cell whose face is nearest. On the face-centered grid that is the
   −x/−z cell, 1.5 mm off the axis. Point-source regions are therefore
   written as cell faces.
 
