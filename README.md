@@ -70,9 +70,21 @@ scored the way C26 measured the experiment:
 Every run is logged in [results/run_log.csv](results/run_log.csv).
 
 **[implementation-steps/](implementation-steps/README.md) explains how
-the project works:** the model and its parameters, the geometry and mesh,
-every gas inlet layout tried and why, the solver settings, how a case is
-run and scored, and what the runs have shown.
+the project works, in eight files meant to be read in order:**
+
+| File | Covers |
+|---|---|
+| [1. Background and history](implementation-steps/01-background-and-history.md) | Spouted-bed coaters; the Day 1–13 foundations and the failed ORNL/UTK "Case V" model; the modeling rules they produced; why the project moved to C26 |
+| [2. The C26 benchmark and the model](implementation-steps/02-c26-benchmark-and-model.md) | The experiment, the CFD-CGDEM model and its parameters, what is assumed, deviations from the earlier recipe, the c01–c09 case matrix |
+| [3. Geometry and mesh](implementation-steps/03-geometry-and-mesh.md) | The vessel, the three cone-bottom variants (open apex, closed apex, full-face bore), the 2.1 mm grid and where the axis sits, cut-cell constraints |
+| [4. Gas inlet layouts tested](implementation-steps/04-gas-inlet-layouts.md) | Every gas-source layout tried, what each did, and why two became the primary sweeps |
+| [5. Solver and numerics](implementation-steps/05-solver-and-numerics.md) | MFiX 26.1.2 → 23.2, interpolation scheme, gas-fraction floor, drag closure, time step, run cost |
+| [6. Running a case](implementation-steps/06-running-a-case.md) | Building a deck, dry run, smoke test, AWS Batch, scoring, the run log |
+| [7. Measurement and scoring](implementation-steps/07-measurement-and-scoring.md) | C26's data, the match rule, rendering the frames, PIV with PIVlab, checks on the measurement, other metrics |
+| [8. Findings, dead ends and open items](implementation-steps/08-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
+
+A vocabulary list and a map of the repository are in
+[implementation-steps/README.md](implementation-steps/README.md).
 
 ## Results: single-cell gas inlet
 
