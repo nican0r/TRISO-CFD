@@ -76,9 +76,10 @@ Two things ended Case V. First, its validation data was thin. An audit
 (2026-10-16, on the side branch) left one measured target, 7 Pitot points
 of S1 Fig. 1: the "17–25 Hz" pulsation band is not in S2, and S1 Fig. 2 is
 a different rig and gas. Second, the model never matched. Conry et al.
-2026 ("C26") instead publishes PIV maps of the spout and annulus on a
-benchtop TRISO-coater rig, together with its full MFiX CFD-CGDEM model and
-that model's scores against the experiment. It can be rebuilt "as the paper
+2026 ("C26") instead reports PIV maps of the spout and annulus on a
+benchtop TRISO-coater rig. It also describes the MFiX CFD-CGDEM model the
+authors built of that rig and reports the model's scores against the
+experiment. The model can be rebuilt from that description "as the paper
 did" and scored the same way. Case C26 has been the project's focus since
 2026-10-16.
 

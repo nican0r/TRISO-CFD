@@ -21,8 +21,9 @@ López-Honorato, [*Nucl. Eng. Des.* 456:115009
 (2026)](https://www.sciencedirect.com/science/article/abs/pii/S002954932600261X). The rig is a 60° glass
 cone opening into a 50 mm column, with a 2.38 mm argon nozzle and 60 g of
 YSZ kernel-surrogate particles. C26 measured particle velocities above the
-bed and at the wall by high-speed-camera PIV, and published an MFiX model
-of the rig with its scores against the experiment.
+bed and at the wall by high-speed-camera PIV. The paper also describes the
+MFiX model the authors built of the rig and reports that model's scores
+against the experiment.
 
 The model here rebuilds C26's:
 
