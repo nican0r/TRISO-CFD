@@ -56,3 +56,17 @@ cases/**/.wall_end
 # PIVlab frame export (raw rendered frames and PIVlab outputs; src/post/piv_c26_export_frames.py)
 results/pivlab_export/
 results/parcel_truth/
+
+# Primary results only (user decision 2026-10-29; README.md "Primary results"):
+# the C26 c01-c09 sweeps with the 2x2 tip source (*_apex_v232) and the
+# single-cell bore source (*_fullface_bore_mom_nointerp_v232, sweep tag
+# fullface_nointerp_v232), plus the PIVlab re-run of the 2x2 c01-c03.
+# Every other results/ file stays local, untracked. Add a negation here
+# when a new run becomes a primary result.
+results/*
+!results/run_log.csv
+!results/*_apex_v232*
+!results/*_fullface_bore_mom_nointerp_v232*
+!results/*_fullface_nointerp_v232*
+!results/c26_pivlab_rerun*.csv
+!results/fig_c26_pivlab_*.png
