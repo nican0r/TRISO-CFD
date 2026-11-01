@@ -108,8 +108,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
     --ps-momentum --run-dir-suffix _mytest --dry-run
 ```
 
-Running MFiX needs the `triso-cfd/mfix:23.2` docker image or an MFiX 23.2
-install. Cloud runs need the AWS Batch stack. Both are covered in
+Running MFiX needs an MFiX 23.2 install. Cloud runs need the AWS Batch stack. Both are covered in
 [file 06](implementation-steps/06-running-a-case.md). Project rules for
 contributors and agents are in [.claude/CLAUDE.md](.claude/CLAUDE.md).
 
