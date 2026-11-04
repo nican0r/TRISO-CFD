@@ -15,6 +15,12 @@ bore one cell wide cut into its tip, on a grid whose axis is a cell centre
     fluid = apex cone  U  bore
     bore  = |x|, |z| < a = dx/2 + delta,  y > y_floor = y_s - delta
 
+Optionally (R_rim_m, y_rim_top_m; the PIV rig, bed_piv_rig in
+params/geometry.yaml) the cone widens past the column to R_rim, the wall stays
+vertical up to the rim top y_rim, and the column starts there, its end face a
+downward-facing annular step from R_rim in to R_c.  Parcels cannot rest on it.
+Without those arguments the STL is byte-identical to the C26 vessel.
+
 The 30 deg wall runs down unchanged until it meets the bore walls, along the
 curve where the cone radius equals the bore's radius at that azimuth,
 y = (a / max(|cos t|, |sin t|) - R_t) / tan(theta): -0.23 mm at the middle of
@@ -49,9 +55,9 @@ Public API:
     build_cone_column_stl_fullface(R_c_m, R_t_m, cone_half_angle_deg, H_dom_m,
                                    out_path, top_extend_m, sagitta_max_m,
                                    band_height_m, cell_half_m, nozzle_y_s_m,
-                                   wall_offset_m)
+                                   wall_offset_m, R_rim_m=None, y_rim_top_m=None)
     inside_fullface_solid(x, y, z, R_c_m, R_t_m, cone_half_angle_deg, y_top_m,
-                          half_width_m, y_floor_m)
+                          half_width_m, y_floor_m, R_rim_m=None, y_rim_top_m=None)
 
 All lengths SI (m).
 """
@@ -159,13 +165,19 @@ def inside_fullface_solid(
     x: np.ndarray, y: np.ndarray, z: np.ndarray,
     R_c_m: float, R_t_m: float, cone_half_angle_deg: float, y_top_m: float,
     half_width_m: float, y_floor_m: float,
+    R_rim_m: float | None = None, y_rim_top_m: float | None = None,
 ) -> np.ndarray:
     """True where (x, y, z) lies strictly inside the fluid: the closed-apex
-    cone / column, or the square bore below the top cap."""
+    cone / column (with the rim pocket below y_rim_top_m, if given), or the
+    square bore below the top cap."""
     x, y, z = np.asarray(x), np.asarray(y), np.asarray(z)
     bore = ((y > y_floor_m) & (y < y_top_m)
             & (np.abs(x) < half_width_m) & (np.abs(z) < half_width_m))
-    return bore | inside_apex_solid(x, y, z, R_c_m, R_t_m, cone_half_angle_deg, y_top_m)
+    if R_rim_m is None:
+        return bore | inside_apex_solid(x, y, z, R_c_m, R_t_m, cone_half_angle_deg, y_top_m)
+    column = (y >= y_rim_top_m) & (y < y_top_m) & (np.hypot(x, z) < R_c_m)
+    return bore | column | inside_apex_solid(x, y, z, R_rim_m, R_t_m, cone_half_angle_deg,
+                                             y_rim_top_m)
 
 
 def _orient(tri: tuple[int, int, int], verts: np.ndarray, want: np.ndarray) -> tuple[int, int, int]:
@@ -186,6 +198,8 @@ def build_cone_column_stl_fullface(
     cell_half_m: float,
     nozzle_y_s_m: float,
     wall_offset_m: float,
+    R_rim_m: float | None = None,
+    y_rim_top_m: float | None = None,
 ) -> tuple[Path, dict]:
     """Write the closed-apex cone + column STL with the square bore; return
     (path, facts).
@@ -193,18 +207,31 @@ def build_cone_column_stl_fullface(
     R_c_m, R_t_m, cone_half_angle_deg, H_dom_m, top_extend_m, sagitta_max_m,
     band_height_m : as src.make_stl_c26_apex.build_cone_column_stl_apex
     cell_half_m, nozzle_y_s_m, wall_offset_m : as :func:`fullface_nozzle_geometry`
+    R_rim_m, y_rim_top_m : rim pocket radius (> R_c) and top height [m]; both
+                          or neither.  The cone then runs up to R_rim and
+                          sagitta_max_m applies at R_rim
 
     facts: the nozzle geometry, n_theta, sagitta_Rc_m, n_bands_cone,
     n_bands_column, band heights, y_apex_m, h_cone_m, y_top_m, y_collar_top_m
-    (the first apex ring), facet_count, vertex_count, ring_y_m.
+    (the first apex ring), facet_count, vertex_count, ring_y_m; with a rim also
+    R_rim_m, y_rim_top_m, sagitta_Rrim_m, n_bands_rim.
     """
     out_path = Path(out_path)
     geo = fullface_nozzle_geometry(R_t_m, cone_half_angle_deg, cell_half_m, nozzle_y_s_m,
                                    wall_offset_m)
     if R_t_m >= R_c_m:
         raise ValueError(f"R_t_m ({R_t_m}) must be < R_c_m ({R_c_m})")
+    rim = R_rim_m is not None
+    if rim != (y_rim_top_m is not None):
+        raise ValueError("R_rim_m and y_rim_top_m go together")
+    if rim and R_rim_m <= R_c_m:
+        raise ValueError(f"R_rim_m ({R_rim_m}) must be > R_c_m ({R_c_m})")
+    R_cone_top_m = R_rim_m if rim else R_c_m
     tan_h = math.tan(math.radians(cone_half_angle_deg))
-    h_cone_m = (R_c_m - R_t_m) / tan_h
+    h_cone_m = (R_cone_top_m - R_t_m) / tan_h
+    if rim and not (h_cone_m < y_rim_top_m < H_dom_m):
+        raise ValueError(f"y_rim_top_m ({y_rim_top_m}) must lie between the cone top "
+                         f"({h_cone_m:.4g} m) and H_dom ({H_dom_m} m)")
     if h_cone_m >= H_dom_m:
         raise ValueError(f"cone top ({h_cone_m:.4g} m) must lie below H_dom ({H_dom_m} m)")
     if top_extend_m < 0.0:
@@ -217,17 +244,27 @@ def build_cone_column_stl_fullface(
 
     # Rings exactly as the apex builder: the apex fan's ring and everything
     # above it are shared; only the fan below that ring is replaced.
-    n_theta = n_theta_for_sagitta(R_c_m, sagitta_max_m)
+    n_theta = n_theta_for_sagitta(R_cone_top_m, sagitta_max_m)
     if n_theta % 8:
         # theta_i = (i + 1/2) 360 / N lands on 45 deg when N / 8 is not whole.
         raise ValueError(f"n_theta = {n_theta}: a ring vertex would sit on a bore corner's "
                          "azimuth; the builder needs a multiple of 8")
     theta = (np.arange(n_theta) + 0.5) * (2.0 * math.pi / n_theta)
     y_cone = _band_edges(y_apex_m, h_cone_m, band_height_m)
-    y_col = _band_edges(h_cone_m, y_top_m, band_height_m)
-    ring_y = np.concatenate([y_cone[1:], y_col[1:]])
-    ring_r = np.minimum(R_t_m + ring_y * tan_h, R_c_m)
-    ring_r[len(y_cone) - 1:] = R_c_m
+    if rim:
+        # Cone up to R_rim, the vertical band up to the rim top, then the
+        # column; two rings at y_rim, R_rim and R_c, make the annular step.
+        y_band = _band_edges(h_cone_m, y_rim_top_m, band_height_m)
+        y_col = _band_edges(y_rim_top_m, y_top_m, band_height_m)
+        n_band = len(y_band) - 1
+        ring_y = np.concatenate([y_cone[1:], y_band[1:], y_col])
+        ring_r = np.minimum(R_t_m + ring_y * tan_h, R_rim_m)
+        ring_r[len(y_cone) - 1 + n_band:] = R_c_m
+    else:
+        y_col = _band_edges(h_cone_m, y_top_m, band_height_m)
+        ring_y = np.concatenate([y_cone[1:], y_col[1:]])
+        ring_r = np.minimum(R_t_m + ring_y * tan_h, R_c_m)
+        ring_r[len(y_cone) - 1:] = R_c_m
     n_rings = len(ring_y)
     if geo["y_curve_max_m"] >= ring_y[0]:
         raise ValueError("the bore reaches the first cone ring; lower band_height_m")
@@ -340,7 +377,7 @@ def build_cone_column_stl_fullface(
         raise RuntimeError("full-face STL has a degenerate facet")
     n_hat = cross / norm[:, None]
     cen = (A + B + C) / 3.0
-    args = (R_c_m, R_t_m, cone_half_angle_deg, y_top_m, a, y_floor)
+    args = (R_c_m, R_t_m, cone_half_angle_deg, y_top_m, a, y_floor, R_rim_m, y_rim_top_m)
     p_in = cen + _PROBE_EPS_M * n_hat
     p_out = cen - _PROBE_EPS_M * n_hat
     ok_in = inside_fullface_solid(p_in[:, 0], p_in[:, 1], p_in[:, 2], *args)
@@ -350,7 +387,13 @@ def build_cone_column_stl_fullface(
             f"full-face STL normals: {int((~ok_in).sum())} not inward, "
             f"{int((~ok_out).sum())} fail the outward probe")
     flat = np.abs(n_hat[:, 1]) > 1.0 - 1e-9
-    if not np.all(np.isclose(cen[flat, 1], y_floor) | np.isclose(cen[flat, 1], y_top_m)):
+    flat_ok = np.isclose(cen[flat, 1], y_floor) | np.isclose(cen[flat, 1], y_top_m)
+    if rim:
+        at_step = np.isclose(cen[flat, 1], y_rim_top_m)
+        if not np.all(n_hat[flat][at_step, 1] < 0.0):
+            raise RuntimeError("the rim step must face downward")
+        flat_ok |= at_step
+    if not np.all(flat_ok):
         raise RuntimeError("a horizontal facet other than the bore floor and the top cap")
 
     triangles = [(verts_np[f[0]], verts_np[f[1]], verts_np[f[2]]) for f in faces]
@@ -374,4 +417,11 @@ def build_cone_column_stl_fullface(
         "vertex_count": int(len(verts_np)),
         "ring_y_m": [float(v) for v in ring_y],
     })
+    if rim:
+        facts.update({
+            "R_rim_m": float(R_rim_m),
+            "y_rim_top_m": float(y_rim_top_m),
+            "sagitta_Rrim_m": sagitta_m(R_rim_m, n_theta),
+            "n_bands_rim": int(n_band),
+        })
     return out_path, facts

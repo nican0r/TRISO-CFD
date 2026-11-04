@@ -199,3 +199,23 @@ triso_coating_layers:
   - name: OPyC              # outer pyrolytic carbon
     t_m: 40.0e-6            # source: Marshall 2017 Table 1.
     rho_kg_per_m3: 1900.0   # source: Marshall 2017 Table 1.
+
+# PIV rig feedstock: stainless steel balls, measured on the rig.
+# Particles = data/piv_rig/spouted-bed-piv-experiment-log-particles.csv.
+case_piv_rig_ss:
+  label: "Stainless steel 0.8 mm nominal (PIV rig)"
+  rho_p_kg_per_m3: 7585       # particle density [kg/m^3], from 2.2059 mg per
+                              # ball (136 balls weighed) and the mean diameter.
+                              # 4.4 % under 304 SS nominal (7930 kg/m^3).
+                              # source: Particles, "Density used".
+  d_p_mean_m: 822.0e-6        # mean diameter [m], micrometer on 10 balls.
+                              # source: Particles, "Diameter used".
+  d_p_var_m2: 106.09e-12      # PSD variance [m^2] = (10.3 um)^2.
+                              # source: Particles, standard deviation.
+  psd_type: 'NORMAL'          # MFiX IC_PSD_TYPE.
+                              # source: assumed; same as case_C26_ysz.
+  psd_n_sigma: 3.0            # truncation of the normal PSD at mean +/- n sigma [-]
+                              # source: assumed; same as case_C26_ysz.
+  inventory_g: 60.0           # charge mass [g] = 27,200 balls x 2.2059 mg.
+                              # source: Particles, "Balls in charge" and mean
+                              # mass per ball; same as the packed bed volume.

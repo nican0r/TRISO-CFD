@@ -1,0 +1,29 @@
+# PIV rig simulation matrix (the user's benchtop replica of the C26 rig).
+# Read by src/run_C26_3d.py --rig piv_rig.  Every case shares the bed_piv_rig
+# geometry, spouted_bed_piv_rig_3d mesh, spouted_bed_piv_rig_3d_dem closures,
+# n2_25C gas and the measured steel feedstock.
+# See implementation-steps/10-piv-rig-model.md.
+
+base:
+  gas_case: n2_25C            # source: user request 2026-11-03 (room temperature
+                              # industrial nitrogen).
+  tstop_s: 3.0                # simulated end time [s], the C26 minimum.
+                              # source: C26 p.3 (2.2.2).
+  base_case: r01              # CLAUDE.md rule 11 base case: the lowest flow,
+                              # closest to minimum spouting.
+                              # source: assumed; same as c01 in sweep_C26.yaml.
+  ofat_baseline: r02          # middle flow of the three.
+                              # source: assumed; same as c02 in sweep_C26.yaml.
+  stat_wt: 1                  # CGP statistical weight W [-]: no coarsening.
+                              # 27,200 parcels.  C26 ran its steel cases at
+                              # W = 1 (Table 2, cases 10-12; p.4, "fewer total
+                              # particles").  Also the builder's lower bound for
+                              # this rig; the C26 YSZ sweep keeps W >= 10.
+                              # source: user decision 2026-11-03.
+
+# Row keys as params/sweep_C26.yaml.  Flows: the rig's setpoints, source user
+# 2026-11-03.  60 g: Particles sheet, 27,200 balls x 2.2059 mg.
+cases:
+  - {id: r01, feedstock: case_piv_rig_ss, flow_slpm: 24,   inventory_g: 60}
+  - {id: r02, feedstock: case_piv_rig_ss, flow_slpm: 26.5, inventory_g: 60}
+  - {id: r03, feedstock: case_piv_rig_ss, flow_slpm: 30,   inventory_g: 60}

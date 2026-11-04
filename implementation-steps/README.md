@@ -16,6 +16,7 @@ evidence behind them.
 | [07 Measurement and scoring](07-measurement-and-scoring.md) | C26's data, the match rule, rendering the frames, PIV with PIVlab, checks on the measurement, other metrics |
 | [08 Results](08-results.md) | The single-cell inlet sweep: spout maps against C26, scores, wall velocities, coating-stage and charge cases; the 2 × 2 control sweep |
 | [09 Findings, dead ends and open items](09-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
+| [10 PIV rig model](10-piv-rig-model.md) | The C26 model adapted to the measured benchtop rig: every changed value, what carried over, checks, open items |
 
 ## Vocabulary
 
@@ -50,8 +51,10 @@ evidence behind them.
 | `src/post/`, `src/post/c26/` | readers, frame rendering, PIVlab pipeline, C26 scoring scripts |
 | `src/aws/` | AWS Batch submit / poll / provisioning |
 | `cases/C26_3d/` | rendered decks and manifests (raw output is never committed) |
+| `cases/PIV_rig_3d/` | PIV rig run directories, rendered by `run_C26_3d --rig piv_rig` |
 | `results/` | primary-result CSVs and figures, `run_log.csv` |
 | `data/digitized/` | digitized C26 figures |
+| `data/piv_rig/` | measurement sheets of the PIV rig |
 | `tests/` | unit tests (`.venv/bin/python -m pytest tests/`) |
 | `.claude/` | project rules (`CLAUDE.md`) and agent skills, including the spouted-bed recipe and smoke validator |
 

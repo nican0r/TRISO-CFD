@@ -1,0 +1,41 @@
+Apparatus measurements,,,,,,,
+"Enter measured values in column F. Column G uses your value if present, otherwise the stand-in from the design. All lengths in mm.",,,,,,,
+"Measured 2026-11-02: F1, F3, F8–F11, T1, T2, N1, N3. Still to measure: F4–F7 (cone OD at two depths) and F12 (depth to plug top edge). The single 57 mm cone OD had no recorded depth, so it isn't entered.",,,,,,,
+ID,Measurement,How to measure,Unit,Stand-in (design),Measured,Value used,Updates design section
+F1,Funnel throat ID (smallest of 3),"Caliper inside jaws at the stem's narrowest point, 3 orientations; record the smallest.",mm,16.00,16.31,16.31,"2.1, nozzle fit"
+F2,Funnel stem OD,Caliper outside jaws on the stem.,mm,20.00,20.06,20.06,Nozzle flange/retainer
+F3,Funnel stem length,From the stem's bottom end up to where the bore starts to flare into the cone (sight through the glass).,mm,35.00,27.00,27.00,Nozzle fit (needs ≥ 33)
+F4,Cone OD at mark a,"Stand the funnel upside down, rim flat on the table. Using a ruler or the calipers' depth rod standing on the table, mark a thin line on the cone's outer wall at height a, where the wall first becomes straight below the lip's curve (≈ 4–5 mm). Measure the outside diameter at that line: caliper outside jaws held level, rocked to the largest reading.",mm,49.11,56.96,56.96,"2.1, cone angle"
+F5,Height of mark a,Distance from the table (the rim's top face) straight up to mark a. Start: table surface. End: the line where the jaws sat for F4.,mm,5.00,2.01,2.01,"2.1, cone angle"
+F6,Cone OD at mark b,"Same as F4 at a second line, height b, as high as possible while still on the straight cone: ≈ 3–5 mm before it starts curving into the stem (roughly 25 mm). The farther apart a and b are, the more accurate the angle.",mm,31.79,35.84,35.84,"2.1, cone angle"
+F7,Height of mark b,Distance from the table straight up to mark b. Start: table surface. End: the F6 line.,mm,20.00,20.48,20.48,"2.1, cone angle"
+F8,Rim ID,"Caliper inside jaws across the rim opening, 3 orientations; average.",mm,51.00,55.00,55.00,"2.4, interface step"
+F9,Lip (flare) OD,Caliper outside jaws across the lip.,mm,55.00,58.00,58.00,2.4
+F10,Lip height,"Axial height of the lip, from the rim top down to where the lip meets the plain cone wall.",mm,2.50,2.26,2.26,"2.4, mask band"
+F11,"Depth, rim top to orifice exit",Nozzle installed. Straightedge across the rim; caliper depth rod down the axis to the orifice exit. This is z of the rim top.,mm,41.20,50.00,50.00,"2.1, 2.2, mask band (measured ≈ 50)"
+F12,Straight bore above the plug,"Nozzle installed, funnel upright. Look through the glass stem from the side at eye level. Find the plug's top edge, then the point above it where the glass bore starts to widen into the cone. Measure the height between them on the outside of the stem with the calipers. Enter 0 if the glass starts widening right at the plug top.",mm,3.60,1.50,1.50,2.1: decides where the cone starts; the stand-in 3.6 is what the 50 mm rim height implies
+T1,Acrylic tube ID (average of 3),"Caliper inside jaws at the bottom end, 3 orientations.",mm,51.00,51.00,51.00,"2.4, interface step"
+T2,Acrylic tube OD,Caliper outside jaws at the bottom end.,mm,55.00,55.00,55.00,"2.4, concentricity"
+T3,Acrylic tube length,Tape or ruler.,mm,250.00,304.80,304.80,Freeboard height
+T4,Tube end-face gap on a flat surface,"Stand the tube on glass or a flat tile; largest gap under the end face (feeler gauge, or see if a 0.8 mm ball slips under).",mm,0.00,0.00,0.00,"2.4, seating (< 0.8)"
+N1,"Orifice diameter, as reamed",Largest drill shank or pin gauge that passes the orifice.,mm,2.38,2.70,2.70,Orifice; simulation inlet
+N2,Nozzle recess top diameter,Caliper inside jaws at the plug top.,mm,15.00,15.00,15.00,2.1
+N3,Plug OD,Caliper outside jaws on the plug wall.,mm,15.60,15.64,15.64,Nozzle fit vs F1
+C1,"Camera lens to column axis, window S",Tape from the lens to the column centerline.,mm,,,,Repeatability
+C2,"Camera lens to column axis, window W","Same, for the wall view.",mm,,,,Repeatability
+,,,,,,,
+Derived geometry,,,,,,,
+,Quantity,Formula / meaning,Unit,Value,,,Design use
+,Cone half-angle,atan[(OD_a − OD_b) / 2 / (height b − height a)]; 30° until all four of F4–F7 are measured,deg,29.8,,,Expect ≈ 30; use the measured value in the simulation if different
+,z of rim top above orifice,Measured (F11),mm,50.0,,,2.1
+,z of lip bottom,rim top − lip height,mm,47.7,,,"2.1, 2.4"
+,"PIV mask band, lower edge",lip bottom − 1 mm margin,mm,46.7,,,7.1 mask
+,"PIV mask band, upper edge",rim top + 1 mm margin,mm,51.0,,,7.1 mask
+,z of plug top (resin/glass transition),(recess top − orifice) / 2 / tan 30° (printed recess),mm,10.7,,,2.1
+,Interface step per side,(rim ID − tube ID) / 2; positive = tube overhangs inward,mm,2.00,,,2.4
+,Interface step direction,,,Downward step: OK,,,2.4 check 1
+,Tube seating,end-face gap vs 0.8 mm ball,,OK,,,2.4 check 3
+,Nozzle radial clearance,(throat ID − plug OD) / 2,mm,0.33,,,Nozzle fit (aim 0.1–0.3)
+,z where the glass cone starts,plug top + straight bore (F12),mm,12.2,,,2.1; simulation geometry
+,Predicted rim height,cone start + (rim ID − throat ID) / 2 / tan(half-angle) + lip height,mm,48.2,,,Check against F11
+,Rim height: measured − predicted,should be within ≈ ±1 mm once F12 is measured,mm,1.8,,,"Larger than ±1 mm: re-check F11, F12 or the cone marks"

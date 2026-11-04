@@ -42,12 +42,22 @@ cases:
       H2: 0.5
   ar_25C:
     label: "Ar, 25 C"
+    short: Ar
     T_K: 298.15
     # Case C26 (Conry et al. 2026): "a 298 K reactor and gas temperature,
     # and a fluidizing gas of 100% argon".
     # source: C26 p.4 (2.2.2).
     composition:
       AR: 1.0
+  n2_25C:
+    label: "N2, 25 C"
+    short: N2
+    T_K: 298.15
+    # PIV rig: room temperature industrial nitrogen, modeled as pure N2 at
+    # 25 C (the same temperature as the C26 model).
+    # source: user decision 2026-11-03.
+    composition:
+      N2: 1.0
 
 # Reference state for converting the Case C26 mass-flow-controller readings
 # (slpm) to mass flow.  Alicat's default "standard" is 25 C, 14.696 psia; the
@@ -58,3 +68,12 @@ slpm_reference_C26:
   p_Pa: 101325
   composition:
     AR: 1.0
+
+# Reference state of the PIV rig's mass-flow controller: 25 C, 1 atm, the same
+# as the C26 model, in nitrogen.
+# source: user decision 2026-11-03.
+slpm_reference_piv_rig:
+  T_K: 298.15
+  p_Pa: 101325
+  composition:
+    N2: 1.0

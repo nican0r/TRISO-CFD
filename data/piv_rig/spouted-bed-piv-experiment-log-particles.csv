@@ -1,0 +1,36 @@
+Particle measurements,,,,,
+"Design Section 4.4. Three samples: weigh a scooped mass, then count the balls in it. Micrometer 10 balls.",,,,,
+,,,,,
+Sample,Measured mass (g),Balls counted,,Ball,Diameter (mm)
+Sample 1,0.100,47,,Ball 1,0.800
+Sample 2,0.110,48,,Ball 2,0.820
+Sample 3,0.090,41,,Ball 3,0.820
+"Scoop out about 0.1 g or more (≈ 50 balls), weigh it, then count every ball in it.",,,,Ball 4,0.820
+Mean mass per ball (mg),,2.2059,,Ball 5,0.840
+,,,,Ball 6,0.820
+,,,,Ball 7,0.830
+,,,,Ball 8,0.830
+,,,,Ball 9,0.820
+,,,,Ball 10,0.820
+,,,,,
+,,,,Mean diameter d̄ (mm),0.8220
+,,,,Standard deviation (µm),10.3
+,,,,,
+Derived (enter these in the simulation),,,,,
+Quantity,Value,Unit,,,
+Ball density ρ_p,7585,kg/m³,,,
+"Balls in charge, N","27,200",balls,,,
+Diameter used,0.8220,mm,"← measured, or 0.8 mm nominal if blank",,
+Density used,7585,kg/m³,"← measured, or 7930 kg/m³ (304 SS) if blank",,
+,,,,,
+Predicted static bed (60° cone from the orifice),,,,,
+"Single 60° cone from the orifice, using the measured orifice and the cone angle from Apparatus. Ignores the 0.65 mm step at the plug top; accurate to about ±2 mm until the rim-height discrepancy (design Section 2.1) is resolved.",,,,,
+Quantity,Value,Unit,,,
+Packed bed volume V,"13,184",mm³,,,
+Bed-surface radius r_s,19.31,mm,,,
+Static bed height H,31.4,mm,,,
+Bed-surface diameter,38.6,mm,,,
+Bed depth in particle diameters,38,d_p,,,
+Mid-bed wall height (window W),15.7,mm,,,
+Mid-bed wall radius,10.3,mm,,,
+Gap: bed surface to mask band,15.3,mm,,,

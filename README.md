@@ -83,6 +83,7 @@ the project works in the following files:**
 | [7. Measurement and scoring](implementation-steps/07-measurement-and-scoring.md) | C26's data, the match rule, rendering the frames, PIV with PIVlab, checks on the measurement, other metrics |
 | [8. Results](implementation-steps/08-results.md) | The single-cell inlet sweep: spout maps against C26, scores, wall velocities, coating-stage and charge cases; the 2 × 2 control sweep |
 | [9. Findings, dead ends and open items](implementation-steps/09-findings-and-open-items.md) | Why the model behaves as it does, what not to retry, what is next |
+| [10. PIV rig model](implementation-steps/10-piv-rig-model.md) | The C26 model adapted to the measured benchtop rig: every changed value, what carried over, checks, open items |
 
 A vocabulary list and a map of the repository are in
 [implementation-steps/README.md](implementation-steps/README.md).

@@ -1,4 +1,5 @@
-"""Parameter builder for Case C26 (Conry et al. 2026 ORNL benchtop rig).
+"""Parameter builder for Case C26 (Conry et al. 2026 ORNL benchtop rig) and the
+PIV rig (the user's replica of it: same layout, measured values; RIGS below).
 
 Case C26 reproduces the MFiX CFD-CGDEM model of
 
@@ -13,10 +14,10 @@ deviation from .claude/skills/mfix-spouted-bed-recipe.
 
 Public API:
 
-    load_sweep() -> dict
+    load_sweep(rig="C26") -> dict
     slpm_to_mass_flow(flow_slpm, rho_ref_kg_m3) -> float
     resolve_particle(case, particles) -> dict
-    build_C26_3d_params(case, tstop_s=None, run_name=None, ...) -> dict
+    build_C26_3d_params(case, tstop_s=None, run_name=None, ..., rig="C26") -> dict
     write_gridmap(run_dir, gridmap) -> Path
 
 All values SI (CLAUDE.md rule 3).  Every physical number comes from
@@ -52,10 +53,41 @@ STL_BUILDERS = ("implicit", "parametric_apex", "parametric_fullface")
 # Error 2000).  The template leaves them out for 23.2.
 MFIX_VERSIONS = ("26.1.2", "23.2")
 
+# The rigs the builder models and the params blocks each one reads.  numerics.yaml
+# spouted_bed_C26_3d_numerics is shared (the piv_rig deck keeps C26's time step
+# and PIV window).
+RIGS = {
+    "C26": {
+        "sweep_file": "sweep_C26.yaml",
+        "bed": "bed_C26",
+        "mesh": "spouted_bed_C26_3d",
+        "dem": "spouted_bed_C26_3d_dem",
+        "slpm_reference": "slpm_reference_C26",
+        "run_prefix": "C26",
+        "model_label": "Conry et al. 2026 model",
+        "case_label": "C26 (Conry et al. 2026, Nucl. Eng. Des. 456:115009)",
+        "notes": "notes/c26_conry2026_case.md",
+        "out_dir": "C26_3d",
+    },
+    "piv_rig": {
+        "sweep_file": "sweep_piv_rig.yaml",
+        "bed": "bed_piv_rig",
+        "mesh": "spouted_bed_piv_rig_3d",
+        "dem": "spouted_bed_piv_rig_3d_dem",
+        "slpm_reference": "slpm_reference_piv_rig",
+        "run_prefix": "RIG",
+        "model_label": "measured PIV rig",
+        "case_label": "PIV rig (C26 layout, measured values; data/piv_rig)",
+        "notes": "implementation-steps/10-piv-rig-model.md",
+        "out_dir": "PIV_rig_3d",
+    },
+}
 
-def load_sweep() -> dict:
-    """Return params/sweep_C26.yaml (flow / coating-stage / charge matrix)."""
-    return _load_yaml(PARAMS_DIR / "sweep_C26.yaml")
+
+def load_sweep(rig: str = "C26") -> dict:
+    """Return the rig's sweep file (for C26, params/sweep_C26.yaml: flow /
+    coating-stage / charge matrix)."""
+    return _load_yaml(PARAMS_DIR / RIGS[rig]["sweep_file"])
 
 
 def slpm_to_mass_flow(flow_slpm: float, rho_ref_kg_m3: float) -> float:
@@ -97,12 +129,14 @@ def _n_cells_xz(mesh: Mapping[str, object], axis_on_face: bool) -> int:
     return n + (1 if n % 2 == 0 else 0)
 
 
-def default_gridmap(axis_on_face: bool | None = None) -> tuple[list[int], list[int], list[int]]:
+def default_gridmap(
+    axis_on_face: bool | None = None, rig: str = "C26",
+) -> tuple[list[int], list[int], list[int]]:
     """The 4-rank default partition (2x1x2): halves along i and k, one rank
     along j.  [12, 12] on the 24-cell box (default since 2026-10-22),
-    [12, 13] on the odd 25-cell box.
+    [12, 13] on the odd 25-cell box, [11, 12] on the PIV rig's 23-cell box.
     axis_on_face defaults to geometry.yaml ``axis_on_cell_face``."""
-    mesh = _load_yaml(PARAMS_DIR / "geometry.yaml")["spouted_bed_C26_3d"]
+    mesh = _load_yaml(PARAMS_DIR / "geometry.yaml")[RIGS[rig]["mesh"]]
     if axis_on_face is None:
         axis_on_face = bool(mesh["axis_on_cell_face"])
     n = _n_cells_xz(mesh, axis_on_face)
@@ -198,8 +232,10 @@ def build_C26_3d_params(
     vtk_dt_background_s: float | None = None,
     stl_builder: str | None = None,
     mfix_version: str | None = None,
+    rig: str = "C26",
 ) -> dict:
-    """Assemble the template params for one row of params/sweep_C26.yaml.
+    """Assemble the template params for one row of params/sweep_C26.yaml (or
+    the sweep file of ``rig``).
 
     case     : one entry of sweep_C26.yaml ``cases`` -- keys ``id``,
                ``feedstock`` (particles.yaml block), ``flow_slpm``,
@@ -255,6 +291,8 @@ def build_C26_3d_params(
                the four 26.1.2-only keywords.  Three map exactly onto 23.2's
                fixed behaviour; the lattice keeps a one-radius margin in
                the IC box (= ic_des_tight_boundary_spacing .False.).
+    rig      : one of RIGS; picks the params blocks (default 'C26').  Every
+               other argument works the same for both.
 
     Geometry (bed_C26, spouted_bed_C26_3d):
       - vessel: cone from a closed throat (r = R_t, y = 0) to the column
@@ -285,11 +323,14 @@ def build_C26_3d_params(
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
     gases = _load_yaml(PARAMS_DIR / "gases.yaml")
     numerics = _load_yaml(PARAMS_DIR / "numerics.yaml")["spouted_bed_C26_3d_numerics"]
-    sweep = load_sweep()
+    if rig not in RIGS:
+        raise ValueError(f"rig must be one of {tuple(RIGS)}, got {rig!r}")
+    blocks = RIGS[rig]
+    sweep = load_sweep(rig)
 
-    bed = geometry["bed_C26"]
-    mesh = geometry["spouted_bed_C26_3d"]
-    dem = geometry["spouted_bed_C26_3d_dem"]
+    bed = geometry[blocks["bed"]]
+    mesh = geometry[blocks["mesh"]]
+    dem = geometry[blocks["dem"]]
     scheme = str(interp_scheme or dem["des_interp_scheme"])
     if epg_clip is not None and not 0.0 < float(epg_clip) < 1.0:
         raise ValueError(f"epg_clip must be in (0, 1), got {epg_clip}")
@@ -318,7 +359,7 @@ def build_C26_3d_params(
     tstop_s = float(base["tstop_s"] if tstop_s is None else tstop_s)
     if tstop_s <= 0.0:
         raise ValueError(f"tstop_s must be > 0 (got {tstop_s})")
-    run_name = run_name or f"C26_{case_id}"
+    run_name = run_name or f"{blocks['run_prefix']}_{case_id}"
 
     # ---- geometry --------------------------------------------------------
     D_c_m = float(bed["D_c_m"])
@@ -327,7 +368,13 @@ def build_C26_3d_params(
     R_t_m = 0.5 * float(bed["D_throat_m"])
     cone_half_angle_deg = 0.5 * float(bed["cone_angle_deg"])
     tan_t = math.tan(math.radians(cone_half_angle_deg))
-    h_cone_m = (R_c_m - R_t_m) / tan_t
+    # Rim pocket (PIV rig): the cone runs on past the column to R_rim, a vertical
+    # wall up to y_rim_top, then the column (STL docstring,
+    # src/make_stl_c26_fullface.py).
+    R_rim_m = 0.5 * float(bed["D_rim_m"]) if "D_rim_m" in bed else None
+    y_rim_top_m = float(bed["y_rim_top_m"]) if "y_rim_top_m" in bed else None
+    R_cone_top_m = R_c_m if R_rim_m is None else R_rim_m
+    h_cone_m = (R_cone_top_m - R_t_m) / tan_t
 
     n_across = int(mesh["n_cells_across_D"])
     n_vert = int(mesh["n_cells_vertical"])
@@ -344,6 +391,8 @@ def build_C26_3d_params(
     if stl_builder not in STL_BUILDERS:
         raise ValueError(f"stl_builder must be one of {STL_BUILDERS}, got {stl_builder!r}")
     fullface = stl_builder == "parametric_fullface"
+    if R_rim_m is not None and not fullface:
+        raise ValueError("the rim pocket is built by stl_builder parametric_fullface only")
     # Odd count -> axis at a cell centre; even (axis_on_face) -> axis on the
     # edge shared by the four central cells.  The full-face nozzle is the
     # axis cell, so it needs the odd layout.
@@ -355,6 +404,9 @@ def build_C26_3d_params(
     axis_on_face = bool(mesh["axis_on_cell_face"] if axis_on_face is None else axis_on_face)
     n_xz = _n_cells_xz(mesh, axis_on_face)
     x_half_m = 0.5 * n_xz * dx_m
+    if R_cone_top_m > x_half_m:
+        raise ValueError(f"the vessel (r = {R_cone_top_m} m) does not fit the box "
+                         f"(half-width {x_half_m} m)")
     dx_m_list = _uniform_axis(dx_m, 2.0 * x_half_m)
     dz_m_list = _uniform_axis(dx_m, 2.0 * x_half_m)
     y_min_m = -n_below * dx_m
@@ -443,7 +495,7 @@ def build_C26_3d_params(
 
     # ---- gas and operating point ----------------------------------------
     gas = gases["cases"][str(base["gas_case"])]
-    ref = gases["slpm_reference_C26"]
+    ref = gases[blocks["slpm_reference"]]
     rho_g, mu_g = _gas_props(gas["T_K"], gases["pressure_Pa"], gas["composition"])
     rho_ref, _ = _gas_props(ref["T_K"], ref["p_Pa"], ref["composition"])
     m_dot = slpm_to_mass_flow(flow_slpm, rho_ref)
@@ -490,18 +542,31 @@ def build_C26_3d_params(
     def _h(eps: float, half_deg: float) -> float:
         return _bed_height_from_inventory(
             mass_kg=m_bed, rho_p_kg_m3=rho_p, eps_s_bed=eps, R_i_m=R_t_m,
-            cone_half_angle_deg=half_deg, R_c_m=R_c_m,
+            cone_half_angle_deg=half_deg, R_c_m=R_cone_top_m,
         )
 
     H_ic_m = _h(eps_s_ic, cone_half_angle_deg)
+    if mesh.get("ic_top_on_grid_row", False):
+        # MFiX snaps ic_y_n to the nearest row and counts parcels from the
+        # snapped fluid volume (generate_particles_mod.f:328, GET_IC_VOLUME), so
+        # keep the charge: put H_ic on the row and solve ic_ep_s for its volume.
+        H_ic_m = round(H_ic_m / dx_m) * dx_m
+        r_top = R_t_m + H_ic_m * tan_t
+        eps_s_ic = m_bed / (rho_p * math.pi * H_ic_m / 3.0
+                            * (R_t_m ** 2 + R_t_m * r_top + r_top ** 2))
     H_static_m = _h(eps_s_packed, cone_half_angle_deg)
     # Cross-check of the C25/C26 Fig. 1 "~25 mm" annotation (not a model input).
     H_static_if_90deg_m = _h(eps_s_packed, 45.0)
     if H_ic_m >= H_dom_m:
         raise ValueError(f"IC region top H_ic {H_ic_m} m exceeds H_dom {H_dom_m} m")
+    if R_rim_m is not None and H_ic_m >= h_cone_m:
+        # _h() continues as a cylinder of R_rim above the cone, not the rim band.
+        raise ValueError(f"IC region top H_ic {H_ic_m} m is above the cone top {h_cone_m} m")
 
     n_real = m_bed / (rho_p * math.pi / 6.0 * _mean_cube_normal(d_mean, sigma))
-    solids_model = "CGP"   # W >= base.stat_wt (10): always coarse-grained
+    # CGP at any W: W = 1 (PIV rig; C26 Table 2 steel) is the same code path as
+    # the coarse-grained decks, with parcel = particle (des/drag_gp_des.f:111).
+    solids_model = "CGP"
     m_parcel = stat_wt * rho_p * math.pi / 6.0 * d_mean ** 3
     d_parcel = d_mean * stat_wt ** (1.0 / 3.0)   # CGP parcel diameter [m]
     dt_rayleigh_s = math.pi * math.sqrt(m_parcel / float(dem["kn"]))
@@ -514,13 +579,14 @@ def build_C26_3d_params(
 
     stage_txt = particle["coating_stage"] or "bare"
     return {
+        "rig": rig,
         "case_id": case_id,
         "feedstock": feed_key,
         "feedstock_label": particle["label"],
         "coating_stage": particle["coating_stage"],
         "description": description or (
-            f"C26 {case_id}: {feed_key} ({stage_txt}), {m_bed * 1e3:g} g, "
-            f"{flow_slpm:g} slpm Ar (Conry et al. 2026 model)"
+            f"{blocks['run_prefix']} {case_id}: {feed_key} ({stage_txt}), {m_bed * 1e3:g} g, "
+            f"{flow_slpm:g} slpm {gas['short']} ({blocks['model_label']})"
         ),
         "run_name": run_name,
         "mfix_version": mfix_version,
@@ -548,6 +614,8 @@ def build_C26_3d_params(
         "D_c_m": D_c_m, "R_c_m": R_c_m, "R_t_m": R_t_m, "R_nozzle_m": R_n_m,
         "cone_half_angle_deg": cone_half_angle_deg,
         "h_cone_m": h_cone_m,
+        "n_cells_across_D": n_across,
+        "R_rim_m": R_rim_m, "y_rim_top_m": y_rim_top_m,
         "dx_sample_m": float(mesh["dx_sample_fraction"] if dx_sample_fraction is None
                              else dx_sample_fraction) * dx_m,
         "top_extend_m": float(mesh["top_extend_m"]),
@@ -594,6 +662,7 @@ def build_C26_3d_params(
         "rho_g_kg_m3": float(rho_g), "mu_g_pa_s": float(mu_g),
         "rho_ref_kg_m3": float(rho_ref),
         "gas_case": str(base["gas_case"]),
+        "gas_short": str(gas["short"]),
         "T_g_K": float(gas["T_K"]),
         "p_g_Pa": float(gases["pressure_Pa"]),
         # solids

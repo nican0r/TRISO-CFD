@@ -1,4 +1,6 @@
-"""Generate Case C26 run directories (flow / coating-stage / charge sweep).
+"""Generate Case C26 run directories (flow / coating-stage / charge sweep), or
+with --rig piv_rig the PIV rig's (params/sweep_piv_rig.yaml; run dirs under
+cases/PIV_rig_3d/, decks RIG_<id>.mfx; single-cell inlet by default).
 
 For each selected case in params/sweep_C26.yaml, writes:
 
@@ -33,6 +35,8 @@ Examples:
       --run-dir-suffix _gridmap_test
   # an MFiX 26.1.2 deck, as for the runs before 2026-10-24 (local native solver)
   .venv/bin/python -m src.run_C26_3d --case c01 --mfix-version 26.1.2 --run-dir-suffix _v26
+  # the PIV rig: 24 / 26.5 / 30 slpm of N2, measured geometry and particles
+  .venv/bin/python -m src.run_C26_3d --rig piv_rig --case all
 
 With neither --nodes nor --gridmap-*, cases get default_gridmap(): 4 ranks
 (2x1x2, i = k = [13,14] on the 27-cell box, [13,13] with --axis-on-face), the
@@ -53,7 +57,7 @@ from pathlib import Path
 
 from src.make_case import REPO_ROOT, render_case
 from src.make_case_c26 import (
-    MFIX_VERSIONS, STL_BUILDERS, build_C26_3d_params, default_gridmap, load_sweep,
+    MFIX_VERSIONS, RIGS, STL_BUILDERS, build_C26_3d_params, default_gridmap, load_sweep,
     write_gridmap,
 )
 from src.make_stl import build_cone_column_stl_implicit
@@ -64,7 +68,6 @@ from src.aws.config import C26_MEMORY_MB, PROJECT
 from src.aws.submit import manifest_mfix_version
 
 TEMPLATE = REPO_ROOT / "cases" / "C26_3d" / "template_dem.mfx.j2"
-OUT_ROOT = REPO_ROOT / "cases" / "C26_3d"
 
 # The release behind the laptop's mamba env (src/run_V_3d_day10.py
 # MFIX_SOLVER_*); any other release runs from its Docker image.
@@ -158,6 +161,8 @@ _FULLFACE_FACTS = ("n_theta", "sagitta_Rc_m", "n_bands_cone", "n_bands_column",
                    "nozzle_face_area_m2", "bore_area_m2", "sliver_fraction",
                    "protrusion_fraction", "neighbour_fluid_fraction", "y_curve_min_m",
                    "y_curve_max_m", "y_collar_top_m")
+# ... and of the rim pocket, when the rig has one.
+_RIM_FACTS = ("R_rim_m", "y_rim_top_m", "sagitta_Rrim_m", "n_bands_rim")
 
 
 def _build_stl(params: dict, path: Path) -> dict:
@@ -204,12 +209,16 @@ def _build_stl(params: dict, path: Path) -> dict:
             cell_half_m=0.5 * params["dx_m"],
             nozzle_y_s_m=params["ps_cell_y_s_m"],
             wall_offset_m=params["stl_fullface_wall_offset_m"],
+            R_rim_m=params["R_rim_m"],
+            y_rim_top_m=params["y_rim_top_m"],
         )
         if (abs(ff["y_floor_m"] - params["y_nozzle_floor_m"]) > 1e-12
                 or abs(ff["half_width_m"] - params["nozzle_half_width_m"]) > 1e-12):
             raise AssertionError("nozzle geometry differs between builder and params")
         facts = {"facet_count": ff["facet_count"]}
         facts.update({f"stl_{k}": ff[k] for k in _FULLFACE_FACTS})
+        if params["R_rim_m"] is not None:
+            facts.update({f"stl_{k}": ff[k] for k in _RIM_FACTS})
     else:
         raise ValueError(f"unknown stl_builder {builder!r}")
     facts["stl_md5"] = _md5(path)
@@ -219,8 +228,11 @@ def _build_stl(params: dict, path: Path) -> dict:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--rig", choices=tuple(RIGS), default="C26",
+                   help="rig to model: C26 (default) or piv_rig, the measured replica "
+                        "(params/sweep_piv_rig.yaml, geometry.yaml *_piv_rig blocks)")
     p.add_argument("--case", default="all",
-                   help="case id(s) from params/sweep_C26.yaml, comma-separated, or 'all'")
+                   help="case id(s) from the rig's sweep file, comma-separated, or 'all'")
     p.add_argument("--tstop", type=float, default=None,
                    help="override simulated end time [s] (default: sweep base.tstop_s)")
     p.add_argument("--nodes", type=_parse_nodes, default=None, metavar="NI,NJ,NK",
@@ -282,7 +294,9 @@ def main() -> None:
                         "the image with docker). 26.1.2 re-renders the earlier "
                         "runs' release (the four 26.1.2-only keywords, local "
                         "native run.sh)")
-    p.add_argument("--out-root", type=Path, default=OUT_ROOT)
+    p.add_argument("--out-root", type=Path, default=None,
+                   help="run dir root (default cases/C26_3d, or cases/PIV_rig_3d for "
+                        "--rig piv_rig)")
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
     p.add_argument("--no-stl", action="store_true",
@@ -298,13 +312,15 @@ def main() -> None:
     # None = geometry.yaml axis_on_cell_face; the full-face nozzle forces the odd box.
     axis_on_face = True if args.axis_on_face else (False if fullface else None)
 
-    sweep = load_sweep()
+    blocks = RIGS[args.rig]
+    out_root = args.out_root or REPO_ROOT / "cases" / blocks["out_dir"]
+    sweep = load_sweep(args.rig)
     selected = _select(sweep["cases"], args.case)
     gridmap = None
     if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
         gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
     elif args.nodes is None:
-        gridmap = default_gridmap(axis_on_face)
+        gridmap = default_gridmap(axis_on_face, rig=args.rig)
     nodes = args.nodes or (1, 1, 1)
     stl_cache: Path | None = None
     stl_facts: dict | None = None
@@ -314,7 +330,7 @@ def main() -> None:
         if args.flow_slpm is not None:
             case = {**case, "flow_slpm": args.flow_slpm}
         params = build_C26_3d_params(
-            case, tstop_s=args.tstop, run_name=f"C26_{case['id']}{name_suffix}",
+            case, tstop_s=args.tstop, run_name=f"{blocks['run_prefix']}_{case['id']}{name_suffix}",
             nodes=nodes, gridmap=gridmap,
             dx_sample_fraction=args.stl_sample_fraction,
             ps_momentum=True if args.ps_momentum else (False if args.ps_mass_only else None),
@@ -325,13 +341,14 @@ def main() -> None:
             vtk_dt_background_s=args.vtk_dt_background,
             stl_builder=args.stl_builder,
             mfix_version=args.mfix_version,
+            rig=args.rig,
         )
-        run_dir = args.out_root / f"{case['id']}{name_suffix}"
+        run_dir = out_root / f"{case['id']}{name_suffix}"
         check_run_dir_release(run_dir, params["mfix_version"])
         mfx_path = run_dir / f"{params['run_name']}.mfx"
         manifest = {k: v for k, v in params.items() if k not in _MANIFEST_SKIP}
         manifest.update({
-            "case": "C26 (Conry et al. 2026, Nucl. Eng. Des. 456:115009)",
+            "case": blocks["case_label"],
             "template": str(TEMPLATE.relative_to(REPO_ROOT)),
             "mfx": mfx_path.name,
             "stl": params["stl_filename"],
@@ -339,7 +356,7 @@ def main() -> None:
             "is_ofat_baseline": case["id"] == sweep["base"]["ofat_baseline"],
             "flow_slpm_override": args.flow_slpm is not None,
             "piv_targets_table3": sweep.get("piv_targets_table3", {}).get(case["id"]),
-            "notes": "notes/c26_conry2026_case.md",
+            "notes": blocks["notes"],
             # AWS Batch sizing, read by src/aws/submit.py: one vCPU per rank.
             "aws_vcpu": params["nranks"],
             "aws_memory_mb": aws_memory_mb(params["n_parcels_est"]),

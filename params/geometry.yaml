@@ -907,3 +907,163 @@ spouted_bed_C26_3d_dem:
                            # the step-3/smoke check thresholds and the ~25 mm
                            # bed-height cross-check) [-].
                            # source: assumed; same value as case_V.eps_s_bed.
+
+# =======================================================================
+# Case PIV rig: the user's benchtop replica of the C26 experiment, modeled
+# with the C26 layout and the rig's measured dimensions.
+#   Apparatus = data/piv_rig/spouted-bed-piv-experiment-log-apparatus.csv
+#   Particles = data/piv_rig/spouted-bed-piv-experiment-log-particles.csv
+#   (F1, T1, N1 ... below are Apparatus measurement IDs; measured 2026-11-02.)
+# y = 0 is the orifice exit, as in bed_C26 (Apparatus F11 is measured from
+# it).  Summary of every change: implementation-steps/10-piv-rig-model.md.
+# =======================================================================
+bed_piv_rig:
+  D_c_m: 0.0510            # column (acrylic tube) inside diameter [m]
+                           # source: Apparatus T1, 51.00 mm.
+  D_nozzle_m: 2.70e-3      # orifice diameter [m]
+                           # source: Apparatus N1, 2.70 mm as reamed.
+  D_throat_m: 2.70e-3      # cone diameter at y = 0 [m]; the printed recess
+                           # starts at the orifice.
+                           # source: Apparatus N1.
+  cone_angle_deg: 60       # included cone angle [deg], exact (half-angle 30).
+                           # One cone from the orifice to the rim, as the
+                           # Particles sheet's static-bed prediction: leaves
+                           # out the 0.65 mm ledge at the plug top
+                           # (Apparatus F1, N2) and the 1.5 mm straight glass
+                           # bore (F12), both well under dx.
+                           # source: user decision 2026-11-03 (Apparatus F4-F7
+                           # give 29.8 deg half-angle).
+  D_rim_m: 0.0550          # rim inside diameter [m]: the cone widens to this
+                           # past the column, and the wall stays vertical up
+                           # to y_rim_top_m (user decision 2026-11-03).  60 deg
+                           # exact reaches it at y = 45.29 mm; the vertical
+                           # band to the measured rim top takes up the
+                           # 2.1 mm by which a cone + lip (F10) under-predicts
+                           # F11.
+                           # source: Apparatus F8, 55.00 mm.
+  y_rim_top_m: 0.0500      # rim top above the orifice exit [m]: the tube's
+                           # end face sits here, a 2 mm downward-facing step
+                           # from D_rim to D_c.
+                           # source: Apparatus F11, 50.00 mm.
+  L_tube_m: 0.3048         # acrylic tube length [m]; with y_rim_top_m it fixes
+                           # the outlet height (spouted_bed_piv_rig_3d
+                           # n_cells_vertical).
+                           # source: Apparatus T3, 304.80 mm.
+
+spouted_bed_piv_rig_3d:
+  n_cells_across_D: 21     # cells across D_c [-]; dx = 51 / 21 = 2.4286 mm.
+                           # Keeps C26's two sizing rules (C26 p.3, 2.2.1) on
+                           # the rig: an integer fraction of the reactor
+                           # diameter with one source cell face about the
+                           # nozzle (dx^2 = 5.898 mm^2, +3.0 % on the
+                           # 5.726 mm^2 orifice; C26 -1.0 %), and dx = 2-3
+                           # particle diameters (2.95 at W = 1).  22 or more
+                           # cells do not fit the bore: the cone's apex
+                           # (y = -2.338 mm) falls below the bore floor.
+                           # source: user decision 2026-11-03.
+  n_cells_vertical: 146    # cells from y = 0 to the outlet [-]; H_dom = 146 dx
+                           # = 354.57 mm, the whole-row height closest to the
+                           # tube top at F11 + T3 = 354.80 mm.
+                           # source: Apparatus F11, T3.
+  n_margin_cells_xz: 1     # one whole cell of clearance outside D_c on each
+                           # side [-]: 23 cells, half-width 27.93 mm, clearing
+                           # the 27.5 mm rim radius.  Odd, so the axis is a
+                           # cell centre.
+                           # source: derived from Apparatus F8.
+  axis_on_cell_face: false # the single-cell source needs the axis at a cell
+                           # centre (spouted_bed_C26_3d axis_on_cell_face).
+                           # source: user request 2026-11-03, single cell
+                           # gas source.
+  n_margin_cells_below: 4  # blocked cell rows below y = 0 [-]; jmax = 150.
+                           # source: assumed; same as spouted_bed_C26_3d.
+  dx_sample_fraction: 0.5  # read by the builder; used by the implicit STL only.
+                           # source: assumed; same as spouted_bed_C26_3d.
+  ic_top_on_grid_row: true # put the IC region top on the nearest grid row and
+                           # solve ic_ep_s for 60 g in that volume [-].  MFiX
+                           # snaps ic_y_n to a row and counts parcels from the
+                           # snapped volume (generate_particles_mod.f:328):
+                           # without this the eps_s_ic = 0.30 top, 16.44 rows,
+                           # snapped to 16 and seeded 55.2 g (dry run
+                           # r01_dry, 2026-11-03).  Gives H_ic = 38.86 mm,
+                           # ic_ep_s = 0.3242.
+                           # source: MFiX 23.2 source; dry run r01_dry.
+  top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
+                           # source: spouted-bed recipe Rule 19.
+  ps_momentum: true        # ps_v_g = Q / dx^2, the single-cell inlet's setting
+                           # (C26 authors, pers. comm. 2026-10-27; see
+                           # spouted_bed_C26_3d ps_momentum).
+                           # source: user request 2026-11-03, same inlet layout.
+  ps_point: false          # the source region is the axis cell's faces, not a
+                           # literal point (needs the odd layout).
+                           # source: same as spouted_bed_C26_3d.
+  ps_row_offset_cells: 0   # read by the builder; replaced by
+                           # ps_tip_row_offset_cells for this STL.
+                           # source: same as spouted_bed_C26_3d.
+  stl_builder: parametric_fullface
+                           # closed-apex cone with the one-cell square bore
+                           # (src/make_stl_c26_fullface.py), plus the rim
+                           # pocket and step from bed_piv_rig.
+                           # source: user request 2026-11-03, single cell
+                           # gas source.
+  ps_tip_row_offset_cells: -1
+                           # source row y in [-dx, 0], walled on its sides and
+                           # bottom; the apex (y = -2.338 mm) lies in it.
+                           # source: derived from bed_piv_rig D_throat_m.
+  stl_apex_sagitta_max_m: 2.2e-5
+                           # largest chord error of the wall, at the rim
+                           # radius [m].  Gives the same N = 80 segments as
+                           # C26: sagitta 21.2 um at 27.5 mm, about 0.05 x the
+                           # particle radius.
+                           # source: assumed (C26's N; a multiple of 8 for the
+                           # bore corners).
+  stl_apex_band_height_cells: 2
+                           # largest facet band height, in cells.
+                           # source: assumed; same as spouted_bed_C26_3d.
+  stl_fullface_wall_offset_frac: 0.005
+                           # bore walls this fraction of dx outside the source
+                           # cell [-] (12.1 um); face neighbours keep 0.556 %
+                           # fluid, below TOL_SMALL_CELL = 1 %, so MFiX blocks
+                           # them and walls the source cell in.
+                           # source: assumed; same as spouted_bed_C26_3d.
+
+spouted_bed_piv_rig_3d_dem:
+  # Not measured on the rig: C26 Table 1's steel column, which equals its YSZ
+  # column, so these are the spouted_bed_C26_3d_dem values.
+  kn: 1000.0               # normal spring constant, p-p [N/m]
+                           # source: C26 Table 1 (steel).
+  kn_w: 1000.0             # normal spring constant, p-wall [N/m]
+                           # source: C26 Table 1 (steel; assumed at the wall).
+  kt_fac: 0.285            # tangential/normal spring factor, p-p [-]
+                           # source: C26 Table 1 (steel).
+  kt_w_fac: 0.285          # tangential/normal spring factor, p-wall [-]
+                           # source: C26 Table 1 (steel; assumed at the wall).
+  des_etat_fac: 0.5        # tangential/normal damping factor, p-p [-]
+                           # source: C26 Table 1 (steel).
+  des_etat_w_fac: 0.5      # tangential/normal damping factor, p-wall [-]
+                           # source: C26 Table 1 (steel; assumed at the wall).
+  mew: 0.1                 # interparticle friction factor [-]
+                           # source: C26 Table 1 (steel).
+  mew_w: 0.1               # particle-wall friction factor [-]
+                           # source: C26 Table 1 (steel).
+  des_en_input_pp: 0.5     # interparticle restitution coefficient [-]
+                           # source: C26 Table 1 (steel).
+  des_en_input_pw: 0.5     # particle-wall restitution coefficient [-]
+                           # source: C26 Table 1 (steel).
+  drag_type: 'TGS'         # Tenneti, Garg & Subramaniam (2011) drag.
+                           # source: C26 p.3 (2.2.1).
+  des_interp_scheme: 'NONE'
+                           # the single-cell inlet's production setting.
+                           # source: same as spouted_bed_C26_3d_dem.
+  des_epg_clip: 0.42       # floor on the whole gas-fraction field [-]
+                           # source: assumed; same as spouted_bed_C26_3d_dem.
+  des_interp_width_cells: 1.0  # written only for SQUARE_DPVM.
+                           # source: same as spouted_bed_C26_3d_dem.
+  eps_s_ic: 0.30           # starting solids fraction of the IC region [-]:
+                           # sets the IC region top, then ic_top_on_grid_row
+                           # adjusts both (deck value 0.3242).
+                           # source: assumed; same as spouted_bed_C26_3d_dem.
+  eps_s_packed: 0.60       # packed solids fraction, used ONLY for H_static
+                           # (monitor placement) [-].
+                           # source: Particles sheet, implied by its packed
+                           # bed volume: 60 g / (7585 kg/m^3 x 0.60) =
+                           # 13,184 mm^3.
