@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from src.make_case import REPO_ROOT, _load_yaml, render_case
-from src.make_case_c26 import build_C26_3d_params, default_gridmap, load_sweep
+from src.make_case_c26 import _volume_below, build_C26_3d_params, default_gridmap, load_sweep
 from src.make_stl_c26_fullface import build_cone_column_stl_fullface, inside_fullface_solid
 from tests.test_make_case_c26 import C26_NEW_KEYWORDS, V3D_DEM_TEMPLATE, _keywords
 from tests.test_make_stl_c26_apex import _read
@@ -67,6 +67,10 @@ def test_geometry_yaml_matches_apparatus_sheet(apparatus):
     assert bed["D_c_m"] * 1e3 == pytest.approx(apparatus["T1"])
     assert bed["D_nozzle_m"] * 1e3 == pytest.approx(apparatus["N1"])
     assert bed["D_throat_m"] * 1e3 == pytest.approx(apparatus["N1"])
+    assert bed["D_recess_top_m"] * 1e3 == pytest.approx(apparatus["N2"])
+    assert bed["D_glass_bore_m"] * 1e3 == pytest.approx(apparatus["F1"])
+    assert bed["L_straight_bore_m"] * 1e3 == pytest.approx(apparatus["F12"])
+    assert apparatus["F12"] == pytest.approx(3.60)            # remeasured 2026-11-03
     assert bed["D_rim_m"] * 1e3 == pytest.approx(apparatus["F8"])
     assert bed["y_rim_top_m"] * 1e3 == pytest.approx(apparatus["F11"])
     assert bed["L_tube_m"] * 1e3 == pytest.approx(apparatus["T3"])
@@ -139,30 +143,59 @@ def test_mesh_hand_values(r01, apparatus):
     assert r01["H_dom_m"] == pytest.approx(146 * dx)
 
 
-def test_cone_and_rim_heights(r01):
+def test_wall_heights_hand_values(r01, apparatus):
     assert r01["R_c_m"] == pytest.approx(25.5e-3)
     assert r01["R_t_m"] == pytest.approx(1.35e-3)
+    assert r01["R_glass_m"] == pytest.approx(8.155e-3)
     assert r01["cone_half_angle_deg"] == 30.0
-    assert r01["h_cone_m"] == pytest.approx((27.5e-3 - 1.35e-3) / TAN30)
-    assert r01["h_cone_m"] == pytest.approx(45.29e-3, abs=0.01e-3)
+    # recess line reaches the glass radius: (8.155 - 1.35) / tan 30
+    assert r01["y_glass_join_m"] == pytest.approx(11.787e-3, abs=1e-6)
+    # plug top (15.0 - 2.7) / 2 / tan 30 = 10.652, + F12 3.60
+    assert r01["y_glass_cone_m"] == pytest.approx(14.252e-3, abs=1e-6)
+    # + (27.5 - 8.155) / tan 30 = 33.507
+    assert r01["h_cone_m"] == pytest.approx(47.759e-3, abs=1e-6)
     assert r01["y_rim_top_m"] == 0.050
 
 
+def test_rim_height_stack_closes(r01, apparatus):
+    # cone top + lip against the measured rim height, the sheet's +/- 1 mm check
+    stack = r01["h_cone_m"] * 1e3 + apparatus["F10"]
+    assert stack == pytest.approx(apparatus["F11"], abs=0.05)
+
+
+def test_volume_below_hand_values():
+    # Recess frustum 979.3 mm^3 (r 1.35 to 8.155), bore pi 8.155^2 x 2.4655 =
+    # 515.1 mm^3, then the glass cone to r = 8.155 + 10 tan 30 at y_cone + 10 mm.
+    R_t, R_g, y_c = 1.35e-3, 8.155e-3, 14.2521e-3
+    v = lambda y: _volume_below(y, R_t, TAN30, R_g, y_c) * 1e9
+    assert v((R_g - R_t) / TAN30) == pytest.approx(979.3, abs=0.2)
+    assert v(y_c) == pytest.approx(979.3 + 515.1, abs=0.3)
+    r1 = 8.155 + 10.0 * TAN30
+    expected = 979.3 + 515.1 + math.pi / (3.0 * TAN30) * (r1 ** 3 - 8.155 ** 3)
+    assert v(y_c + 10.0e-3) == pytest.approx(expected, abs=0.5)
+    # no glass bore: a plain frustum
+    h = 20.0e-3
+    r = R_t + h * TAN30
+    assert _volume_below(h, R_t, TAN30) == pytest.approx(
+        math.pi * h / 3.0 * (R_t ** 2 + R_t * r + r ** 2), rel=1e-12)
+
+
 def test_bed_stays_in_the_cone(r01):
-    # 60 g / (7585 * 0.60) = 13,184 mm^3 (Particles sheet); its 31.4 mm uses the
-    # 29.8 deg half-angle, so 60 deg exact is slightly shorter.
-    assert r01["H_static_m"] == pytest.approx(31.2e-3, abs=0.1e-3)
+    # 60 g / (7585 * 0.60) = 13,184 mm^3 (Particles sheet volume) in the measured
+    # wall.  The sheet's 31.4 mm uses one cone from the orifice, which is 1.42 mm
+    # too wide; this wall gives 33.2 mm.
+    assert r01["H_static_m"] == pytest.approx(33.24e-3, abs=0.02e-3)
     assert r01["H_static_m"] < r01["H_ic_m"] < r01["h_cone_m"]
 
 
 def test_ic_region_keeps_the_charge_on_a_grid_row(r01):
     # MFiX snaps ic_y_n to the nearest row and seeds ic_ep_s * V / V_p parcels.
-    # Hand values: 0.30 gives 39.94 mm = 16.44 rows -> 16 rows = 38.857 mm;
-    # r_top = 1.35 + 38.857 tan 30 = 23.784 mm; V = 24,399 mm^3 ->
-    # ic_ep_s = (60 g / 7585 kg/m^3) / V = 0.3242.
-    assert r01["H_ic_m"] / r01["dx_m"] == pytest.approx(16.0)
-    assert r01["H_ic_m"] == pytest.approx(38.857e-3, abs=1e-6)
-    assert r01["eps_s_ic"] == pytest.approx(0.3242, abs=1e-4)
+    # Hand values: 0.30 needs 26,368 mm^3 = 42.12 mm = 17.34 rows -> 17 rows =
+    # 41.286 mm; V(41.286) = 1,494.4 + 23,354 = 24,848 mm^3 ->
+    # ic_ep_s = (60 g / 7585 kg/m^3) / V = 0.3183.
+    assert r01["H_ic_m"] / r01["dx_m"] == pytest.approx(17.0)
+    assert r01["H_ic_m"] == pytest.approx(41.286e-3, abs=1e-6)
+    assert r01["eps_s_ic"] == pytest.approx(0.3183, abs=1e-4)
     assert r01["ep_g_ic"] == pytest.approx(1.0 - r01["eps_s_ic"])
 
 
@@ -266,6 +299,7 @@ def stl(tmp_path_factory, r01):
         cell_half_m=0.5 * r01["dx_m"], nozzle_y_s_m=r01["ps_cell_y_s_m"],
         wall_offset_m=r01["stl_fullface_wall_offset_m"],
         R_rim_m=r01["R_rim_m"], y_rim_top_m=r01["y_rim_top_m"],
+        R_glass_m=r01["R_glass_m"], y_glass_cone_m=r01["y_glass_cone_m"],
     )
     return _read(path)[1], facts
 
@@ -294,11 +328,17 @@ def test_rim_stl_profile(stl, r01):
     assert np.allclose(_radii_at(tris, facts["h_cone_m"]), r01["R_rim_m"])
     at_step = _radii_at(tris, 0.050)
     assert set(np.round(at_step, 7)) == {round(r01["R_rim_m"], 7), round(r01["R_c_m"], 7)}
-    # every vertex lies on the true cone, band or column
+    # the vertical glass bore has its two rings at the glass radius
+    for y_ring in (facts["y_glass_join_m"], facts["y_glass_cone_m"]):
+        assert np.allclose(_radii_at(tris, y_ring), r01["R_glass_m"], atol=1e-9)
+    # every vertex lies on the recess line, glass bore, glass cone, band or column
     v = tris.reshape(-1, 3)
     y, r = v[:, 1], np.hypot(v[:, 0], v[:, 2])
-    cone = (y > 1.9e-3) & (y < facts["h_cone_m"] - 1e-9)
-    assert np.allclose(r[cone], r01["R_t_m"] + y[cone] * TAN30, atol=1e-9)
+    recess = (y > facts["y_collar_top_m"] - 1e-9) & (y < facts["y_glass_join_m"] + 1e-9)
+    assert np.allclose(r[recess], r01["R_t_m"] + y[recess] * TAN30, atol=1e-9)
+    glass = (y > facts["y_glass_cone_m"] - 1e-9) & (y < facts["h_cone_m"] + 1e-9)
+    assert np.allclose(r[glass], r01["R_glass_m"] + (y[glass] - facts["y_glass_cone_m"]) * TAN30,
+                       atol=1e-9)
     column = (y > 0.050 + 1e-9) & (r > 0.0)        # r = 0: the top cap's fan centre
     assert np.allclose(r[column], r01["R_c_m"], atol=1e-9)
 
@@ -309,6 +349,7 @@ def test_rim_step_is_the_only_new_horizontal_surface_and_faces_down(stl, r01):
     n /= np.linalg.norm(n, axis=1, keepdims=True)
     flat = np.abs(n[:, 1]) > 1.0 - 1e-9
     y = tris[flat, 0, 1]
+    # no ledge at the plug top: nothing flat between the bore floor and the step
     assert set(np.round(y, 7)) == {round(r01["y_nozzle_floor_m"], 7), 0.05,
                                    round(r01["H_dom_m"] + r01["top_extend_m"], 7)}
     assert np.all(n[flat][np.isclose(y, 0.05), 1] < 0.0)         # parcels cannot rest on it
@@ -319,18 +360,26 @@ def test_inside_solid_with_the_rim(r01):
         return bool(inside_fullface_solid(
             np.array([r]), np.array([y]), np.array([0.0]), r01["R_c_m"], r01["R_t_m"], 30.0,
             0.3596, r01["nozzle_half_width_m"], r01["y_nozzle_floor_m"],
-            r01["R_rim_m"], r01["y_rim_top_m"])[0])
-    assert inside(26.0e-3, 47.0e-3)            # in the pocket, wider than the tube
+            r01["R_rim_m"], r01["y_rim_top_m"], r01["R_glass_m"], r01["y_glass_cone_m"])[0])
+    assert inside(27.0e-3, 49.0e-3)            # in the rim band, wider than the tube
     assert not inside(26.0e-3, 51.0e-3)        # above the step, inside the tube wall
     assert inside(25.0e-3, 51.0e-3)            # in the tube
-    assert not inside(27.6e-3, 47.0e-3)        # outside the rim
-    assert not inside(20.0e-3, 30.0e-3)        # outside the cone (r_wall = 18.67 mm)
+    assert not inside(27.6e-3, 49.0e-3)        # outside the rim
+    assert inside(8.0e-3, 13.0e-3)             # in the glass bore (r_wall = 8.155 mm)
+    assert not inside(8.3e-3, 13.0e-3)         # outside it
+    assert inside(17.0e-3, 30.0e-3)            # in the glass cone (r_wall = 17.25 mm)
+    assert not inside(17.5e-3, 30.0e-3)        # outside it, inside the old one-cone wall
+    assert not inside(7.3e-3, 10.0e-3)         # outside the recess (r_wall = 7.12 mm)
 
 
 @pytest.mark.parametrize("kw,match", [
     ({"R_rim_m": 27.5e-3}, "go together"),
     ({"R_rim_m": 25.0e-3, "y_rim_top_m": 0.05}, "must be >"),
     ({"R_rim_m": 27.5e-3, "y_rim_top_m": 0.04}, "must lie between"),
+    ({"R_rim_m": 27.5e-3, "y_rim_top_m": 0.05, "R_glass_m": 8.155e-3}, "go together"),
+    ({"R_glass_m": 8.155e-3, "y_glass_cone_m": 14.25e-3}, "needs the rim"),
+    ({"R_rim_m": 27.5e-3, "y_rim_top_m": 0.05, "R_glass_m": 8.155e-3,
+      "y_glass_cone_m": 10.0e-3}, "lies below"),
 ])
 def test_rim_arguments_rejected(tmp_path, r01, kw, match):
     with pytest.raises(ValueError, match=match):
@@ -354,5 +403,6 @@ def test_cli_writes_the_rig_cases(monkeypatch, capsys, tmp_path):
     assert (run_dir / "RIG_r02.mfx").is_file() and (run_dir / "geometry_0001.stl").is_file()
     assert m["rig"] == "piv_rig" and m["flow_slpm"] == 26.5 and m["is_ofat_baseline"]
     assert m["stl_R_rim_m"] == pytest.approx(27.5e-3) and m["stl_n_bands_rim"] == 1
+    assert m["stl_y_glass_cone_m"] == pytest.approx(14.252e-3, abs=1e-6)
     assert m["case"].startswith("PIV rig") and m["nranks"] == 4
     assert (run_dir / "gridmap.dat").read_text().splitlines()[0] == "2 1 2"

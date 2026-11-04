@@ -235,7 +235,9 @@
 # dx^2 = {{ "%.3e"|format(ps_open_area_m2) }} m^2, at Q / dx^2 = {{ "%.4f"|format(U_ps_exit_m_s) }} m/s.  The 30 deg wall meets the bore
 # walls between y = {{ "%.4e"|format(y_bore_curve_min_m) }} and {{ "%.4e"|format(y_bore_curve_max_m) }} m (no ledge).
 {%- if R_rim_m is not none %}
-# RIM POCKET: the cone runs on to r = {{ "%.4e"|format(R_rim_m) }} m at y = {{ "%.4e"|format(h_cone_m) }} m, the wall is
+# GLASS BORE: the 30 deg recess line stops at r = {{ "%.4e"|format(R_glass_m) }} m at y = {{ "%.4e"|format(y_glass_join_m) }} m, a
+# vertical wall runs up to y = {{ "%.4e"|format(y_glass_cone_m) }} m and the 30 deg glass cone starts there.
+# RIM POCKET: the glass cone runs on to r = {{ "%.4e"|format(R_rim_m) }} m at y = {{ "%.4e"|format(h_cone_m) }} m, the wall is
 # vertical up to the rim top y = {{ "%.4e"|format(y_rim_top_m) }} m, then a downward-facing step in to
 # the column r = {{ "%.4e"|format(R_c_m) }} m.
 {%- endif %}

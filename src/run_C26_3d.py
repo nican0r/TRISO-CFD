@@ -162,7 +162,8 @@ _FULLFACE_FACTS = ("n_theta", "sagitta_Rc_m", "n_bands_cone", "n_bands_column",
                    "protrusion_fraction", "neighbour_fluid_fraction", "y_curve_min_m",
                    "y_curve_max_m", "y_collar_top_m")
 # ... and of the rim pocket, when the rig has one.
-_RIM_FACTS = ("R_rim_m", "y_rim_top_m", "sagitta_Rrim_m", "n_bands_rim")
+_RIM_FACTS = ("R_rim_m", "y_rim_top_m", "sagitta_Rrim_m", "n_bands_rim", "R_glass_m",
+              "y_glass_join_m", "y_glass_cone_m")
 
 
 def _build_stl(params: dict, path: Path) -> dict:
@@ -211,6 +212,8 @@ def _build_stl(params: dict, path: Path) -> dict:
             wall_offset_m=params["stl_fullface_wall_offset_m"],
             R_rim_m=params["R_rim_m"],
             y_rim_top_m=params["y_rim_top_m"],
+            R_glass_m=params["R_glass_m"],
+            y_glass_cone_m=params["y_glass_cone_m"],
         )
         if (abs(ff["y_floor_m"] - params["y_nozzle_floor_m"]) > 1e-12
                 or abs(ff["half_width_m"] - params["nozzle_half_width_m"]) > 1e-12):
@@ -218,7 +221,7 @@ def _build_stl(params: dict, path: Path) -> dict:
         facts = {"facet_count": ff["facet_count"]}
         facts.update({f"stl_{k}": ff[k] for k in _FULLFACE_FACTS})
         if params["R_rim_m"] is not None:
-            facts.update({f"stl_{k}": ff[k] for k in _RIM_FACTS})
+            facts.update({f"stl_{k}": ff[k] for k in _RIM_FACTS if k in ff})
     else:
         raise ValueError(f"unknown stl_builder {builder!r}")
     facts["stl_md5"] = _md5(path)

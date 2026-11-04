@@ -19,6 +19,11 @@ Optionally (R_rim_m, y_rim_top_m; the PIV rig, bed_piv_rig in
 params/geometry.yaml) the cone widens past the column to R_rim, the wall stays
 vertical up to the rim top y_rim, and the column starts there, its end face a
 downward-facing annular step from R_rim in to R_c.  Parcels cannot rest on it.
+With R_glass_m, y_glass_cone_m as well, the 30 deg recess line stops at the glass
+radius R_glass, a vertical wall (the glass bore) runs up to y_glass_cone, and the
+30 deg glass cone runs from there to R_rim; the recess line and the glass cone are
+parallel, offset by the bore.  There is no ledge at the plug top: the recess line
+continues up to the glass radius.
 Without those arguments the STL is byte-identical to the C26 vessel.
 
 The 30 deg wall runs down unchanged until it meets the bore walls, along the
@@ -55,9 +60,11 @@ Public API:
     build_cone_column_stl_fullface(R_c_m, R_t_m, cone_half_angle_deg, H_dom_m,
                                    out_path, top_extend_m, sagitta_max_m,
                                    band_height_m, cell_half_m, nozzle_y_s_m,
-                                   wall_offset_m, R_rim_m=None, y_rim_top_m=None)
+                                   wall_offset_m, R_rim_m=None, y_rim_top_m=None,
+                                   R_glass_m=None, y_glass_cone_m=None)
     inside_fullface_solid(x, y, z, R_c_m, R_t_m, cone_half_angle_deg, y_top_m,
-                          half_width_m, y_floor_m, R_rim_m=None, y_rim_top_m=None)
+                          half_width_m, y_floor_m, R_rim_m=None, y_rim_top_m=None,
+                          R_glass_m=None, y_glass_cone_m=None)
 
 All lengths SI (m).
 """
@@ -166,18 +173,29 @@ def inside_fullface_solid(
     R_c_m: float, R_t_m: float, cone_half_angle_deg: float, y_top_m: float,
     half_width_m: float, y_floor_m: float,
     R_rim_m: float | None = None, y_rim_top_m: float | None = None,
+    R_glass_m: float | None = None, y_glass_cone_m: float | None = None,
 ) -> np.ndarray:
     """True where (x, y, z) lies strictly inside the fluid: the closed-apex
-    cone / column (with the rim pocket below y_rim_top_m, if given), or the
-    square bore below the top cap."""
+    cone / column (with the rim pocket below y_rim_top_m and the glass bore and
+    cone, if given), or the square bore below the top cap."""
     x, y, z = np.asarray(x), np.asarray(y), np.asarray(z)
     bore = ((y > y_floor_m) & (y < y_top_m)
             & (np.abs(x) < half_width_m) & (np.abs(z) < half_width_m))
     if R_rim_m is None:
         return bore | inside_apex_solid(x, y, z, R_c_m, R_t_m, cone_half_angle_deg, y_top_m)
-    column = (y >= y_rim_top_m) & (y < y_top_m) & (np.hypot(x, z) < R_c_m)
-    return bore | column | inside_apex_solid(x, y, z, R_rim_m, R_t_m, cone_half_angle_deg,
-                                             y_rim_top_m)
+    r = np.hypot(x, z)
+    column = (y >= y_rim_top_m) & (y < y_top_m) & (r < R_c_m)
+    below_rim = inside_apex_solid(x, y, z, R_rim_m, R_t_m, cone_half_angle_deg, y_rim_top_m)
+    if R_glass_m is not None:
+        tan_h = math.tan(math.radians(cone_half_angle_deg))
+        below_rim &= r < _glass_wall_radius(y, R_glass_m, y_glass_cone_m, tan_h)
+    return bore | column | below_rim
+
+
+def _glass_wall_radius(y, R_glass_m: float, y_glass_cone_m: float, tan_h: float):
+    """Radius of the glass bore (below y_glass_cone_m) and glass cone (above it)."""
+    return np.where(np.asarray(y) < y_glass_cone_m, R_glass_m,
+                    R_glass_m + (np.asarray(y) - y_glass_cone_m) * tan_h)
 
 
 def _orient(tri: tuple[int, int, int], verts: np.ndarray, want: np.ndarray) -> tuple[int, int, int]:
@@ -200,6 +218,8 @@ def build_cone_column_stl_fullface(
     wall_offset_m: float,
     R_rim_m: float | None = None,
     y_rim_top_m: float | None = None,
+    R_glass_m: float | None = None,
+    y_glass_cone_m: float | None = None,
 ) -> tuple[Path, dict]:
     """Write the closed-apex cone + column STL with the square bore; return
     (path, facts).
@@ -210,11 +230,16 @@ def build_cone_column_stl_fullface(
     R_rim_m, y_rim_top_m : rim pocket radius (> R_c) and top height [m]; both
                           or neither.  The cone then runs up to R_rim and
                           sagitta_max_m applies at R_rim
+    R_glass_m, y_glass_cone_m : glass bore radius (between R_t and R_rim) and the
+                          height the glass cone starts [m]; both or neither, and
+                          only with a rim
 
     facts: the nozzle geometry, n_theta, sagitta_Rc_m, n_bands_cone,
     n_bands_column, band heights, y_apex_m, h_cone_m, y_top_m, y_collar_top_m
     (the first apex ring), facet_count, vertex_count, ring_y_m; with a rim also
-    R_rim_m, y_rim_top_m, sagitta_Rrim_m, n_bands_rim.
+    R_rim_m, y_rim_top_m, sagitta_Rrim_m, n_bands_rim; with a glass bore also
+    R_glass_m, y_glass_join_m (where the recess line reaches R_glass),
+    y_glass_cone_m.
     """
     out_path = Path(out_path)
     geo = fullface_nozzle_geometry(R_t_m, cone_half_angle_deg, cell_half_m, nozzle_y_s_m,
@@ -226,9 +251,23 @@ def build_cone_column_stl_fullface(
         raise ValueError("R_rim_m and y_rim_top_m go together")
     if rim and R_rim_m <= R_c_m:
         raise ValueError(f"R_rim_m ({R_rim_m}) must be > R_c_m ({R_c_m})")
+    glass = R_glass_m is not None
+    if glass != (y_glass_cone_m is not None):
+        raise ValueError("R_glass_m and y_glass_cone_m go together")
+    if glass and not rim:
+        raise ValueError("the glass bore needs the rim pocket")
+    if glass and not (R_t_m < R_glass_m < R_rim_m):
+        raise ValueError(f"R_glass_m ({R_glass_m}) must lie between R_t_m and R_rim_m")
     R_cone_top_m = R_rim_m if rim else R_c_m
     tan_h = math.tan(math.radians(cone_half_angle_deg))
-    h_cone_m = (R_cone_top_m - R_t_m) / tan_h
+    if glass:
+        y_glass_join_m = (R_glass_m - R_t_m) / tan_h
+        if y_glass_cone_m < y_glass_join_m:
+            raise ValueError(f"y_glass_cone_m ({y_glass_cone_m}) lies below where the recess "
+                             f"line reaches R_glass ({y_glass_join_m:.4g} m)")
+        h_cone_m = y_glass_cone_m + (R_rim_m - R_glass_m) / tan_h
+    else:
+        h_cone_m = (R_cone_top_m - R_t_m) / tan_h
     if rim and not (h_cone_m < y_rim_top_m < H_dom_m):
         raise ValueError(f"y_rim_top_m ({y_rim_top_m}) must lie between the cone top "
                          f"({h_cone_m:.4g} m) and H_dom ({H_dom_m} m)")
@@ -250,7 +289,14 @@ def build_cone_column_stl_fullface(
         raise ValueError(f"n_theta = {n_theta}: a ring vertex would sit on a bore corner's "
                          "azimuth; the builder needs a multiple of 8")
     theta = (np.arange(n_theta) + 0.5) * (2.0 * math.pi / n_theta)
-    y_cone = _band_edges(y_apex_m, h_cone_m, band_height_m)
+    if glass:
+        y_cone = np.concatenate([
+            _band_edges(y_apex_m, y_glass_join_m, band_height_m),
+            _band_edges(y_glass_join_m, y_glass_cone_m, band_height_m)[1:],
+            _band_edges(y_glass_cone_m, h_cone_m, band_height_m)[1:],
+        ])
+    else:
+        y_cone = _band_edges(y_apex_m, h_cone_m, band_height_m)
     if rim:
         # Cone up to R_rim, the vertical band up to the rim top, then the
         # column; two rings at y_rim, R_rim and R_c, make the annular step.
@@ -259,6 +305,8 @@ def build_cone_column_stl_fullface(
         n_band = len(y_band) - 1
         ring_y = np.concatenate([y_cone[1:], y_band[1:], y_col])
         ring_r = np.minimum(R_t_m + ring_y * tan_h, R_rim_m)
+        if glass:
+            ring_r = np.minimum(ring_r, _glass_wall_radius(ring_y, R_glass_m, y_glass_cone_m, tan_h))
         ring_r[len(y_cone) - 1 + n_band:] = R_c_m
     else:
         y_col = _band_edges(h_cone_m, y_top_m, band_height_m)
@@ -377,7 +425,8 @@ def build_cone_column_stl_fullface(
         raise RuntimeError("full-face STL has a degenerate facet")
     n_hat = cross / norm[:, None]
     cen = (A + B + C) / 3.0
-    args = (R_c_m, R_t_m, cone_half_angle_deg, y_top_m, a, y_floor, R_rim_m, y_rim_top_m)
+    args = (R_c_m, R_t_m, cone_half_angle_deg, y_top_m, a, y_floor, R_rim_m, y_rim_top_m,
+            R_glass_m, y_glass_cone_m)
     p_in = cen + _PROBE_EPS_M * n_hat
     p_out = cen - _PROBE_EPS_M * n_hat
     ok_in = inside_fullface_solid(p_in[:, 0], p_in[:, 1], p_in[:, 2], *args)
@@ -423,5 +472,11 @@ def build_cone_column_stl_fullface(
             "y_rim_top_m": float(y_rim_top_m),
             "sagitta_Rrim_m": sagitta_m(R_rim_m, n_theta),
             "n_bands_rim": int(n_band),
+        })
+    if glass:
+        facts.update({
+            "R_glass_m": float(R_glass_m),
+            "y_glass_join_m": float(y_glass_join_m),
+            "y_glass_cone_m": float(y_glass_cone_m),
         })
     return out_path, facts

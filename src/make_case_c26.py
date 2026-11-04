@@ -103,6 +103,41 @@ def slpm_to_mass_flow(flow_slpm: float, rho_ref_kg_m3: float) -> float:
     return float(flow_slpm) * SLPM_TO_M3_S * float(rho_ref_kg_m3)
 
 
+def _volume_below(
+    y_m: float, R_t_m: float, tan_t: float,
+    R_glass_m: float | None = None, y_glass_cone_m: float | None = None,
+) -> float:
+    """Vessel volume [m^3] from y = 0 to y_m in the cone: one cone from R_t, or
+    with R_glass_m the recess cone, the vertical glass bore and the glass cone."""
+    def frustum(r0: float, r1: float) -> float:
+        return math.pi / (3.0 * tan_t) * (r1 ** 3 - r0 ** 3)
+
+    if R_glass_m is None or y_m <= (R_glass_m - R_t_m) / tan_t:
+        return frustum(R_t_m, R_t_m + y_m * tan_t)
+    y_join = (R_glass_m - R_t_m) / tan_t
+    v = frustum(R_t_m, R_glass_m)
+    if y_m <= y_glass_cone_m:
+        return v + math.pi * R_glass_m ** 2 * (y_m - y_join)
+    return (v + math.pi * R_glass_m ** 2 * (y_glass_cone_m - y_join)
+            + frustum(R_glass_m, R_glass_m + (y_m - y_glass_cone_m) * tan_t))
+
+
+def _height_for_volume(
+    v_m3: float, y_max_m: float, R_t_m: float, tan_t: float, R_glass_m: float, y_glass_cone_m: float,
+) -> float:
+    """Height [m] holding v_m3 in the glass bore profile (:func:`_volume_below`)."""
+    if _volume_below(y_max_m, R_t_m, tan_t, R_glass_m, y_glass_cone_m) < v_m3:
+        raise ValueError(f"{v_m3} m^3 does not fit below y = {y_max_m} m")
+    lo, hi = 0.0, y_max_m
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if _volume_below(mid, R_t_m, tan_t, R_glass_m, y_glass_cone_m) < v_m3:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
 def _mean_cube_normal(mu: float, sigma: float) -> float:
     """E[d^3] for a normal size distribution: mu^3 + 3 mu sigma^2."""
     return mu ** 3 + 3.0 * mu * sigma ** 2
@@ -374,7 +409,17 @@ def build_C26_3d_params(
     R_rim_m = 0.5 * float(bed["D_rim_m"]) if "D_rim_m" in bed else None
     y_rim_top_m = float(bed["y_rim_top_m"]) if "y_rim_top_m" in bed else None
     R_cone_top_m = R_c_m if R_rim_m is None else R_rim_m
-    h_cone_m = (R_cone_top_m - R_t_m) / tan_t
+    # Glass bore (PIV rig): the recess line stops at the glass radius, a vertical
+    # wall runs up to the plug top + F12, and the glass cone starts there.
+    R_glass_m = y_glass_join_m = y_glass_cone_m = None
+    if "D_glass_bore_m" in bed:
+        R_glass_m = 0.5 * float(bed["D_glass_bore_m"])
+        y_glass_join_m = (R_glass_m - R_t_m) / tan_t
+        y_plug_top_m = (0.5 * float(bed["D_recess_top_m"]) - R_t_m) / tan_t
+        y_glass_cone_m = y_plug_top_m + float(bed["L_straight_bore_m"])
+        h_cone_m = y_glass_cone_m + (R_cone_top_m - R_glass_m) / tan_t
+    else:
+        h_cone_m = (R_cone_top_m - R_t_m) / tan_t
 
     n_across = int(mesh["n_cells_across_D"])
     n_vert = int(mesh["n_cells_vertical"])
@@ -545,16 +590,20 @@ def build_C26_3d_params(
             cone_half_angle_deg=half_deg, R_c_m=R_cone_top_m,
         )
 
-    H_ic_m = _h(eps_s_ic, cone_half_angle_deg)
+    if R_glass_m is None:
+        H_ic_m = _h(eps_s_ic, cone_half_angle_deg)
+        H_static_m = _h(eps_s_packed, cone_half_angle_deg)
+    else:
+        H_ic_m, H_static_m = (
+            _height_for_volume(m_bed / (rho_p * eps), h_cone_m, R_t_m, tan_t, R_glass_m,
+                               y_glass_cone_m)
+            for eps in (eps_s_ic, eps_s_packed))
     if mesh.get("ic_top_on_grid_row", False):
         # MFiX snaps ic_y_n to the nearest row and counts parcels from the
         # snapped fluid volume (generate_particles_mod.f:328, GET_IC_VOLUME), so
         # keep the charge: put H_ic on the row and solve ic_ep_s for its volume.
         H_ic_m = round(H_ic_m / dx_m) * dx_m
-        r_top = R_t_m + H_ic_m * tan_t
-        eps_s_ic = m_bed / (rho_p * math.pi * H_ic_m / 3.0
-                            * (R_t_m ** 2 + R_t_m * r_top + r_top ** 2))
-    H_static_m = _h(eps_s_packed, cone_half_angle_deg)
+        eps_s_ic = m_bed / (rho_p * _volume_below(H_ic_m, R_t_m, tan_t, R_glass_m, y_glass_cone_m))
     # Cross-check of the C25/C26 Fig. 1 "~25 mm" annotation (not a model input).
     H_static_if_90deg_m = _h(eps_s_packed, 45.0)
     if H_ic_m >= H_dom_m:
@@ -616,6 +665,8 @@ def build_C26_3d_params(
         "h_cone_m": h_cone_m,
         "n_cells_across_D": n_across,
         "R_rim_m": R_rim_m, "y_rim_top_m": y_rim_top_m,
+        "R_glass_m": R_glass_m, "y_glass_join_m": y_glass_join_m,
+        "y_glass_cone_m": y_glass_cone_m,
         "dx_sample_m": float(mesh["dx_sample_fraction"] if dx_sample_fraction is None
                              else dx_sample_fraction) * dx_m,
         "top_extend_m": float(mesh["top_extend_m"]),

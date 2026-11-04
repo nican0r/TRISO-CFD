@@ -925,21 +925,31 @@ bed_piv_rig:
   D_throat_m: 2.70e-3      # cone diameter at y = 0 [m]; the printed recess
                            # starts at the orifice.
                            # source: Apparatus N1.
-  cone_angle_deg: 60       # included cone angle [deg], exact (half-angle 30).
-                           # One cone from the orifice to the rim, as the
-                           # Particles sheet's static-bed prediction: leaves
-                           # out the 0.65 mm ledge at the plug top
-                           # (Apparatus F1, N2) and the 1.5 mm straight glass
-                           # bore (F12), both well under dx.
+  cone_angle_deg: 60       # included angle of the recess and the glass cone
+                           # [deg], exact (half-angle 30).
                            # source: user decision 2026-11-03 (Apparatus F4-F7
                            # give 29.8 deg half-angle).
-  D_rim_m: 0.0550          # rim inside diameter [m]: the cone widens to this
-                           # past the column, and the wall stays vertical up
-                           # to y_rim_top_m (user decision 2026-11-03).  60 deg
-                           # exact reaches it at y = 45.29 mm; the vertical
-                           # band to the measured rim top takes up the
-                           # 2.1 mm by which a cone + lip (F10) under-predicts
-                           # F11.
+  D_recess_top_m: 0.0150   # printed recess diameter at the plug top [m]; with
+                           # the orifice and 30 deg it places the plug top at
+                           # y = 10.65 mm (calculated, not measured).
+                           # source: Apparatus N2, 15.00 mm.
+  D_glass_bore_m: 0.01631  # glass bore diameter [m].  The recess line runs on
+                           # past the plug top to this radius (y = 11.79 mm), so
+                           # the 0.65 mm flat ledge between the recess top and
+                           # the glass is left out: 0.14 % of the bed volume,
+                           # about a quarter of a cell, and parcels could rest
+                           # on it (user decision 2026-11-03).
+                           # source: Apparatus F1, 16.31 mm.
+  L_straight_bore_m: 3.6e-3  # straight glass bore above the plug top [m]: the
+                           # glass cone starts at y = 10.65 + 3.60 = 14.25 mm.
+                           # With it the stack closes: 14.25 + 33.51 (cone) +
+                           # 2.26 (lip) = 50.02 mm against F11 = 50.00 mm.
+                           # source: Apparatus F12, remeasured 2026-11-03 (first
+                           # reading 1.50 mm).
+  D_rim_m: 0.0550          # rim inside diameter [m]: the glass cone widens to
+                           # this past the column (at y = 47.76 mm), and the
+                           # wall stays vertical up to y_rim_top_m, 2.24 mm
+                           # against the lip's measured 2.26 mm (F10).
                            # source: Apparatus F8, 55.00 mm.
   y_rim_top_m: 0.0500      # rim top above the orifice exit [m]: the tube's
                            # end face sits here, a 2 mm downward-facing step
@@ -982,10 +992,9 @@ spouted_bed_piv_rig_3d:
                            # solve ic_ep_s for 60 g in that volume [-].  MFiX
                            # snaps ic_y_n to a row and counts parcels from the
                            # snapped volume (generate_particles_mod.f:328):
-                           # without this the eps_s_ic = 0.30 top, 16.44 rows,
-                           # snapped to 16 and seeded 55.2 g (dry run
-                           # r01_dry, 2026-11-03).  Gives H_ic = 38.86 mm,
-                           # ic_ep_s = 0.3242.
+                           # without this a top of 16.44 rows snapped to 16 and
+                           # seeded 55.2 g (dry run r01_dry, 2026-11-03).
+                           # Gives H_ic = 41.29 mm (17 rows), ic_ep_s = 0.3183.
                            # source: MFiX 23.2 source; dry run r01_dry.
   top_extend_m: 5.0e-3     # STL top cap above the PO plane [m]
                            # source: spouted-bed recipe Rule 19.
@@ -1060,7 +1069,7 @@ spouted_bed_piv_rig_3d_dem:
                            # source: same as spouted_bed_C26_3d_dem.
   eps_s_ic: 0.30           # starting solids fraction of the IC region [-]:
                            # sets the IC region top, then ic_top_on_grid_row
-                           # adjusts both (deck value 0.3242).
+                           # adjusts both (deck value 0.3183).
                            # source: assumed; same as spouted_bed_C26_3d_dem.
   eps_s_packed: 0.60       # packed solids fraction, used ONLY for H_static
                            # (monitor placement) [-].
