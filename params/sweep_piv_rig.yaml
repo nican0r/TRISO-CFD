@@ -21,9 +21,44 @@ base:
                               # this rig; the C26 YSZ sweep keeps W >= 10.
                               # source: user decision 2026-11-03.
 
-# Row keys as params/sweep_C26.yaml.  Flows: the rig's setpoints, source user
-# 2026-11-03.  60 g: Particles sheet, 27,200 balls x 2.2059 mg.
+# The rig's flow meter: a float rotameter with an air scale, metering N2, with
+# its valve on the inlet so the float tube sits at the nozzle's back pressure.
+# source: user 2026-11-06 (conversion note and replies), unless marked.
+#   Q_N2 = reading * sqrt(M_air / M_N2) * sqrt((p_cal + p_back) / p_cal)
+#                  * sqrt(T_cal / T_gas)        (src/correlations.py
+#                                                rotameter_standard_flow)
+#   p_back = back_pressure_kPa_per_lpm2 * reading^2 + bed_back_pressure_kPa
+rotameter:
+  M_cal_kg_mol: 28.97e-3      # air.
+  M_gas_kg_mol: 28.01e-3      # N2.
+  T_cal_K: 293.15             # scale calibrated at 20 C.  The converted flow is
+  p_cal_Pa: 101325            # taken to be referred to this state (assumed; the
+                              # note does not say).
+  T_gas_K: 294.817            # 71 F in the room.
+  back_pressure_kPa_per_lpm2: 0.0085  # modeled, not measured (the gauge was
+                              # removed): compressible flow through the 2.7 mm
+                              # orifice with an assumed discharge coefficient
+                              # of 0.8.
+  bed_back_pressure_kPa: 0.5  # the loaded bed; assumed.
+  full_scale_lpm: 30
+  accuracy_frac_full_scale: 0.04  # +-1.2 LPM, about +-5 % at the test flows.
+
+# Row keys as params/sweep_C26.yaml.  60 g: Particles sheet, 27,200 balls x
+# 2.2059 mg.
+#
+# r01-r03: the rotameter's air-scale readings 24 / 26.5 / 30 (source user
+# 2026-11-03) entered as slpm of N2 before the scale was known.  The rig never
+# ran at these flows; the 2026-11-05 runs did.  Kept so those runs rebuild.
+#
+# q1-q3: the same three readings converted with the rotameter block above and
+# referred to this rig's slpm reference (25 C, 1 atm): reading -> LPM N2 at
+# 20 C -> slpm.  24 -> 24.98 -> 25.40; 26.5 -> 27.72 -> 28.19; 30 -> 31.62 ->
+# 32.16.  These are the rig's test conditions.  source: derived 2026-11-06;
+# tests/test_make_case_piv_rig.py recomputes them.
 cases:
-  - {id: r01, feedstock: case_piv_rig_ss, flow_slpm: 24,   inventory_g: 60}
-  - {id: r02, feedstock: case_piv_rig_ss, flow_slpm: 26.5, inventory_g: 60}
-  - {id: r03, feedstock: case_piv_rig_ss, flow_slpm: 30,   inventory_g: 60}
+  - {id: r01, feedstock: case_piv_rig_ss, flow_slpm: 24,    inventory_g: 60}
+  - {id: r02, feedstock: case_piv_rig_ss, flow_slpm: 26.5,  inventory_g: 60}
+  - {id: r03, feedstock: case_piv_rig_ss, flow_slpm: 30,    inventory_g: 60}
+  - {id: q1,  feedstock: case_piv_rig_ss, flow_slpm: 25.40, inventory_g: 60, rotameter_lpm: 24}
+  - {id: q2,  feedstock: case_piv_rig_ss, flow_slpm: 28.19, inventory_g: 60, rotameter_lpm: 26.5}
+  - {id: q3,  feedstock: case_piv_rig_ss, flow_slpm: 32.16, inventory_g: 60, rotameter_lpm: 30}

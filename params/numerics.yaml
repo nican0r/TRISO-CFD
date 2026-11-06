@@ -67,3 +67,20 @@ spouted_bed_C26_3d_numerics:
                               #         notes/c26_conry2026_case.md intro;
                               #         the AWS image).  "26.1.2" re-renders
                               #         the runs before that date.
+
+# PIV rig overrides of spouted_bed_C26_3d_numerics (src/make_case_c26.py RIGS
+# "numerics_override").  A key here replaces or adds to the shared block for
+# --rig piv_rig only, so the C26 decks stay byte-identical.
+spouted_bed_piv_rig_3d_numerics:
+  leq_it_pressure: 200   # MFiX LEQ_IT(1): most BiCGSTAB sweeps in one gas
+                         # pressure-correction solve [-] (MFiX default 20).
+                         # source: r03 stall diagnosis 2026-11-05
+                         #         (implementation-steps/10-piv-rig-model.md
+                         #         "r03 failure"; results/run_log.csv "r03
+                         #         stall replays"): a solve needs about 18
+                         #         sweeps on average, and a stalled state
+                         #         failed 3 iterations at 20 and none at 200.
+                         #         MFiX 23.2 init_namelist.f says to raise
+                         #         LEQ_IT(1) when NORM_G = 0, as these decks
+                         #         set.  200 itself is assumed (a ceiling, not
+                         #         a tuned value).

@@ -21,6 +21,7 @@ from src.correlations import (  # noqa: E402
     geldart_class,
     relaxation_time,
     reynolds,
+    rotameter_standard_flow,
     terminal_velocity,
     tgs_drag_coefficient,
     tgs_drag_factor,
@@ -297,3 +298,26 @@ def test_coated_particle_stages_rejects_bad_input():
         coated_particle_stages(0.0, 6000.0, [])
     with pytest.raises(ValueError):
         coated_particle_stages(411.6e-6, 6000.0, [("buffer", -1e-6, 1000.0)])
+
+
+def test_rotameter_standard_flow_hand_values():
+    # N2 on an air scale, tube at 101.325 + 8.15 kPa and 294.82 K, scale
+    # calibrated at 20 C and 1 atm, reading 30:
+    #   sqrt(28.97 / 28.01)       = 1.01699
+    #   sqrt(109.475 / 101.325)   = 1.03944
+    #   sqrt(293.15 / 294.817)    = 0.99717
+    #   30 * 1.01699 * 1.03944 * 0.99717 = 31.62
+    q = rotameter_standard_flow(30.0, 28.97e-3, 28.01e-3, 109.475e3, 101.325e3,
+                                294.817, 293.15)
+    assert q == pytest.approx(31.62, abs=0.01)
+    # same gas and state as the calibration: the reading itself
+    assert rotameter_standard_flow(12.0, 0.029, 0.029, 1e5, 1e5, 300.0, 300.0) == pytest.approx(12.0)
+    # the user's rig table (2026-11-06): 22.7 on the scale at 4.88 kPa gauge -> 23.57
+    q = rotameter_standard_flow(22.7, 28.97e-3, 28.01e-3, 106.205e3, 101.325e3,
+                                294.817, 293.15)
+    assert q == pytest.approx(23.57, abs=0.01)
+
+
+def test_rotameter_standard_flow_rejects_bad_input():
+    with pytest.raises(ValueError):
+        rotameter_standard_flow(30.0, 28.97e-3, 28.01e-3, 0.0, 101.325e3, 294.8, 293.15)

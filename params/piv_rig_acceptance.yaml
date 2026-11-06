@@ -1,0 +1,174 @@
+# PIV rig acceptance criteria.  Written 2026-11-04, before the rig's first
+# smoke was submitted.  User request 2026-11-04: "run the smoke then the
+# subsequent test runs".  See implementation-steps/10-piv-rig-model.md.
+#
+# Amended 2026-11-05, at the user's request, after the r01 smoke: the pressure
+# check moved out of the source cell (see health.pressure), and the 20 slpm,
+# 24 slpm, r02 and r03 runs now go in parallel, which moved the step-down's start
+# and added the r02 and r03 stages.  Those stages' thresholds predate their
+# results.  Every other threshold here predates any rig result.
+#
+# Amended 2026-11-06, after the r01, r02 and step-down results: the user said the
+# flows are readings of an air-scale rotameter metering N2 (params/
+# sweep_piv_rig.yaml, rotameter).  measured_min_spout was re-derived, the
+# multiples in the comments below were corrected, and the q1-q3 stages were added
+# for the rig's true flows.  No threshold was changed; q1-q3 reuse the r01 limits.
+
+measured_min_spout:
+  flow_lpm: 22              # [L/min] lowest rotameter reading (air scale,
+                            # N2 flowing) that holds a spout.  60 g steel
+                            # charge, lowered from an already spouting bed.
+                            # source: user 2026-11-04; scale and gas confirmed
+                            # 2026-11-06.
+  n2_equiv_slpm: 23.2       # [slpm] 22 on the scale -> 22.81 LPM N2 at 20 C
+                            # (the user's "~22.8 LPM N2 adjusted") -> 23.20 at
+                            # this rig's 25 C reference, by the rotameter block
+                            # of params/sweep_piv_rig.yaml.  source: derived
+                            # 2026-11-06.  Until then this read 22.4, from
+                            # taking the test gas to be air.  The meter is
+                            # +-1.2 LPM, so about +-5 %.
+
+# Parcel and gas metrics, one definition for every stage below, computed by
+# src/post/piv_rig_score.py.  Same definitions as the C26 review
+# (notes/c26_drag_closure_review_2026-11-03.md section 1, dense top) and
+# notes/c26_spout_cycle.py (d20), with two values scaled to the rig.
+metrics:
+  surface_percentile: 95    # bed surface y: this percentile of parcel y over
+                            # parcels with r >= surface_r_min_m, per frame.
+  surface_r_min_m: 13.5e-3  # [m] C26 used 15 mm of its 21.3 mm surface radius;
+                            # 0.705 x 19.12 mm here.  source: scaled.
+  dense_bin_m: 1.0e-3       # [m] dense top: heights above the surface pooled
+  dense_peak_frac: 0.05     # over the window; top of the highest bin holding at
+                            # least this fraction of the peak bin's count.
+  parcel_frame_stride: 10   # every 10th PARTICLES_PIV frame, i.e. 20 ms.
+  share_y_m: 0.020          # [m] height of the spout gas share.
+  spout_vg_m_s: 6.0         # [m/s] a cell at share_y_m counts as spout when its
+                            # gas v_y exceeds this.  C26 used 2 m/s, 2.1-2.6 x
+                            # the velocity of all the gas seeping through the
+                            # packed annulus at 20 mm (0.78-1.1 m/s).  On the rig
+                            # that seepage is 2.3 m/s at 24 slpm (r = 11.5 mm,
+                            # EP_G 0.42), so 2 m/s would score a dead spout as
+                            # open.  2.6 x 2.3 m/s.  source: scaled, set before
+                            # any rig result.
+  closed_share: 0.3         # d20: share of gas frames whose spout gas share at
+                            # share_y_m is below this.  source: C26 runs.
+
+# Solver and inlet health, the same for every stage over its health_window_s.
+# All must hold; a failure is reported as FAIL, whatever the stage's outcome.
+health:
+  finished: "exit 0, tstop reached, no MFiX error in the log"
+  dt: "check_smoke S1 collapse <= 5x and S2 stationarity <= 2 (skill defaults)"
+  inlet_ratio: "axis cell directly above the one-cell source, v_g / ps_v_g in the
+    band (skill 3.1).  check_smoke S3 reads the same cell with --orifice-r
+    R_nozzle_m.  The source cell itself is reported only"
+  exit_ratio_band: [0.5, 2.0]
+  parcels: "seeded count within tolerance; loss first to last within the limit
+    (C26 OUTLET_LOSS_MAX); the exit route is reported, because 23.2 can delete
+    parcels at cut-cell corners"
+  seeded_parcels: 27028
+  seeded_tolerance: 0.01
+  parcel_loss_max: 0.005
+  no_bore_entry: "lowest parcel y >= 0 in every frame after 0.1 s"
+  pressure: "axis cell directly above the source minus the bed-top slab (the
+    P_top_bed monitor's box): positive and within the band.  Amended 2026-11-05
+    after the r01 smoke, at the user's request.  The old gate, source-cell monitor
+    minus bed top > 0, read -2.89 W/A on the smoke and -1.7 W/A on the 3 s C26 c02
+    TGS and BVK runs: that cell sits about 0.5 rho V^2 below the row above it on
+    both models, so it cannot tell a good run from a bad one.  The old file's
+    reason, that the monitor reads a positive jet head, was wrong.  The source
+    cell is still reported.  This row carries some jet head on top of the bed's
+    weight (r01 smoke 2.1 W/A, C26 c02 2.0), so it rises with flow and r03 may
+    approach the band's top"
+  pressure_band_w_over_a: [0.2, 3.0]
+  w_over_a_pa: 513          # [Pa] 60 g at the bed surface radius, 19.12 mm.
+                            # source: derived.
+
+smoke_r01:
+  case: r01_smoke05
+  window_s: [0.30, 0.50]    # source: same window as the C26 drag smokes.
+  health_window_s: [0.1, 0.5]
+  regime: "a spout exists: d20 < 0.9 and dense_top >= 3 mm.  Read as a floor
+    only.  The C26 smokes showed a 0.5 s fountain does not predict the 3 s
+    fountain (review section 1), so no fountain height is scored here"
+  regime_d20_max: 0.9
+  regime_dense_top_min_mm: 3.0
+  go: "health and regime -> the 3 s runs.  Otherwise stop and explain"
+
+run_r01_3s: &run_3s
+  case: r01
+  flow_slpm: 24             # 1.03 x measured_min_spout; not a rig test flow
+  window_s: [2.4, 3.0]      # source: C26 PIV window, last 0.6 s of 3 s.
+  d20_window_s: [0.5, 3.0]  # source: C26 runs.
+  health_window_s: [0.1, 3.0]
+  spouts: "dense_top >= 8 mm AND d20 < 0.5.  8 mm: the review's floor for the
+    lowest C26 flow, assumed to carry over to steel.  d20 0.5: assumed; the
+    C26 runs with a live spout read 0.00-0.18, the dead spouts 0.76-1.00"
+  spouts_dense_top_min_mm: 8.0
+  spouts_d20_max: 0.5
+  settled: "dense_top in 1.8-2.4 s and 2.4-3.0 s, reported; a gap above 25 %
+    is stated next to any result"
+  on_fail: "stop and explain; a dead spout at 24 slpm points at the inlet or
+    mesh, since lower-drag laws would likely do no better"
+
+# Same limits and windows as r01, set before any run above 24 slpm.
+run_r02_3s:
+  <<: *run_3s
+  case: r02
+  flow_slpm: 26.5           # 1.14 x measured_min_spout; not a rig test flow
+
+run_r03_3s:
+  <<: *run_3s
+  case: r03
+  flow_slpm: 30             # 1.29 x measured_min_spout; not a rig test flow
+
+# The rig's three test conditions at their true N2 flows (rotameter readings 24,
+# 26.5 and 30).  Added 2026-11-06 with r01's limits and windows unchanged; the
+# r01 and r02 results were already known, so these limits do not predate every
+# result near these flows.
+run_q1_3s:
+  <<: *run_3s
+  case: q1
+  flow_slpm: 25.40          # 1.09 x measured_min_spout
+
+run_q2_3s:
+  <<: *run_3s
+  case: q2
+  flow_slpm: 28.19          # 1.21 x measured_min_spout
+
+run_q3_3s:
+  <<: *run_3s
+  case: q3
+  flow_slpm: 32.16          # 1.39 x measured_min_spout
+
+step_down_20:
+  starts_from: "r01_smoke05 final state at t = 0.5 s, by RESTART_1.  Changed
+    2026-11-05, before any step-down result: the user asked for this run alongside
+    r01, so r01's t = 3 s state does not exist yet.  The spout it steps down from
+    is younger, so read a collapse with more caution than a hold"
+  case: r01_step20
+  flow_slpm: 20             # 0.86 x measured_min_spout.  The only change.
+  hold_s: 2.0               # to t = 2.5 s
+  window_s: [1.9, 2.5]      # fountain: the builder's PIV frames, last 0.6 s.
+  d20_window_s: [1.5, 2.5]  # gas frames, last 1 s of the hold.
+  health_window_s: [0.6, 2.5]
+  held_dense_top_min_mm: 8.0
+  held_d20_max: 0.5
+  collapsed_dense_top_max_mm: 3.0
+  collapsed_d20_min: 0.9
+  trend_max: 0.25           # dense_top change between the window's two halves.
+  dry_run: "1 ms local restart from the smoke's state before any cloud
+    submission: the source mass flow and ps_v_g match the 20 slpm deck, parcel
+    count continues unchanged, t continues from the restart, no errors"
+  outcomes:                 # Mutually exclusive, read in this order.
+    held: "dense_top >= 8 mm AND d20 < 0.5: TGS holds a spout the rig does not.
+      A firm result, since the sudden drop is harsher than lowering by hand.
+      Next: Gidaspow at r01 and the same step"
+    collapsed: "dense_top < 3 mm AND d20 >= 0.9: TGS loses the spout below the
+      measured limit, as the rig does.  A weaker result, since the sudden drop
+      could cause it alone.  Next: the same step to 22 slpm"
+    internal_jet: "dense_top < 3 mm AND d20 < 0.9: no fountain, but a jet still
+      open inside the bed.  Reported as its own outcome; whether the rig counts
+      this as spouting is the user's call"
+    in_between: "anything else, or dense_top falling by more than 25 % between
+      the two halves of the window: not decided.  Extend the hold 1 s by
+      restart and read the last 1 s again, at most once"

@@ -12,6 +12,7 @@ import sys
 import numpy as np
 import pytest
 
+from src.correlations import rotameter_standard_flow
 from src.make_case import REPO_ROOT, _load_yaml, render_case
 from src.make_case_c26 import _volume_below, build_C26_3d_params, default_gridmap, load_sweep
 from src.make_stl_c26_fullface import build_cone_column_stl_fullface, inside_fullface_solid
@@ -97,10 +98,31 @@ def test_particles_yaml_matches_particles_sheet(particles_sheet):
 def test_sweep_flows_and_weight():
     sweep = load_sweep("piv_rig")
     assert [(c["id"], c["flow_slpm"]) for c in sweep["cases"]] == [
-        ("r01", 24), ("r02", 26.5), ("r03", 30)]
+        ("r01", 24), ("r02", 26.5), ("r03", 30),
+        ("q1", 25.40), ("q2", 28.19), ("q3", 32.16)]
     assert {c["inventory_g"] for c in sweep["cases"]} == {60}
     assert sweep["base"]["stat_wt"] == 1
     assert sweep["base"]["gas_case"] == "n2_25C"
+
+
+def test_q_flows_are_the_converted_rotameter_readings():
+    """q1-q3 are the air-scale readings 24 / 26.5 / 30 as N2 at the rig's slpm
+    reference.  Hand values for a reading of 24: p_back = 0.0085 * 24^2 + 0.5 =
+    5.396 kPa; 24 * 1.01699 * sqrt(106.721 / 101.325) * sqrt(293.15 / 294.817)
+    = 24.98 LPM N2 at 20 C; * 298.15 / 293.15 = 25.40 slpm."""
+    sweep = load_sweep("piv_rig")
+    rot = sweep["rotameter"]
+    T_ref = _load_yaml(REPO_ROOT / "params" / "gases.yaml")["slpm_reference_piv_rig"]["T_K"]
+    readings = {c["id"]: c["rotameter_lpm"] for c in sweep["cases"] if "rotameter_lpm" in c}
+    assert readings == {"q1": 24, "q2": 26.5, "q3": 30}
+    assert max(readings.values()) <= rot["full_scale_lpm"]
+    for cid, reading in readings.items():
+        p_back = 1e3 * (rot["back_pressure_kPa_per_lpm2"] * reading ** 2 + rot["bed_back_pressure_kPa"])
+        q_cal = rotameter_standard_flow(reading, rot["M_cal_kg_mol"], rot["M_gas_kg_mol"],
+                                        rot["p_cal_Pa"] + p_back, rot["p_cal_Pa"],
+                                        rot["T_gas_K"], rot["T_cal_K"])
+        assert _case(cid)["flow_slpm"] == pytest.approx(q_cal * T_ref / rot["T_cal_K"], abs=0.005)
+    assert _case("q1")["flow_slpm"] == pytest.approx(25.40, abs=0.005)
 
 
 # ---------------- hand values ----------------
@@ -118,6 +140,9 @@ def test_gas_is_nitrogen_at_25c(r01):
     ("r01", 24.0, 69.86, 67.82),
     ("r02", 26.5, 77.14, 74.88),
     ("r03", 30.0, 87.33, 84.78),
+    ("q1", 25.40, 73.94, 71.78),
+    ("q2", 28.19, 82.06, 79.66),
+    ("q3", 32.16, 93.61, 90.88),
 ])
 def test_jet_velocities_hand_values(cid, slpm, u_nozzle, u_face):
     p = _build(cid)
@@ -275,16 +300,38 @@ def test_deck_carries_the_rig_values(tmp_path):
     assert "RIM POCKET" in text and "sweep_C26" not in text
 
 
+# Keywords the rig deck adds to the C26 set, each checked against the MFiX 23.2
+# and 26.1.2 namelists (include/numerical_params.inc, 2026-11-05).
+RIG_NEW_KEYWORDS = {"leq_it"}
+
+
 def test_deck_keywords_are_the_verified_c26_set(tmp_path):
-    """CLAUDE.md rule 1: the rig deck introduces no keyword."""
+    """CLAUDE.md rule 1: the rig deck adds only RIG_NEW_KEYWORDS."""
     text, _ = _render(tmp_path)
-    allowed = _keywords(V3D_DEM_TEMPLATE.read_text()) | C26_NEW_KEYWORDS
+    allowed = _keywords(V3D_DEM_TEMPLATE.read_text()) | C26_NEW_KEYWORDS | RIG_NEW_KEYWORDS
     assert not (_keywords(text) - allowed)
     c02 = next(c for c in load_sweep()["cases"] if c["id"] == "c02")
     out = tmp_path / "c26.mfx"
     render_case(TEMPLATE, build_C26_3d_params(c02, stl_builder="parametric_fullface",
                                               ps_momentum=True), out)
-    assert _keywords(text) == _keywords(out.read_text())
+    assert _keywords(text) == _keywords(out.read_text()) | RIG_NEW_KEYWORDS
+
+
+def test_pressure_sweep_cap_is_rig_only(tmp_path):
+    """numerics.yaml spouted_bed_piv_rig_3d_numerics: LEQ_IT(1) = 200 on the rig
+    deck, next to norm_g; the C26 deck keeps MFiX's default and has no such line."""
+    block = _load_yaml(REPO_ROOT / "params" / "numerics.yaml")["spouted_bed_piv_rig_3d_numerics"]
+    assert block == {"leq_it_pressure": 200}
+    text, p = _render(tmp_path)
+    assert p["leq_it_pressure"] == 200
+    assert re.search(r"^  norm_g       = 0\.0\n(  #.*\n)+  leq_it\(1\)    = 200\n\n### Geometry", text, re.M)
+    c02 = next(c for c in load_sweep()["cases"] if c["id"] == "c02")
+    p26 = build_C26_3d_params(c02)
+    out = tmp_path / "c26.mfx"
+    render_case(TEMPLATE, p26, out)
+    assert p26["leq_it_pressure"] is None and p26["max_nit"] == p["max_nit"]
+    c26 = out.read_text()
+    assert "leq_it" not in c26 and "  norm_g       = 0.0\n\n### Geometry" in c26
 
 
 # ---------------- STL with the rim pocket ----------------
@@ -392,6 +439,97 @@ def test_rim_arguments_rejected(tmp_path, r01, kw, match):
 
 
 # ---------------- CLI ----------------
+
+def _restart_source(monkeypatch, tmp_path):
+    """A rendered r01 run dir holding stand-ins for its restart state."""
+    from src import run_C26_3d
+    monkeypatch.setattr(sys, "argv", [
+        "run_C26_3d", "--rig", "piv_rig", "--case", "r01", "--no-stl", "--out-root", str(tmp_path / "src")])
+    run_C26_3d.main()
+    source = tmp_path / "src" / "r01"
+    for name in ("RIG_R01.RES", "RIG_R01_DES.RES", "RIG_R01.SP1", "VTU_FRAME_INDEX.TXT",
+                 "PARTICLES.pvd", "RIG_R01_P_INLET.csv"):
+        (source / name).write_text("state")
+    return run_C26_3d, source
+
+
+def _step_argv(source, tmp_path, *extra):
+    return ["run_C26_3d", "--rig", "piv_rig", "--case", "r01", "--no-stl", "--restart-from", str(source),
+            "--out-root", str(tmp_path / "out"), *extra]
+
+
+def test_cli_restart_renders_the_step_down(monkeypatch, capsys, tmp_path):
+    run_C26_3d, source = _restart_source(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", _step_argv(
+        source, tmp_path, "--flow-slpm", "20", "--tstop", "5.0", "--run-dir-suffix", "_step20"))
+    run_C26_3d.main()
+    run_dir = tmp_path / "out" / "r01_step20"
+    deck = (run_dir / "RIG_r01.mfx").read_text()
+    assert "run_type    = 'RESTART_1'" in deck and "run_name    = 'RIG_r01'" in deck
+    m = json.loads((run_dir / "manifest.json").read_text())
+    old = json.loads((source / "manifest.json").read_text())
+    assert m["run_type"] == "RESTART_1" and m["restart_from"] == str(source)
+    assert m["flow_slpm"] == 20 and m["tstop_s"] == 5.0
+    assert m["ps_massflow_g_kg_s"] == pytest.approx(old["ps_massflow_g_kg_s"] * 20 / 24)
+    assert m["ps_v_g_m_s"] == pytest.approx(old["ps_v_g_m_s"] * 20 / 24)
+    for name in ("RIG_R01.RES", "RIG_R01_DES.RES", "RIG_R01.SP1", "VTU_FRAME_INDEX.TXT",
+                 "PARTICLES.pvd", "RIG_R01_P_INLET.csv"):
+        assert (run_dir / name).read_text() == "state"
+
+
+@pytest.mark.parametrize("extra", [
+    ("--tstop", "5.0"),                                  # would overwrite the source's dir
+    ("--tstop", "3.0", "--run-dir-suffix", "_step20"),   # not past the source's end
+    ("--run-dir-suffix", "_step20"),                     # no end time at all
+])
+def test_cli_restart_refuses_bad_arguments(monkeypatch, capsys, tmp_path, extra):
+    run_C26_3d, source = _restart_source(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", _step_argv(source, tmp_path, *extra))
+    with pytest.raises(SystemExit):
+        run_C26_3d.main()
+
+
+def test_cli_restart_unfinished_keeps_the_end_time(monkeypatch, capsys, tmp_path):
+    """A run that stopped early continues to its own tstop (3 s by default)."""
+    run_C26_3d, source = _restart_source(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", _step_argv(
+        source, tmp_path, "--restart-unfinished", "--run-dir-suffix", "_leq200"))
+    run_C26_3d.main()
+    run_dir = tmp_path / "out" / "r01_leq200"
+    deck = (run_dir / "RIG_r01.mfx").read_text()
+    assert "run_type    = 'RESTART_1'" in deck and "run_name    = 'RIG_r01'" in deck
+    assert re.search(r"^  tstop       = 3\.0$", deck, re.M)
+    m = json.loads((run_dir / "manifest.json").read_text())
+    assert m["restart_unfinished"] and m["tstop_s"] == 3.0 and m["flow_slpm"] == 24
+    assert (run_dir / "RIG_R01.RES").read_text() == "state"
+
+
+@pytest.mark.parametrize("extra", [
+    ("--restart-unfinished", "--tstop", "2.0", "--run-dir-suffix", "_x"),   # before the source's end
+])
+def test_cli_restart_unfinished_refuses_an_earlier_end(monkeypatch, capsys, tmp_path, extra):
+    run_C26_3d, source = _restart_source(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", _step_argv(source, tmp_path, *extra))
+    with pytest.raises(SystemExit):
+        run_C26_3d.main()
+
+
+def test_cli_restart_unfinished_needs_a_source(monkeypatch, capsys, tmp_path):
+    from src import run_C26_3d
+    monkeypatch.setattr(sys, "argv", ["run_C26_3d", "--rig", "piv_rig", "--case", "r01", "--no-stl",
+                                      "--restart-unfinished", "--out-root", str(tmp_path)])
+    with pytest.raises(SystemExit):
+        run_C26_3d.main()
+
+
+def test_cli_restart_refuses_missing_state(monkeypatch, capsys, tmp_path):
+    run_C26_3d, source = _restart_source(monkeypatch, tmp_path)
+    (source / "RIG_R01_DES.RES").unlink()
+    monkeypatch.setattr(sys, "argv", _step_argv(
+        source, tmp_path, "--tstop", "5.0", "--run-dir-suffix", "_step20"))
+    with pytest.raises(SystemExit, match="RIG_R01_DES.RES"):
+        run_C26_3d.main()
+
 
 def test_cli_writes_the_rig_cases(monkeypatch, capsys, tmp_path):
     from src import run_C26_3d

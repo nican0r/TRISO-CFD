@@ -37,6 +37,12 @@ Examples:
   .venv/bin/python -m src.run_C26_3d --case c01 --mfix-version 26.1.2 --run-dir-suffix _v26
   # the PIV rig: 24 / 26.5 / 30 slpm of N2, measured geometry and particles
   .venv/bin/python -m src.run_C26_3d --rig piv_rig --case all
+  # continue a finished run at a lower flow: a step-down from a running spout
+  .venv/bin/python -m src.run_C26_3d --rig piv_rig --case r01 --restart-from cases/PIV_rig_3d/r01_smoke05/aws_out \
+      --flow-slpm 20 --tstop 2.5 --run-dir-suffix _step20
+  # continue a run that stopped early (DT < DT_MIN) from its last restart state
+  .venv/bin/python -m src.run_C26_3d --rig piv_rig --case r03 --restart-from cases/PIV_rig_3d/r03/aws_out \
+      --restart-unfinished --run-dir-suffix _leq200
 
 With neither --nodes nor --gridmap-*, cases get default_gridmap(): 4 ranks
 (2x1x2, i = k = [13,14] on the 27-cell box, [13,13] with --axis-on-face), the
@@ -113,6 +119,21 @@ def _select(cases: list[dict], spec: str) -> list[dict]:
 
 def _md5(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def restart_files(src_dir: Path, run_name: str) -> list[Path]:
+    """Files a RESTART_1 run needs from a finished run dir, as in
+    src/run_V_3d_day10.py: open_files.f opens the .RES and every .SPx with
+    STATUS='OLD'; the frame index and .pvd files keep frame numbering going, and
+    the monitor CSVs keep their series continuous."""
+    stem = run_name.upper()
+    required = [src_dir / f"{stem}.RES", src_dir / f"{stem}_DES.RES"]
+    missing = [f.name for f in required if not f.is_file()]
+    if missing:
+        raise SystemExit(f"--restart-from {src_dir}: missing {missing}")
+    files = required + sorted(src_dir.glob(f"{stem}.SP?"))
+    files += [f for f in (src_dir / "VTU_FRAME_INDEX.TXT",) if f.is_file()]
+    return files + sorted(src_dir.glob("*.pvd")) + sorted(src_dir.glob(f"{stem}_*.csv"))
 
 
 def check_run_dir_release(run_dir: Path, mfix_version: str) -> None:
@@ -302,6 +323,15 @@ def main() -> None:
                         "--rig piv_rig)")
     p.add_argument("--run-dir-suffix", default="",
                    help="appended to each run dir name, e.g. '_smoke'")
+    p.add_argument("--restart-from", type=Path, default=None, metavar="RUN_DIR",
+                   help="render RUN_TYPE='RESTART_1' continuing a finished run of the "
+                        "same case: copies its restart state and keeps its run name. "
+                        "Needs --run-dir-suffix and a later --tstop; --flow-slpm sets "
+                        "the flow from the restart on")
+    p.add_argument("--restart-unfinished", action="store_true",
+                   help="with --restart-from: the source run stopped before its tstop "
+                        "(e.g. DT < DT_MIN), so --tstop may equal the source's and "
+                        "defaults to it")
     p.add_argument("--no-stl", action="store_true",
                    help="render decks and manifests only (skip the STL build)")
     p.add_argument("--dry-run", action="store_true",
@@ -319,6 +349,25 @@ def main() -> None:
     out_root = args.out_root or REPO_ROOT / "cases" / blocks["out_dir"]
     sweep = load_sweep(args.rig)
     selected = _select(sweep["cases"], args.case)
+    source = None
+    if args.restart_from is not None:
+        if not args.run_dir_suffix:
+            p.error("--restart-from needs --run-dir-suffix (keeps the source run's dir)")
+        if len(selected) != 1:
+            p.error("--restart-from continues one run; give a single --case")
+        source = json.loads((args.restart_from / "manifest.json").read_text())
+        if source["case_id"] != selected[0]["id"]:
+            p.error(f"--restart-from holds case {source['case_id']}, not {selected[0]['id']}")
+        if args.restart_unfinished:
+            if args.tstop is None:
+                args.tstop = source["tstop_s"]
+            if args.tstop < source["tstop_s"]:
+                p.error(f"--restart-unfinished needs --tstop at or past the source's "
+                        f"{source['tstop_s']} s")
+        elif args.tstop is None or args.tstop <= source["tstop_s"]:
+            p.error(f"--restart-from needs --tstop past the source's {source['tstop_s']} s")
+    elif args.restart_unfinished:
+        p.error("--restart-unfinished needs --restart-from")
     gridmap = None
     if any(getattr(args, f"gridmap_{a}") for a in "ijk"):
         gridmap = tuple(getattr(args, f"gridmap_{a}") or [] for a in "ijk")
@@ -333,7 +382,9 @@ def main() -> None:
         if args.flow_slpm is not None:
             case = {**case, "flow_slpm": args.flow_slpm}
         params = build_C26_3d_params(
-            case, tstop_s=args.tstop, run_name=f"{blocks['run_prefix']}_{case['id']}{name_suffix}",
+            case, tstop_s=args.tstop,
+            # A restart must keep the source's name: MFiX finds its files by it.
+            run_name=source["run_name"] if source else f"{blocks['run_prefix']}_{case['id']}{name_suffix}",
             nodes=nodes, gridmap=gridmap,
             dx_sample_fraction=args.stl_sample_fraction,
             ps_momentum=True if args.ps_momentum else (False if args.ps_mass_only else None),
@@ -346,6 +397,8 @@ def main() -> None:
             mfix_version=args.mfix_version,
             rig=args.rig,
         )
+        if source:
+            params["run_type"] = "RESTART_1"
         run_dir = out_root / f"{case['id']}{name_suffix}"
         check_run_dir_release(run_dir, params["mfix_version"])
         mfx_path = run_dir / f"{params['run_name']}.mfx"
@@ -358,6 +411,8 @@ def main() -> None:
             "is_base_case": case["id"] == sweep["base"]["base_case"],
             "is_ofat_baseline": case["id"] == sweep["base"]["ofat_baseline"],
             "flow_slpm_override": args.flow_slpm is not None,
+            "restart_from": str(args.restart_from) if source else None,
+            "restart_unfinished": bool(source and args.restart_unfinished),
             "piv_targets_table3": sweep.get("piv_targets_table3", {}).get(case["id"]),
             "notes": blocks["notes"],
             # AWS Batch sizing, read by src/aws/submit.py: one vCPU per rank.
@@ -378,7 +433,13 @@ def main() -> None:
             else:
                 shutil.copy2(stl_cache, stl_path)
             manifest.update(stl_facts)
+            if source and stl_facts["stl_md5"] != source["stl_md5"]:
+                raise SystemExit(f"--restart-from: this STL ({stl_facts['stl_md5']}) is not "
+                                 f"the source run's ({source['stl_md5']})")
         render_case(TEMPLATE, params, mfx_path)
+        if source:
+            for src in restart_files(args.restart_from, params["run_name"]):
+                shutil.copy2(src, run_dir / src.name)
         gridmap_path = run_dir / "gridmap.dat"
         if params["gridmap"] is not None:
             write_gridmap(run_dir, params["gridmap"])

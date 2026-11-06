@@ -351,3 +351,39 @@ def coated_particle_stages(
         d = d_new
         out.append((str(name), d, mass_d3 / d ** 3))
     return out
+
+
+def rotameter_standard_flow(
+    q_indicated: float,
+    M_cal: float,
+    M_gas: float,
+    p_tube_Pa: float,
+    p_cal_Pa: float,
+    T_tube_K: float,
+    T_cal_K: float,
+) -> float:
+    """Standard flow of a gas through a float rotameter read on another gas's scale.
+
+        Q_std = Q_ind * sqrt(M_cal / M_gas) * sqrt(p_tube / p_cal)
+                      * sqrt(T_cal / T_tube)
+
+    The float balances on rho * v^2, so the indicated flow scales with
+    1 / sqrt(rho) of the gas in the tube; rho = p M / (R T).  The result is
+    referred to the scale's calibration state (T_cal, p_cal).
+
+    Reference: the standard variable-area flowmeter density correction (float
+    force balance); the form of the rig's conversion note, user 2026-11-06.
+
+    q_indicated : scale reading [any flow unit]
+    M_cal       : molar mass of the calibration gas [kg/mol]
+    M_gas       : molar mass of the metered gas [kg/mol]
+    p_tube_Pa   : absolute pressure in the float tube [Pa]
+    p_cal_Pa    : absolute calibration pressure [Pa]
+    T_tube_K    : gas temperature in the float tube [K]
+    T_cal_K     : calibration temperature [K]
+    Returns Q_std in the unit of q_indicated, at (T_cal, p_cal).
+    """
+    if min(q_indicated, M_cal, M_gas, p_tube_Pa, p_cal_Pa, T_tube_K, T_cal_K) <= 0.0:
+        raise ValueError("reading, molar masses, pressures and temperatures must be > 0")
+    return float(q_indicated) * np.sqrt(
+        (M_cal / M_gas) * (p_tube_Pa / p_cal_Pa) * (T_cal_K / T_tube_K))

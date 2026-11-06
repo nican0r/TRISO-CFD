@@ -55,7 +55,8 @@ MFIX_VERSIONS = ("26.1.2", "23.2")
 
 # The rigs the builder models and the params blocks each one reads.  numerics.yaml
 # spouted_bed_C26_3d_numerics is shared (the piv_rig deck keeps C26's time step
-# and PIV window).
+# and PIV window); a rig's ``numerics_override`` block replaces or adds keys
+# for that rig only.
 RIGS = {
     "C26": {
         "sweep_file": "sweep_C26.yaml",
@@ -68,6 +69,7 @@ RIGS = {
         "case_label": "C26 (Conry et al. 2026, Nucl. Eng. Des. 456:115009)",
         "notes": "notes/c26_conry2026_case.md",
         "out_dir": "C26_3d",
+        "numerics_override": None,
     },
     "piv_rig": {
         "sweep_file": "sweep_piv_rig.yaml",
@@ -80,6 +82,7 @@ RIGS = {
         "case_label": "PIV rig (C26 layout, measured values; data/piv_rig)",
         "notes": "implementation-steps/10-piv-rig-model.md",
         "out_dir": "PIV_rig_3d",
+        "numerics_override": "spouted_bed_piv_rig_3d_numerics",
     },
 }
 
@@ -357,10 +360,13 @@ def build_C26_3d_params(
     geometry = _load_yaml(PARAMS_DIR / "geometry.yaml")
     particles = _load_yaml(PARAMS_DIR / "particles.yaml")
     gases = _load_yaml(PARAMS_DIR / "gases.yaml")
-    numerics = _load_yaml(PARAMS_DIR / "numerics.yaml")["spouted_bed_C26_3d_numerics"]
+    numerics_file = _load_yaml(PARAMS_DIR / "numerics.yaml")
     if rig not in RIGS:
         raise ValueError(f"rig must be one of {tuple(RIGS)}, got {rig!r}")
     blocks = RIGS[rig]
+    numerics = dict(numerics_file["spouted_bed_C26_3d_numerics"])
+    if blocks["numerics_override"] is not None:
+        numerics.update(numerics_file[blocks["numerics_override"]])
     sweep = load_sweep(rig)
 
     bed = geometry[blocks["bed"]]
@@ -646,6 +652,9 @@ def build_C26_3d_params(
         "dt_max_paper_s": dt_max_paper_s,
         "dt_min_s": float(numerics["dt_min_s"]),
         "max_nit": int(numerics["max_nit"]),
+        # LEQ_IT(1); None leaves the keyword out (MFiX default, the C26 decks).
+        "leq_it_pressure": (None if numerics.get("leq_it_pressure") is None
+                            else int(numerics["leq_it_pressure"])),
         "nodes_i": ni, "nodes_j": nj, "nodes_k": nk, "nranks": ni * nj * nk,
         "gridmap": None if gridmap is None else {
             "i": gridmap[0], "j": gridmap[1], "k": gridmap[2]},

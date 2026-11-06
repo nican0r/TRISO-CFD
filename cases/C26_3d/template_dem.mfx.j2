@@ -75,6 +75,12 @@
   detect_stall = .True.
   max_nit      = {{ max_nit }}
   norm_g       = 0.0
+{%- if leq_it_pressure is not none %}
+  # Most BiCGSTAB sweeps in one gas pressure-correction solve (MFiX default 20;
+  # init_namelist.f: raise LEQ_IT(1) when NORM_G = 0).  At 20 an unfinished
+  # solve stalled the iterations (params/numerics.yaml).
+  leq_it(1)    = {{ leq_it_pressure }}
+{%- endif %}
 
 ### Geometry (cartesian 3D, uniform dx = D_c / {{ n_cells_across_D }}; odd cell count across
 ### the box so the vessel axis is a cell centre)
